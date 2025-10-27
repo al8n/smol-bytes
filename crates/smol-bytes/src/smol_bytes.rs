@@ -3,6 +3,7 @@ use core::{
   cmp::Ordering,
   fmt,
   hash::{Hash, Hasher},
+  marker::PhantomData,
   mem,
   ops::{self, Bound, RangeBounds},
 };
@@ -10,6 +11,10 @@ use core::{
 use bytes::{Buf, Bytes};
 
 use std::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
+
+pub use strategy::{ConversionFriendly, Inline};
+
+use strategy::Strategy;
 
 #[cfg(feature = "borsh")]
 mod borsh;
@@ -19,14 +24,23 @@ mod serde;
 #[cfg(test)]
 mod tests;
 
+mod strategy;
+
 /// Number of bytes that can be stored inline inside a [`SmolBytes`].
 pub const INLINE_CAP: usize = InlineSize::_V38 as usize;
 
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
-pub struct SmolBytes(Repr);
+#[repr(transparent)]
+pub struct SmolBytes<S = ConversionFriendly> {
+  repr: Repr,
+  _strategy: PhantomData<S>,
+}
 
-impl SmolBytes {
+impl<S> SmolBytes<S>
+where
+  Self: Strategy,
+{
   /// Creates a new empty Bytes.
   ///
   /// ## Examples
@@ -39,7 +53,7 @@ impl SmolBytes {
   /// ```
   #[inline]
   pub const fn new() -> Self {
-    Self(Repr::inline([0; INLINE_CAP], 0, 0))
+    Self::inline([0; INLINE_CAP], 0, 0)
   }
 
   /// Creates an inline [`SmolBytes`] without allocating.
@@ -64,7 +78,7 @@ impl SmolBytes {
     unsafe {
       core::ptr::copy(bytes.as_ptr(), buf.as_mut_ptr(), blen);
     }
-    Self(Repr::inline(buf, 0, blen))
+    Self::inline(buf, 0, blen)
   }
 
   /// Creates a [`SmolBytes`] from a statically allocated byte slice.
@@ -80,53 +94,7 @@ impl SmolBytes {
     if bytes.len() <= INLINE_CAP {
       return Self::new_inline(bytes);
     }
-    Self(Repr::Heap(Bytes::from_static(bytes)))
-  }
-
-  /// Returns `true` if this is the only reference to the data and Into<BytesMut> would avoid cloning the underlying buffer.
-  ///
-  /// Always returns `false` if the data is backed by a static slice, or inlined.
-  ///
-  /// The result of this method may be invalidated immediately if another thread clones this value while this is being called. Ensure you have unique access to this value (&mut SmolBytes) first if you need to be certain the result is valid (i.e. for safety reasons).
-  ///
-  /// ```rust
-  /// use smol_bytes::SmolBytes;
-  ///
-  /// let b = SmolBytes::from_static(b"hello");
-  /// assert!(!b.is_unique());
-  ///
-  /// let b2 = SmolBytes::from(vec![1; 100]);
-  /// assert!(b2.is_unique());
-  /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub fn is_unique(&self) -> bool {
-    self.0.is_unique()
-  }
-
-  /// Returns the length in bytes of this [`SmolBytes`].
-  ///
-  /// ```rust
-  /// use smol_bytes::SmolBytes;
-  ///
-  /// let b = SmolBytes::from_static(b"hello");
-  /// assert_eq!(b.len(), 5);
-  /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn len(&self) -> usize {
-    self.0.len()
-  }
-
-  /// Returns `true` if this [`SmolBytes`] contains no bytes.
-  ///
-  /// ```rust
-  /// use smol_bytes::SmolBytes;
-  ///
-  /// let b = SmolBytes::new();
-  /// assert!(b.is_empty());
-  /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn is_empty(&self) -> bool {
-    self.0.is_empty()
+    Self::heap(Bytes::from_static(bytes))
   }
 
   /// Returns a slice of self for the provided range.
@@ -161,7 +129,7 @@ impl SmolBytes {
   /// will panic.
   #[inline]
   pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-    Self(self.0.slice(range))
+    Strategy::slice(self, range)
   }
 
   /// Splits the bytes into two at the given index.
@@ -191,57 +159,7 @@ impl SmolBytes {
   /// Panics if `at > len`.
   #[must_use = "consider SmolBytes::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Self {
-    let len = self.len();
-    if at == len {
-      return Self::new();
-    }
-
-    if at == 0 {
-      return mem::replace(self, Self::new());
-    }
-
-    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len,);
-
-    // first, check if output would be inline
-    let output_size = len - at;
-    let ret = if output_size <= INLINE_CAP {
-      let mut buf = [0u8; INLINE_CAP];
-      let src = self.as_slice();
-      buf[..output_size].copy_from_slice(&src[at..len]);
-      Self(Repr::Inline {
-        len: unsafe { InlineSize::from_u8(output_size as u8) },
-        buf,
-        cur: 0,
-      })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.0.unwrap_heap_mut().clone();
-      bytes.advance(at);
-      Self(Repr::Heap(bytes))
-    };
-
-    // second, check if self can be made inline
-    if at <= INLINE_CAP {
-      // check if we already are inline, if so, adjust len, avoid copy
-      if let Repr::Inline { len, .. } = &mut self.0 {
-        *len = unsafe { InlineSize::from_u8(at as u8) };
-        return ret;
-      }
-
-      let mut buf = [0u8; INLINE_CAP];
-      let src = self.as_slice();
-      buf[..at].copy_from_slice(&src[..at]);
-      self.0 = Repr::Inline {
-        len: unsafe { InlineSize::from_u8(at as u8) },
-        buf,
-        cur: 0,
-      };
-    } else {
-      // self remains heap allocated
-      self.0.unwrap_heap_mut().truncate(at);
-    }
-
-    ret
+    Strategy::split_off(self, at)
   }
 
   /// Splits the bytes into two at the given index.
@@ -269,71 +187,7 @@ impl SmolBytes {
   /// Panics if `at > len`.
   #[must_use = "consider SmolBytes::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Self {
-    let len = self.len();
-    if at == len {
-      return mem::replace(self, Self::new());
-    }
-
-    if at == 0 {
-      return Self::new();
-    }
-
-    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len,);
-
-    // first, check if output can be inline
-    let ret = if at <= INLINE_CAP {
-      let mut buf = [0u8; INLINE_CAP];
-      let src = self.as_slice();
-      buf[..at].copy_from_slice(&src[..at]);
-      Self(Repr::Inline {
-        len: unsafe { InlineSize::from_u8(at as u8) },
-        buf,
-        cur: 0,
-      })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.0.unwrap_heap_mut().clone();
-      bytes.truncate(at);
-      Self(Repr::Heap(bytes))
-    };
-
-    // second, check if self can be made inline
-    let remaining_size = len - at;
-    if remaining_size <= INLINE_CAP {
-      // check if we already are inline, if so, adjust cur, avoid copy
-      if let Repr::Inline { cur, len, .. } = &mut self.0 {
-        *cur = len.to_u8() - (remaining_size as u8);
-        return ret;
-      }
-
-      let mut buf = [0u8; INLINE_CAP];
-      let src = self.as_slice();
-      buf[..remaining_size].copy_from_slice(&src[at..len]);
-      self.0 = Repr::Inline {
-        len: unsafe { InlineSize::from_u8(remaining_size as u8) },
-        buf,
-        cur: 0,
-      };
-    } else {
-      // self remains heap allocated
-      let bytes = self.0.unwrap_heap_mut();
-      bytes.advance(at);
-    }
-    ret
-  }
-
-  /// Creates a [`SmolBytes`] from any byte slice, allocating if needed.
-  ///
-  /// ```rust
-  /// use smol_bytes::SmolBytes;
-  ///
-  /// let data = vec![1, 2, 3, 4, 5];
-  /// let b = SmolBytes::copy_from_slice(&data);
-  /// assert_eq!(&b[..], &data[..]);
-  /// ```
-  #[inline]
-  pub fn copy_from_slice(bytes: impl AsRef<[u8]>) -> Self {
-    Self(Repr::new(bytes.as_ref()))
+    Strategy::split_to(self, at)
   }
 
   /// Truncates this [`SmolBytes`] to the specified length.
@@ -353,7 +207,7 @@ impl SmolBytes {
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn truncate(&mut self, new_len: usize) {
-    self.0.truncate(new_len);
+    Strategy::truncate(self, new_len);
   }
 
   /// Clears the contents of this [`SmolBytes`].
@@ -369,7 +223,90 @@ impl SmolBytes {
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn clear(&mut self) {
-    self.0.clear();
+    Strategy::clear(self)
+  }
+}
+
+impl<S> SmolBytes<S>
+where
+  Self: Strategy,
+{
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  const fn new_in(repr: Repr) -> Self {
+    Self {
+      repr,
+      _strategy: PhantomData,
+    }
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  const fn inline(buf: [u8; INLINE_CAP], cur: u8, blen: usize) -> Self {
+    Self::new_in(Repr::inline(buf, cur, blen))
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  const fn heap(bytes: Bytes) -> Self {
+    Self::new_in(Repr::Heap(bytes))
+  }
+
+  /// Returns `true` if this is the only reference to the data and Into<BytesMut> would avoid cloning the underlying buffer.
+  ///
+  /// Always returns `false` if the data is backed by a static slice, or inlined.
+  ///
+  /// The result of this method may be invalidated immediately if another thread clones this value while this is being called. Ensure you have unique access to this value (&mut SmolBytes) first if you need to be certain the result is valid (i.e. for safety reasons).
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytes;
+  ///
+  /// let b = SmolBytes::from_static(b"hello");
+  /// assert!(!b.is_unique());
+  ///
+  /// let b2 = SmolBytes::from(vec![1; 100]);
+  /// assert!(b2.is_unique());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn is_unique(&self) -> bool {
+    self.repr.is_unique()
+  }
+
+  /// Returns the length in bytes of this [`SmolBytes`].
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytes;
+  ///
+  /// let b = SmolBytes::from_static(b"hello");
+  /// assert_eq!(b.len(), 5);
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn len(&self) -> usize {
+    self.repr.len()
+  }
+
+  /// Returns `true` if this [`SmolBytes`] contains no bytes.
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytes;
+  ///
+  /// let b = SmolBytes::new();
+  /// assert!(b.is_empty());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn is_empty(&self) -> bool {
+    self.repr.is_empty()
+  }
+
+  /// Creates a [`SmolBytes`] from any byte slice, allocating if needed.
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytes;
+  ///
+  /// let data = vec![1, 2, 3, 4, 5];
+  /// let b = SmolBytes::copy_from_slice(&data);
+  /// assert_eq!(&b[..], &data[..]);
+  /// ```
+  #[inline]
+  pub fn copy_from_slice(bytes: impl AsRef<[u8]>) -> Self {
+    Self::new_in(Repr::new(bytes.as_ref()))
   }
 
   /// Returns the byte slice underlying this [`SmolBytes`].
@@ -382,13 +319,13 @@ impl SmolBytes {
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn as_slice(&self) -> &[u8] {
-    self.0.as_slice()
+    self.repr.as_slice()
   }
 
   /// Returns `true` if this [`SmolBytes`] is backed by a heap allocation.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn is_heap_allocated(&self) -> bool {
-    matches!(self.0, Repr::Heap(..))
+    matches!(self.repr, Repr::Heap(..))
   }
 
   /// Returns the inline capacity in bytes.
@@ -400,19 +337,19 @@ impl SmolBytes {
   /// Converts `self` into a [`Vec<u8>`], reusing the allocation if possible.
   #[inline]
   pub fn into_vec(self) -> Vec<u8> {
-    self.0.into_vec()
+    self.repr.into_vec()
   }
 
   /// Converts `self` into a [`Bytes`], reusing the allocation if possible.
   #[inline]
   pub fn into_bytes(self) -> Bytes {
-    self.0.into_bytes()
+    self.repr.into_bytes()
   }
 
   /// Converts `self` into an [`Arc<[u8]>`].
   #[inline]
   pub fn into_arc(self) -> Arc<[u8]> {
-    self.0.into_arc()
+    self.repr.into_arc()
   }
 
   /// Returns a [`Vec<u8>`] containing a copy of the bytes.
@@ -428,18 +365,20 @@ impl SmolBytes {
   }
 }
 
-impl Default for SmolBytes {
+impl<S> Default for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
-    Self(Repr::Inline {
-      len: InlineSize::_V0,
-      buf: [0; INLINE_CAP],
-      cur: 0,
-    })
+    Self::new()
   }
 }
 
-impl ops::Deref for SmolBytes {
+impl<S> ops::Deref for SmolBytes<S>
+where
+  Self: Strategy,
+{
   type Target = [u8];
 
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -448,107 +387,152 @@ impl ops::Deref for SmolBytes {
   }
 }
 
-impl Borrow<[u8]> for SmolBytes {
+impl<S> Borrow<[u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn borrow(&self) -> &[u8] {
     self.as_slice()
   }
 }
 
-impl AsRef<[u8]> for SmolBytes {
+impl<S> AsRef<[u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn as_ref(&self) -> &[u8] {
     self.as_slice()
   }
 }
 
-impl PartialEq for SmolBytes {
+impl<S> PartialEq for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn eq(&self, other: &Self) -> bool {
-    self.0.ptr_eq(&other.0) || self.as_slice() == other.as_slice()
+    self.repr.ptr_eq(&other.repr) || self.as_slice() == other.as_slice()
   }
 }
 
-impl Eq for SmolBytes {}
+impl<S> Eq for SmolBytes<S> where Self: Strategy {}
 
-impl PartialEq<[u8]> for SmolBytes {
+impl<S> PartialEq<[u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &[u8]) -> bool {
     self.as_slice() == other
   }
 }
 
-impl PartialEq<SmolBytes> for [u8] {
+impl<S> PartialEq<SmolBytes<S>> for [u8]
+where
+  SmolBytes<S>: Strategy,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &SmolBytes) -> bool {
+  fn eq(&self, other: &SmolBytes<S>) -> bool {
     other == self
   }
 }
 
-impl PartialOrd for SmolBytes {
+impl<S> PartialOrd for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl Ord for SmolBytes {
+impl<S> Ord for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn cmp(&self, other: &Self) -> Ordering {
     self.as_slice().cmp(other.as_slice())
   }
 }
 
-impl Hash for SmolBytes {
+impl<S> Hash for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     self.as_slice().hash(state)
   }
 }
 
-impl fmt::Debug for SmolBytes {
+impl<S> fmt::Debug for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt::Debug::fmt(self.as_slice(), f)
   }
 }
 
-impl From<&[u8]> for SmolBytes {
+impl<S> From<&[u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(slice: &[u8]) -> Self {
     Self::copy_from_slice(slice)
   }
 }
 
-impl From<&mut [u8]> for SmolBytes {
+impl<S> From<&mut [u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(slice: &mut [u8]) -> Self {
     Self::copy_from_slice(slice)
   }
 }
 
-impl From<Vec<u8>> for SmolBytes {
+impl<S> From<Vec<u8>> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(vec: Vec<u8>) -> Self {
-    Self(Repr::from_vec(vec))
+    Self::new_in(Repr::from_vec(vec))
   }
 }
 
-impl From<Box<[u8]>> for SmolBytes {
+impl<S> From<Box<[u8]>> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(slice: Box<[u8]>) -> Self {
-    Self(Repr::from_box(slice))
+    Self::new_in(Repr::from_box(slice))
   }
 }
 
-impl From<Arc<[u8]>> for SmolBytes {
+impl<S> From<Arc<[u8]>> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(arc: Arc<[u8]>) -> Self {
-    Self(Repr::from_arc(arc))
+    Self::new_in(Repr::from_arc(arc))
   }
 }
 
-impl<'a> From<Cow<'a, [u8]>> for SmolBytes {
+impl<'a, S> From<Cow<'a, [u8]>> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn from(cow: Cow<'a, [u8]>) -> Self {
     match cow {
@@ -558,40 +542,58 @@ impl<'a> From<Cow<'a, [u8]>> for SmolBytes {
   }
 }
 
-impl From<SmolBytes> for Vec<u8> {
+impl<S> From<SmolBytes<S>> for Vec<u8>
+where
+  SmolBytes<S>: Strategy,
+{
   #[inline]
-  fn from(bytes: SmolBytes) -> Self {
+  fn from(bytes: SmolBytes<S>) -> Self {
     bytes.into_vec()
   }
 }
 
-impl From<SmolBytes> for Arc<[u8]> {
+impl<S> From<SmolBytes<S>> for Arc<[u8]>
+where
+  SmolBytes<S>: Strategy,
+{
   #[inline]
-  fn from(bytes: SmolBytes) -> Self {
+  fn from(bytes: SmolBytes<S>) -> Self {
     bytes.into_arc()
   }
 }
 
-impl From<SmolBytes> for Bytes {
+impl<S> From<SmolBytes<S>> for Bytes
+where
+  SmolBytes<S>: Strategy,
+{
   #[inline]
-  fn from(bytes: SmolBytes) -> Self {
+  fn from(bytes: SmolBytes<S>) -> Self {
     bytes.into_bytes()
   }
 }
 
-impl<'a> core::iter::FromIterator<&'a [u8]> for SmolBytes {
+impl<'a, S> core::iter::FromIterator<&'a [u8]> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
     build_from_chunks(iter.into_iter())
   }
 }
 
-impl core::iter::FromIterator<u8> for SmolBytes {
+impl<S> core::iter::FromIterator<u8> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
     build_from_iter(iter.into_iter())
   }
 }
 
-impl Buf for SmolBytes {
+impl<S> Buf for SmolBytes<S>
+where
+  Self: Strategy,
+{
   #[inline]
   fn remaining(&self) -> usize {
     self.len()
@@ -602,67 +604,22 @@ impl Buf for SmolBytes {
     self.as_slice()
   }
 
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn advance(&mut self, cnt: usize) {
-    match &mut self.0 {
-      Repr::Inline { len, cur, .. } => {
-        let remaining = len.to_u8() - *cur;
-        assert!(
-          cnt <= remaining as usize,
-          "cannot advance past `remaining`: {:?} <= {:?}",
-          cnt,
-          remaining,
-        );
-        *cur += cnt as u8;
-      }
-      Repr::Heap(bytes) => {
-        // check if we can make inline after advance
-        let len = bytes.len();
-        assert!(
-          cnt <= len,
-          "cannot advance past `remaining`: {:?} <= {:?}",
-          cnt,
-          len,
-        );
-
-        let remaining = len - cnt;
-        if remaining <= INLINE_CAP {
-          let mut buf = [0u8; INLINE_CAP];
-          let src = &bytes[cnt..];
-          buf[..remaining].copy_from_slice(src);
-          let _ = mem::replace(&mut self.0, Repr::inline(buf, 0, remaining));
-        } else {
-          bytes.advance(cnt);
-        }
-      }
-    }
+    Strategy::advance(self, cnt);
   }
 
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> Bytes {
-    match &mut self.0 {
-      Repr::Inline {
-        len: ilen,
-        cur,
-        buf,
-      } => {
-        let available = ilen.to_usize() - (*cur as usize);
-        assert!(
-          len <= available,
-          "cannot copy_to_bytes past `remaining`: {:?} <= {:?}",
-          len,
-          available,
-        );
-        let ret = Bytes::copy_from_slice(&buf[*cur as usize..*cur as usize + len]);
-        *cur += len as u8;
-        ret
-      }
-      Repr::Heap(bytes) => bytes.copy_to_bytes(len),
-    }
+    Strategy::copy_to_bytes(self, len)
   }
 }
 
 #[allow(single_use_lifetimes)]
-fn build_from_chunks<'a>(mut iter: impl Iterator<Item = &'a [u8]>) -> SmolBytes {
+fn build_from_chunks<'a, S>(mut iter: impl Iterator<Item = &'a [u8]>) -> SmolBytes<S>
+where
+  SmolBytes<S>: Strategy,
+{
   let mut buf = [0u8; INLINE_CAP];
   let mut len = 0usize;
   while let Some(chunk) = iter.next() {
@@ -675,20 +632,19 @@ fn build_from_chunks<'a>(mut iter: impl Iterator<Item = &'a [u8]>) -> SmolBytes 
       for rest in iter {
         vec.extend_from_slice(rest);
       }
-      return SmolBytes(Repr::Heap(Bytes::from(vec)));
+      return SmolBytes::heap(Bytes::from(vec));
     }
     let end = len + slice.len();
     buf[len..end].copy_from_slice(slice);
     len = end;
   }
-  SmolBytes(Repr::Inline {
-    len: unsafe { InlineSize::from_u8(len as u8) },
-    cur: 0,
-    buf,
-  })
+  SmolBytes::inline(buf, 0, len)
 }
 
-fn build_from_iter(mut iter: impl Iterator<Item = u8>) -> SmolBytes {
+fn build_from_iter<S>(mut iter: impl Iterator<Item = u8>) -> SmolBytes<S>
+where
+  SmolBytes<S>: Strategy,
+{
   let mut buf = [0u8; INLINE_CAP];
   let mut len = 0usize;
   while let Some(byte) = iter.next() {
@@ -699,7 +655,7 @@ fn build_from_iter(mut iter: impl Iterator<Item = u8>) -> SmolBytes {
         vec.extend_from_slice(&buf[..len]);
         vec.push(byte);
         vec.extend(iter);
-        return SmolBytes(Repr::Heap(Bytes::from(vec)));
+        return SmolBytes::heap(Bytes::from(vec));
       }
       #[cfg(not(any(feature = "alloc", feature = "std")))]
       {
@@ -709,11 +665,7 @@ fn build_from_iter(mut iter: impl Iterator<Item = u8>) -> SmolBytes {
     buf[len] = byte;
     len += 1;
   }
-  SmolBytes(Repr::Inline {
-    len: unsafe { InlineSize::from_u8(len as u8) },
-    cur: 0,
-    buf,
-  })
+  SmolBytes::inline(buf, 0, len)
 }
 
 #[derive(Clone, Debug)]
@@ -808,91 +760,11 @@ impl Repr {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-    let len = self.len();
-
-    let begin = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    let Some(slen) = end.checked_sub(begin) else {
-      panic!(
-        "range start must not be greater than end: {:?} <= {:?}",
-        begin, end,
-      );
-    };
-
-    assert!(
-      end <= len,
-      "range end out of bounds: {:?} <= {:?}",
-      end,
-      len,
-    );
-
-    if slen <= INLINE_CAP {
-      let mut new_buf = [0u8; INLINE_CAP];
-      new_buf[..slen].copy_from_slice(&self.as_slice()[begin..end]);
-      return Self::inline(new_buf, 0, slen);
-    }
-
-    match self {
-      Self::Inline { .. } => {
-        unreachable!("slice length exceeds inline capacity");
-      }
-      Self::Heap(bytes) => Self::Heap(bytes.slice(begin..end)),
-    }
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
   fn is_unique(&self) -> bool {
     match self {
       Self::Inline { .. } => false,
       Self::Heap(bytes) => bytes.is_unique(),
     }
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn truncate(&mut self, new_len: usize) {
-    match self {
-      Self::Inline { len, .. } => {
-        if new_len <= len.to_usize() {
-          *len = unsafe { InlineSize::from_u8(new_len as u8) };
-        }
-      }
-      Self::Heap(bytes) => {
-        if new_len <= INLINE_CAP {
-          let mut buf = [0u8; INLINE_CAP];
-          buf[..new_len].copy_from_slice(&bytes[..new_len]);
-          *self = Self::Inline {
-            len: unsafe { InlineSize::from_u8(new_len as u8) },
-            buf,
-            cur: 0,
-          };
-        } else {
-          bytes.truncate(new_len);
-        }
-      }
-    }
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn clear(&mut self) {
-    let _ = mem::replace(
-      self,
-      Self::Inline {
-        len: InlineSize::_V0,
-        buf: [0; INLINE_CAP],
-        cur: 0,
-      },
-    );
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -1012,7 +884,10 @@ impl InlineSize {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for SmolBytes {
+impl<'a, S> arbitrary::Arbitrary<'a> for SmolBytes<S>
+where
+  Self: Strategy,
+{
   fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> Result<Self, arbitrary::Error> {
     let bytes = <&[u8]>::arbitrary(u)?;
     Ok(SmolBytes::copy_from_slice(bytes))

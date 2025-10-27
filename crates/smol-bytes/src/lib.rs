@@ -19,7 +19,14 @@ extern crate std;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use smol_bytes::{SmolBytes, INLINE_CAP};
+pub use smol_bytes::{ConversionFriendly, Inline, SmolBytes, INLINE_CAP};
+
+// #[cfg(any(feature = "std", feature = "alloc"))]
+// #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+// pub use smol_bytes_mut::SmolBytesMut;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod smol_bytes;
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod smol_bytes_mut;
