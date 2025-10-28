@@ -198,6 +198,11 @@ impl InlineStorage {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn len(&self) -> usize {
+    self.len.to_usize()
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn remaining_mut(&self) -> usize {
     INLINE_CAP - (self.len.to_usize())
   }
@@ -268,13 +273,15 @@ impl InlineStorage {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn as_slice(&self) -> &[u8] {
     let ptr = self.buf.as_ptr() as *const u8;
-    unsafe { core::slice::from_raw_parts(ptr.add(self.cur as usize), self.len.to_usize()) }
+    let remaining = self.remaining();
+    unsafe { core::slice::from_raw_parts(ptr.add(self.cur.to_usize()), remaining) }
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn as_mut_slice(&mut self) -> &mut [u8] {
     let ptr = self.buf.as_mut_ptr() as *mut u8;
-    unsafe { core::slice::from_raw_parts_mut(ptr.add(self.cur as usize), self.len.to_usize()) }
+    let remaining = self.remaining();
+    unsafe { core::slice::from_raw_parts_mut(ptr.add(self.cur.to_usize()), remaining) }
   }
 }
 

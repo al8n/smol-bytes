@@ -5,6 +5,49 @@ use bytes::{BufMut, BytesMut};
 use crate::{smol_bytes::RawSmolBytes, utils::InlineStorage, INLINE_CAP};
 
 /// A mutable byte buffer with inline storage optimization.
+///
+/// `SmolBytesMut` is similar to [`BytesMut`] but optimized for small buffers.
+/// It stores data inline (on the stack) for buffers up to 62 bytes, avoiding heap
+/// allocations. For larger buffers, it automatically promotes to heap storage using
+/// [`BytesMut`] internally.
+///
+/// # Inline vs Heap Storage
+///
+/// - **Inline**: Buffers ≤62 bytes are stored directly in the `SmolBytesMut` struct
+/// - **Heap**: Buffers >62 bytes are automatically promoted to heap allocation
+/// - Once promoted to heap, the buffer stays on the heap (no automatic demotion)
+///
+/// # Limitations
+///
+/// Some operations are only available for heap-allocated buffers:
+/// - [`split_off`](Self::split_off): Returns `None` for inline buffers
+/// - [`split_to`](Self::split_to): Returns `None` for inline buffers
+/// - [`split`](Self::split): Returns `None` for inline buffers
+/// - [`unsplit`](Self::unsplit): Returns the other buffer unchanged if either is inline
+///
+/// Use [`make_heap`](Self::make_heap) to explicitly promote an inline buffer to heap storage
+/// if you need these operations.
+///
+/// # Examples
+///
+/// ```
+/// use smol_bytes::SmolBytesMut;
+///
+/// // Small buffer uses inline storage
+/// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+/// assert!(buf.is_inline());
+/// assert_eq!(&buf[..], b"hello");
+///
+/// // Extending beyond capacity promotes to heap
+/// buf.extend_from_slice(b" world and more data that exceeds inline capacity");
+/// assert!(buf.is_heap());
+/// ```
+///
+/// # Freezing
+///
+/// Convert to an immutable buffer using:
+/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::SmolBytes`](crate::strategy::shared::SmolBytes)
+/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::SmolBytes`](crate::strategy::compact::SmolBytes)
 #[derive(Clone)]
 pub struct SmolBytesMut(Repr);
 
@@ -96,7 +139,7 @@ impl SmolBytesMut {
       Repr::Inline(b) => {
         let available = b.remaining_mut();
         let requested = extend.len();
-        if available > requested {
+        if available >= requested {
           b.put_slice(extend);
           return;
         }
@@ -327,12 +370,12 @@ impl SmolBytesMut {
   /// a.make_heap();
   ///
   /// // In this case, the buffer is heap allocated
-  /// // thus split_to returns Some(BytesMut)
-  /// let mut b = a.split_to(50).unwrap();
+  /// // thus split_to returns Some(SmolBytesMut)
+  /// let mut b = a.split_to(5).unwrap();
   /// a[0] = b'!';
   /// b[0] = b'j';
   ///
-  /// assert_eq!(&a[..], b"!world");
+  /// assert_eq!(&a[..], b"! world");
   /// assert_eq!(&b[..], b"jello");
   /// ```
   ///
@@ -462,7 +505,7 @@ impl SmolBytesMut {
   /// use smol_bytes::{SmolBytesMut, INLINE_CAP};
   ///
   /// // Allocate buffer big enough for 10 bytes.
-  /// let mut buf = BytesMut::with_capacity(10);
+  /// let mut buf = SmolBytesMut::with_capacity(10);
   ///
   /// // Fill in the first 3 elements.
   /// let uninit = buf.spare_capacity_mut();
@@ -509,9 +552,9 @@ impl SmolBytesMut {
   /// assert_eq!(64, buf.capacity());
   ///
   /// buf.extend_from_slice(b"abcd");
-  /// let mut split = buf.split();
+  /// let mut split = buf.split().unwrap();
   /// assert_eq!(60, buf.capacity());
-  /// assert_eq!(4, split.capacity());
+  /// assert_eq!(4, split.len());
   /// assert_eq!(false, split.try_reclaim(64));
   /// assert_eq!(false, buf.try_reclaim(64));
   /// // The split buffer is filled with "abcd"
@@ -619,7 +662,16 @@ impl SmolBytesMut {
 
         if additional <= rem {
           // The handle can already store at least `additional` more bytes, so
-          // there is no further work needed to be done.
+          // fill them with the value.
+          let dst = storage.spare_capacity_mut().as_mut_ptr();
+
+          // SAFETY: `spare_capacity_mut` returns a valid, properly aligned pointer and we've
+          // verified there's enough space to write `additional` bytes. There are at least
+          // `new_len` initialized bytes in the buffer so no uninitialized bytes are being exposed.
+          unsafe {
+            core::ptr::write_bytes(dst, value, additional);
+            storage.set_len(new_len);
+          }
           return;
         }
         let mut new_buf = BytesMut::with_capacity(storage.len() + additional);
@@ -709,7 +761,7 @@ impl SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn len(&self) -> usize {
     match &self.0 {
-      Repr::Inline(b) => b.remaining_mut(),
+      Repr::Inline(b) => b.len(),
       Repr::Heap(b) => b.len(),
     }
   }
@@ -728,6 +780,37 @@ impl SmolBytesMut {
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
+
+  /// Returns a slice of the buffer's contents.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytesMut;
+  ///
+  /// let buf = SmolBytesMut::from(&b"hello"[..]);
+  /// assert_eq!(buf.as_slice(), b"hello");
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn as_slice(&self) -> &[u8] {
+    self
+  }
+
+  /// Returns a mutable slice of the buffer's contents.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytesMut;
+  ///
+  /// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+  /// buf.as_mut_slice()[0] = b'j';
+  /// assert_eq!(buf.as_slice(), b"jello");
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn as_mut_slice(&mut self) -> &mut [u8] {
+    self
+  }
 }
 
 impl core::fmt::Debug for SmolBytesMut {
@@ -737,6 +820,65 @@ impl core::fmt::Debug for SmolBytesMut {
       Repr::Inline(b) => b.fmt(f),
       Repr::Heap(b) => b.fmt(f),
     }
+  }
+}
+
+impl core::ops::Deref for SmolBytesMut {
+  type Target = [u8];
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn deref(&self) -> &Self::Target {
+    match &self.0 {
+      Repr::Inline(b) => b.as_slice(),
+      Repr::Heap(b) => b.as_ref(),
+    }
+  }
+}
+
+impl core::ops::DerefMut for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match &mut self.0 {
+      Repr::Inline(b) => b.as_mut_slice(),
+      Repr::Heap(b) => b.as_mut(),
+    }
+  }
+}
+
+impl AsRef<[u8]> for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn as_ref(&self) -> &[u8] {
+    self
+  }
+}
+
+impl AsMut<[u8]> for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn as_mut(&mut self) -> &mut [u8] {
+    self
+  }
+}
+
+impl PartialEq for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &Self) -> bool {
+    self.as_ref() == other.as_ref()
+  }
+}
+
+impl Eq for SmolBytesMut {}
+
+impl PartialEq<[u8]> for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &[u8]) -> bool {
+    self.as_ref() == other
+  }
+}
+
+impl PartialEq<SmolBytesMut> for [u8] {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &SmolBytesMut) -> bool {
+    self == other.as_ref()
   }
 }
 
