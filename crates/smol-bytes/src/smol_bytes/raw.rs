@@ -19,7 +19,7 @@ mod borsh;
 mod serde;
 
 /// Number of bytes that can be stored inline inside a [`RawSmolBytes`].
-pub const INLINE_CAP: usize = InlineSize::_V62 as usize;
+pub const INLINE_CAP: usize = InlineSize::MAX as usize;
 
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
@@ -879,12 +879,14 @@ pub(crate) enum InlineSize {
 }
 
 impl InlineSize {
+  const MAX: u8 = InlineSize::_V62 as u8;
+
   /// # Safety
   ///
   /// `value` must be less than or equal to [`INLINE_CAP`].
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub(crate) const unsafe fn from_u8(value: u8) -> Self {
-    debug_assert!(value <= InlineSize::_V38 as u8);
+    debug_assert!(value <= InlineSize::MAX);
     core::mem::transmute::<u8, InlineSize>(value)
   }
 
