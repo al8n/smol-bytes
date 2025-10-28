@@ -157,7 +157,10 @@
 //! ```
 
 use super::Strategy;
-use crate::smol_bytes::raw::{InlineSize, RawSmolBytes, Repr, INLINE_CAP};
+use crate::{
+  smol_bytes::raw::{RawSmolBytes, Repr},
+  utils::{InlineStorage, INLINE_CAP},
+};
 use bytes::Buf;
 use core::mem;
 use core::ops::{Bound, RangeBounds};
@@ -230,13 +233,12 @@ impl Strategy for RawSmolBytes<Shared> {
       Bound::Unbounded => len,
     };
 
-    let Some(slen) = end.checked_sub(begin) else {
-      panic!(
-        "range start must not be greater than end: {:?} <= {:?}",
-        begin, end,
-      );
-    };
-
+    assert!(
+      begin <= len,
+      "range start out of bounds: {:?} <= {:?}",
+      begin,
+      len,
+    );
     assert!(
       end <= len,
       "range end out of bounds: {:?} <= {:?}",
@@ -245,10 +247,9 @@ impl Strategy for RawSmolBytes<Shared> {
     );
 
     match &self.repr {
-      Repr::Inline { .. } => {
-        let mut new_buf = [0u8; INLINE_CAP];
-        new_buf[..slen].copy_from_slice(&self.as_slice()[begin..end]);
-        Self::inline(new_buf, 0, slen)
+      Repr::Inline(storage) => {
+        // SAFETY: bounds checked above, and we are slicing within inline storage.
+        Self::inline(unsafe { InlineStorage::copy_from_slice(&storage[begin..end]) })
       }
       Repr::Heap(bytes) => Self::heap(bytes.slice(begin..end)),
     }
@@ -268,10 +269,9 @@ impl Strategy for RawSmolBytes<Shared> {
 
     // first, check if output can be inline
     let ret = if at <= INLINE_CAP {
-      let mut buf = [0u8; INLINE_CAP];
       let src = self.as_slice();
-      buf[..at].copy_from_slice(&src[..at]);
-      Self::inline(buf, 0, at)
+      // SAFETY: bounds checked above, and we are slicing within inline capacity.
+      Self::inline(unsafe { InlineStorage::copy_from_slice(&src[..at]) })
     } else {
       // output cannot be inline, which means it must be heap allocated
       let mut bytes = self.repr.unwrap_heap_mut().clone();
@@ -279,11 +279,9 @@ impl Strategy for RawSmolBytes<Shared> {
       Self::heap(bytes)
     };
 
-    let remaining_size = len - at;
-
     match &mut self.repr {
-      Repr::Inline { len, cur, .. } => {
-        *cur = len.to_u8() - (remaining_size as u8);
+      Repr::Inline(storage) => {
+        storage.advance(at);
       }
       Repr::Heap(bytes) => {
         bytes.advance(at);
@@ -308,10 +306,9 @@ impl Strategy for RawSmolBytes<Shared> {
     // first, check if output would be inline
     let output_size = len - at;
     let ret = if output_size <= INLINE_CAP {
-      let mut buf = [0u8; INLINE_CAP];
       let src = self.as_slice();
-      buf[..output_size].copy_from_slice(&src[at..len]);
-      Self::inline(buf, 0, output_size)
+      // SAFETY: bounds checked above, and we are slicing within inline capacity.
+      Self::inline(unsafe { InlineStorage::copy_from_slice(&src[at..len]) })
     } else {
       // output cannot be inline, which means it must be heap allocated
       let mut bytes = self.repr.unwrap_heap_mut().clone();
@@ -322,9 +319,8 @@ impl Strategy for RawSmolBytes<Shared> {
     // second, check if self can be made inline
 
     match &mut self.repr {
-      Repr::Inline { len, cur, .. } => {
-        // len represents the end position in buf, so we need cur + at
-        *len = unsafe { InlineSize::from_u8((*cur as usize + at) as u8) };
+      Repr::Inline(storage) => {
+        storage.truncate(at);
       }
       Repr::Heap(bytes) => {
         bytes.truncate(at);
@@ -336,29 +332,14 @@ impl Strategy for RawSmolBytes<Shared> {
 
   fn truncate(&mut self, new_len: usize) {
     match &mut self.repr {
-      Repr::Inline { len, cur, .. } => {
-        let current_len = len.to_usize() - (*cur as usize);
-        if new_len <= current_len {
-          // len represents the end position in buf, so we need cur + new_len
-          *len = unsafe { InlineSize::from_u8((*cur as usize + new_len) as u8) };
-        }
-      }
+      Repr::Inline(storage) => storage.truncate(new_len),
       Repr::Heap(bytes) => bytes.truncate(new_len),
     }
   }
 
   fn advance(&mut self, cnt: usize) {
     match &mut self.repr {
-      Repr::Inline { len, cur, .. } => {
-        let remaining = len.to_u8() - *cur;
-        assert!(
-          cnt <= remaining as usize,
-          "cannot advance past `remaining`: {:?} <= {:?}",
-          cnt,
-          remaining,
-        );
-        *cur += cnt as u8;
-      }
+      Repr::Inline(storage) => storage.advance(cnt),
       Repr::Heap(bytes) => bytes.advance(cnt),
     }
   }
@@ -370,10 +351,7 @@ impl Strategy for RawSmolBytes<Shared> {
   fn clear(&mut self) {
     match &mut self.repr {
       Repr::Heap(bytes) => bytes.clear(),
-      Repr::Inline { len, cur, .. } => {
-        *len = InlineSize::_V0;
-        *cur = 0;
-      }
+      Repr::Inline(storage) => storage.clear(),
     }
   }
 }

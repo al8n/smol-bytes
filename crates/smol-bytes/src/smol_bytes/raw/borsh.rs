@@ -1,3 +1,5 @@
+use crate::utils::InlineStorage;
+
 use super::{RawSmolBytes, Strategy, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -20,7 +22,8 @@ where
     if len <= INLINE_CAP {
       let mut buf = [0u8; INLINE_CAP];
       reader.read_exact(&mut buf[..len])?;
-      Ok(Self::inline(buf, 0, len))
+      // Safety: len is guaranteed to be less than or equal to INLINE_CAP
+      Ok(Self::inline(unsafe { InlineStorage::from_array(buf, len) }))
     } else {
       let mut vec = vec![0; len];
       reader.read_exact(&mut vec)?;

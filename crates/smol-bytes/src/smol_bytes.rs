@@ -43,10 +43,9 @@
 //! data.advance(70); // Automatically converted to inline!
 //! assert!(!data.is_heap_allocated());
 //! ```
-
-pub use raw::INLINE_CAP;
-
 mod raw;
+
+pub(crate) use raw::RawSmolBytes;
 
 /// Strategy implementations and type aliases.
 pub mod strategy;

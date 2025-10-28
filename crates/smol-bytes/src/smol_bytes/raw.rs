@@ -11,15 +11,14 @@ use bytes::{Buf, Bytes};
 
 use std::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 
+use crate::utils::{InlineStorage, INLINE_CAP};
+
 use super::strategy::Strategy;
 
 #[cfg(feature = "borsh")]
 mod borsh;
 #[cfg(feature = "serde")]
 mod serde;
-
-/// Number of bytes that can be stored inline inside a [`RawSmolBytes`].
-pub const INLINE_CAP: usize = InlineSize::MAX as usize;
 
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
@@ -45,7 +44,7 @@ where
   /// ```
   #[inline]
   pub const fn new() -> Self {
-    Self::inline([0; INLINE_CAP], 0, 0)
+    Self::inline(InlineStorage::new())
   }
 
   /// Creates an inline [`RawSmolBytes`] without allocating.
@@ -65,12 +64,8 @@ where
     let blen = bytes.len();
     assert!(blen <= INLINE_CAP);
 
-    let mut buf = [0u8; INLINE_CAP];
-
-    unsafe {
-      core::ptr::copy(bytes.as_ptr(), buf.as_mut_ptr(), blen);
-    }
-    Self::inline(buf, 0, blen)
+    // SAFETY: We checked that blen <= INLINE_CAP
+    Self::inline(unsafe { InlineStorage::copy_from_slice(bytes) })
   }
 
   /// Creates a [`RawSmolBytes`] from a statically allocated byte slice.
@@ -232,8 +227,8 @@ where
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn inline(buf: [u8; INLINE_CAP], cur: u8, blen: usize) -> Self {
-    Self::new_in(Repr::inline(buf, cur, blen))
+  pub(crate) const fn inline(storage: InlineStorage) -> Self {
+    Self::new_in(Repr::inline(storage))
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -467,7 +462,10 @@ where
 {
   #[inline]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt::Debug::fmt(self.as_slice(), f)
+    match &self.repr {
+      Repr::Inline(b) => b.fmt(f),
+      Repr::Heap(b) => b.fmt(f),
+    }
   }
 }
 
@@ -612,14 +610,14 @@ fn build_from_chunks<'a, S>(mut iter: impl Iterator<Item = &'a [u8]>) -> RawSmol
 where
   RawSmolBytes<S>: Strategy,
 {
-  let mut buf = [0u8; INLINE_CAP];
+  let mut buf = InlineStorage::new();
   let mut len = 0usize;
   while let Some(chunk) = iter.next() {
     let slice = chunk;
     if len + slice.len() > INLINE_CAP {
       let (lower, _) = iter.size_hint();
       let mut vec = Vec::with_capacity(len + slice.len() + lower);
-      vec.extend_from_slice(&buf[..len]);
+      vec.extend_from_slice(buf.as_slice());
       vec.extend_from_slice(slice);
       for rest in iter {
         vec.extend_from_slice(rest);
@@ -627,24 +625,24 @@ where
       return RawSmolBytes::heap(Bytes::from(vec));
     }
     let end = len + slice.len();
-    buf[len..end].copy_from_slice(slice);
+    buf.append_slice(slice);
     len = end;
   }
-  RawSmolBytes::inline(buf, 0, len)
+  RawSmolBytes::inline(buf)
 }
 
 fn build_from_iter<S>(mut iter: impl Iterator<Item = u8>) -> RawSmolBytes<S>
 where
   RawSmolBytes<S>: Strategy,
 {
-  let mut buf = [0u8; INLINE_CAP];
+  let mut buf = InlineStorage::new();
   let mut len = 0usize;
   while let Some(byte) = iter.next() {
     if len == INLINE_CAP {
       {
         let (lower, _) = iter.size_hint();
         let mut vec = Vec::with_capacity(len + 1 + lower);
-        vec.extend_from_slice(&buf[..len]);
+        vec.extend_from_slice(buf.as_slice());
         vec.push(byte);
         vec.extend(iter);
         return RawSmolBytes::heap(Bytes::from(vec));
@@ -657,27 +655,19 @@ where
     buf[len] = byte;
     len += 1;
   }
-  RawSmolBytes::inline(buf, 0, len)
+  RawSmolBytes::inline(buf)
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Repr {
-  Inline {
-    len: InlineSize,
-    cur: u8,
-    buf: [u8; INLINE_CAP],
-  },
+  Inline(InlineStorage),
   Heap(Bytes),
 }
 
 impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn inline(buf: [u8; INLINE_CAP], cur: u8, len: usize) -> Self {
-    Self::Inline {
-      len: unsafe { InlineSize::from_u8(len as u8) },
-      buf,
-      cur,
-    }
+  pub(crate) const fn inline(storage: InlineStorage) -> Self {
+    Self::Inline(storage)
   }
 
   #[inline]
@@ -719,17 +709,10 @@ impl Repr {
   #[inline]
   const fn new_on_stack(bytes: &[u8]) -> Option<Self> {
     if bytes.len() <= INLINE_CAP {
-      let mut buf = [0u8; INLINE_CAP];
-      let mut idx = 0usize;
-      while idx < bytes.len() {
-        buf[idx] = bytes[idx];
-        idx += 1;
-      }
-      Some(Self::Inline {
-        len: unsafe { InlineSize::from_u8(bytes.len() as u8) },
-        buf,
-        cur: 0,
-      })
+      // SAFETY: we checked that bytes.len() <= INLINE_CAP.
+      Some(Self::Inline(unsafe {
+        InlineStorage::copy_from_slice(bytes)
+      }))
     } else {
       None
     }
@@ -738,7 +721,7 @@ impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
   const fn len(&self) -> usize {
     match self {
-      Self::Inline { len, cur, .. } => len.to_usize() - (*cur as usize),
+      Self::Inline(storage) => storage.remaining(),
       Self::Heap(bytes) => bytes.len(),
     }
   }
@@ -746,7 +729,7 @@ impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
   const fn is_empty(&self) -> bool {
     match self {
-      Self::Inline { len, cur, .. } => len.to_u8() - *cur == 0,
+      Self::Inline(storage) => storage.remaining() == 0,
       Self::Heap(bytes) => bytes.is_empty(),
     }
   }
@@ -762,7 +745,7 @@ impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn as_slice(&self) -> &[u8] {
     match self {
-      Self::Inline { len, buf, cur } => &buf[*cur as usize..len.to_usize()],
+      Self::Inline(storage) => storage.as_slice(),
       Self::Heap(bytes) => bytes.as_ref(),
     }
   }
@@ -787,7 +770,7 @@ impl Repr {
   #[inline]
   fn into_vec(self) -> Vec<u8> {
     match self {
-      Self::Inline { len, buf, cur } => buf[cur as usize..len.to_usize()].to_vec(),
+      Self::Inline(storage) => storage.to_vec(),
       Self::Heap(bytes) => bytes.into(),
     }
   }
@@ -795,7 +778,7 @@ impl Repr {
   #[inline]
   fn into_bytes(self) -> Bytes {
     match self {
-      Self::Inline { len, buf, cur } => Bytes::copy_from_slice(&buf[cur as usize..len.to_usize()]),
+      Self::Inline(storage) => Bytes::copy_from_slice(storage.as_slice()),
       Self::Heap(bytes) => bytes,
     }
   }
@@ -803,101 +786,9 @@ impl Repr {
   #[inline]
   fn into_arc(self) -> Arc<[u8]> {
     match self {
-      Self::Inline { len, buf, cur } => Arc::from(&buf[cur as usize..len.to_usize()]),
+      Self::Inline(storage) => Arc::from(storage.as_slice()),
       Self::Heap(bytes) => Arc::from(Vec::<u8>::from(bytes)),
     }
-  }
-}
-
-/// A type used internally to encode inline lengths.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub(crate) enum InlineSize {
-  _V0 = 0,
-  _V1,
-  _V2,
-  _V3,
-  _V4,
-  _V5,
-  _V6,
-  _V7,
-  _V8,
-  _V9,
-  _V10,
-  _V11,
-  _V12,
-  _V13,
-  _V14,
-  _V15,
-  _V16,
-  _V17,
-  _V18,
-  _V19,
-  _V20,
-  _V21,
-  _V22,
-  _V23,
-  _V24,
-  _V25,
-  _V26,
-  _V27,
-  _V28,
-  _V29,
-  _V30,
-  _V31,
-  _V32,
-  _V33,
-  _V34,
-  _V35,
-  _V36,
-  _V37,
-  _V38,
-  _V39,
-  _V40,
-  _V41,
-  _V42,
-  _V43,
-  _V44,
-  _V45,
-  _V46,
-  _V47,
-  _V48,
-  _V49,
-  _V50,
-  _V51,
-  _V52,
-  _V53,
-  _V54,
-  _V55,
-  _V56,
-  _V57,
-  _V58,
-  _V59,
-  _V60,
-  _V61,
-  _V62,
-}
-
-impl InlineSize {
-  const MAX: u8 = InlineSize::_V62 as u8;
-
-  /// # Safety
-  ///
-  /// `value` must be less than or equal to [`INLINE_CAP`].
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const unsafe fn from_u8(value: u8) -> Self {
-    debug_assert!(value <= InlineSize::MAX);
-    core::mem::transmute::<u8, InlineSize>(value)
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn to_u8(self) -> u8 {
-    self as u8
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn to_usize(self) -> usize {
-    self as usize
   }
 }
 
