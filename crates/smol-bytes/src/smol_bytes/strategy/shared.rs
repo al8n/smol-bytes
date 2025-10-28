@@ -26,11 +26,11 @@
 //!
 //! // Small data (≤62 bytes) is stored inline
 //! let small = SmolBytes::from_static(b"hello world");
-//! assert!(!small.is_heap_allocated());
+//! assert!(!small.is_heap());
 //!
 //! // Large data is heap-allocated
 //! let large = SmolBytes::from(vec![1u8; 100]);
-//! assert!(large.is_heap_allocated());
+//! assert!(large.is_heap());
 //!
 //! // Cheap clone (reference counting)
 //! let clone = large.clone();
@@ -66,11 +66,11 @@
 //!
 //! // Start with large heap allocation
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
-//! assert!(data.is_heap_allocated());
+//! assert!(data.is_heap());
 //!
 //! // After advance, still heap-allocated (Shared strategy)
 //! data.advance(70); // 30 bytes remain
-//! assert!(data.is_heap_allocated()); // ✓ Still on heap!
+//! assert!(data.is_heap()); // ✓ Still on heap!
 //!
 //! // Zero-copy conversion to Bytes
 //! let bytes: bytes::Bytes = data.into();
@@ -117,7 +117,7 @@
 //! buffer.advance(16);
 //!
 //! // Buffer stays on heap for efficient passing to bytes::Bytes
-//! assert!(buffer.is_heap_allocated());
+//! assert!(buffer.is_heap());
 //!
 //! // Zero-copy conversion for writing
 //! let bytes: bytes::Bytes = buffer.into();
@@ -152,8 +152,8 @@
 //! let clone3 = original.clone();
 //!
 //! // All share the same heap allocation
-//! assert!(original.is_heap_allocated());
-//! assert!(clone1.is_heap_allocated());
+//! assert!(original.is_heap());
+//! assert!(clone1.is_heap());
 //! ```
 
 use super::Strategy;
@@ -193,13 +193,13 @@ use core::ops::{Bound, RangeBounds};
 ///
 /// // Create heap-allocated bytes (>62 bytes)
 /// let mut data = SmolBytes::from(vec![1u8; 100]);
-/// assert!(data.is_heap_allocated());
+/// assert!(data.is_heap());
 ///
 /// // Advance past most data
 /// data.advance(70); // Only 30 bytes remain
 ///
 /// // Still heap-allocated! (Shared strategy preserves heap)
-/// assert!(data.is_heap_allocated());
+/// assert!(data.is_heap());
 ///
 /// // Fast, zero-copy conversion to Bytes
 /// let bytes: bytes::Bytes = data.into();
@@ -216,6 +216,63 @@ use core::ops::{Bound, RangeBounds};
 /// | Best for | Speed, Bytes interop | Memory efficiency |
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Shared(());
+
+impl RawSmolBytes<Shared> {
+  /// Create [`SmolBytes`] with a buffer whose lifetime is controlled
+  /// via an explicit owner.
+  ///
+  /// A common use case is to zero-copy construct from mapped memory.
+  ///
+  /// ```
+  /// # struct File;
+  /// #
+  /// # impl File {
+  /// #     pub fn open(_: &str) -> Result<Self, ()> {
+  /// #         Ok(Self)
+  /// #     }
+  /// # }
+  /// #
+  /// # mod memmap2 {
+  /// #     pub struct Mmap;
+  /// #
+  /// #     impl Mmap {
+  /// #         pub unsafe fn map(_file: &super::File) -> Result<Self, ()> {
+  /// #             Ok(Self)
+  /// #         }
+  /// #     }
+  /// #
+  /// #     impl AsRef<[u8]> for Mmap {
+  /// #         fn as_ref(&self) -> &[u8] {
+  /// #             b"buf"
+  /// #         }
+  /// #     }
+  /// # }
+  /// use smol_bytes::strategy::shared::SmolBytes;
+  /// use memmap2::Mmap;
+  ///
+  /// # fn main() -> Result<(), ()> {
+  /// let file = File::open("upload_bundle.tar.gz")?;
+  /// let mmap = unsafe { Mmap::map(&file) }?;
+  /// let b = SmolBytes::from_owner(mmap);
+  /// # Ok(())
+  /// # }
+  /// ```
+  ///
+  /// The `owner` will be transferred to the constructed [`SmolBytes`] object, which
+  /// will ensure it is dropped once all remaining clones of the constructed
+  /// object are dropped. The owner will then be responsible for dropping the
+  /// specified region of memory as part of its [Drop] implementation.
+  ///
+  /// Note that converting [`SmolBytes`] constructed from an owner into a [`SmolBytesMut`]
+  /// will always create a deep copy of the buffer into newly allocated memory.
+  pub fn from_owner<T>(owner: T) -> Self
+  where
+    T: AsRef<[u8]> + Send + 'static,
+  {
+    Self::heap(bytes::Bytes::from_owner(owner))
+  }
+}
+
 
 impl Strategy for RawSmolBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {

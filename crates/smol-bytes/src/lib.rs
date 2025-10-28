@@ -36,6 +36,9 @@ extern crate alloc as std;
 extern crate std;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
+pub use bytes::{Buf, BufMut};
+
+#[cfg(any(feature = "std", feature = "alloc"))]
 pub use utils::INLINE_CAP;
 
 #[cfg(any(feature = "std", feature = "alloc"))]

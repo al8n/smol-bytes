@@ -311,7 +311,7 @@ where
 
   /// Returns `true` if this [`RawSmolBytes`] is backed by a heap allocation.
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn is_heap_allocated(&self) -> bool {
+  pub const fn is_heap(&self) -> bool {
     matches!(self.repr, Repr::Heap(..))
   }
 

@@ -24,10 +24,10 @@ use smol_bytes::SmolBytes;
 
 let inline = SmolBytes::new(b"hello");
 assert_eq!(inline.as_slice(), b"hello");
-assert!(!inline.is_heap_allocated());
+assert!(!inline.is_heap());
 
 let large = SmolBytes::new(vec![42u8; 128]);
-assert!(large.is_heap_allocated());
+assert!(large.is_heap());
 ```
 
 ## Features

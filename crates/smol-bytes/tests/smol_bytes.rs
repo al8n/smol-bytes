@@ -6,7 +6,7 @@ fn inline_construction() {
   let data = b"abc";
   let smol: SmolBytes = SmolBytes::copy_from_slice(data);
   assert_eq!(smol.as_slice(), data);
-  assert!(!smol.is_heap_allocated());
+  assert!(!smol.is_heap());
 }
 
 #[test]
@@ -14,7 +14,7 @@ fn static_construction() {
   const DATA: &[u8] = b"static-bytes";
   const SMOL: SmolBytes = SmolBytes::new_inline(DATA);
   assert_eq!(SMOL.as_slice(), DATA);
-  assert!(!SMOL.is_heap_allocated());
+  assert!(!SMOL.is_heap());
 }
 
 #[test]
@@ -22,7 +22,7 @@ fn heap_construction() {
   let data = vec![7u8; INLINE_CAP + 1];
   let smol: SmolBytes = SmolBytes::copy_from_slice(&data);
   assert_eq!(smol.as_slice(), data.as_slice());
-  assert!(smol.is_heap_allocated());
+  assert!(smol.is_heap());
 }
 
 #[test]
@@ -40,7 +40,7 @@ fn arc_roundtrip() {
 //   builder.extend_copy_from_slice(b"abcd");
 //   let smol = builder.finish();
 //   assert_eq!(smol.as_slice(), b"abcd");
-//   assert!(!smol.is_heap_allocated());
+//   assert!(!smol.is_heap());
 // }
 
 // #[test]
@@ -49,7 +49,7 @@ fn arc_roundtrip() {
 //   builder.extend_copy_from_slice(&vec![1u8; INLINE_CAP + 5]);
 //   let smol = builder.finish();
 //   assert_eq!(smol.len(), INLINE_CAP + 5);
-//   assert!(smol.is_heap_allocated());
+//   assert!(smol.is_heap());
 // }
 
 // #[cfg(not(miri))]
@@ -66,9 +66,9 @@ fn arc_roundtrip() {
 //     prop_assert_eq!(smol.len(), bytes.len());
 //     prop_assert_eq!(smol.is_empty(), bytes.is_empty());
 //     if bytes.len() <= INLINE_CAP {
-//       prop_assert!(!smol.is_heap_allocated());
+//       prop_assert!(!smol.is_heap());
 //     } else {
-//       prop_assert!(smol.is_heap_allocated());
+//       prop_assert!(smol.is_heap());
 //     }
 //     Ok(())
 //   }

@@ -39,7 +39,7 @@ use crate::{smol_bytes::RawSmolBytes, utils::InlineStorage, INLINE_CAP};
 /// assert_eq!(&buf[..], b"hello");
 ///
 /// // Extending beyond capacity promotes to heap
-/// buf.extend_from_slice(b" world and more data that exceeds inline capacity");
+/// buf.extend_from_slice(b" world and more data that exceeds inline capacity................................");
 /// assert!(buf.is_heap());
 /// ```
 ///
@@ -77,7 +77,7 @@ impl SmolBytesMut {
   ///
   /// assert!(zeros.capacity() >= 42);
   /// assert_eq!(zeros.len(), 42);
-  /// zeros.into_iter().for_each(|x| assert_eq!(x, 0));
+  /// zeros.into_iter().for_each(|x| assert_eq!(*x, 0));
   /// ```
   pub fn zeroed(len: usize) -> Self {
     if len <= INLINE_CAP {
@@ -375,7 +375,7 @@ impl SmolBytesMut {
   /// a[0] = b'!';
   /// b[0] = b'j';
   ///
-  /// assert_eq!(&a[..], b"! world");
+  /// assert_eq!(&a[..], b"!world");
   /// assert_eq!(&b[..], b"jello");
   /// ```
   ///

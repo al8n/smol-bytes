@@ -10,16 +10,13 @@ fn test_inline_strategy_converts_heap_to_inline_on_advance() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated(), "should start as heap");
+  assert!(b.is_heap(), "should start as heap");
 
   // Advance past the point where remaining fits inline
   b.advance(15);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
-  assert!(
-    !b.is_heap_allocated(),
-    "Inline strategy should convert heap->inline"
-  );
+  assert!(!b.is_heap(), "Inline strategy should convert heap->inline");
 }
 
 #[test]
@@ -28,14 +25,14 @@ fn test_conversion_friendly_keeps_heap_on_advance() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated(), "should start as heap");
+  assert!(b.is_heap(), "should start as heap");
 
   // Advance past the point where remaining fits inline
   b.advance(15);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
   assert!(
-    b.is_heap_allocated(),
+    b.is_heap(),
     "ConversionFriendly should keep heap allocation"
   );
 }
@@ -45,14 +42,14 @@ fn test_inline_strategy_converts_heap_to_inline_on_truncate() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated(), "should start as heap");
+  assert!(b.is_heap(), "should start as heap");
 
   // Truncate to size that fits inline
   b.truncate(INLINE_CAP - 5);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
   assert!(
-    !b.is_heap_allocated(),
+    !b.is_heap(),
     "Inline strategy should convert heap->inline on truncate"
   );
 }
@@ -62,14 +59,14 @@ fn test_conversion_friendly_keeps_heap_on_truncate() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated(), "should start as heap");
+  assert!(b.is_heap(), "should start as heap");
 
   // Truncate to size that fits inline
   b.truncate(INLINE_CAP - 5);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
   assert!(
-    b.is_heap_allocated(),
+    b.is_heap(),
     "ConversionFriendly should keep heap allocation on truncate"
   );
 }
@@ -79,14 +76,14 @@ fn test_inline_strategy_converts_heap_to_inline_on_split_to() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated());
+  assert!(b.is_heap());
 
   // Split off a large portion, leaving something that fits inline
   let _split = b.split_to(15);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
   assert!(
-    !b.is_heap_allocated(),
+    !b.is_heap(),
     "Inline strategy should convert remaining to inline"
   );
 }
@@ -96,14 +93,14 @@ fn test_conversion_friendly_keeps_heap_on_split_to() {
   let data = vec![1u8; INLINE_CAP + 10];
   let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
 
-  assert!(b.is_heap_allocated());
+  assert!(b.is_heap());
 
   // Split off a large portion, leaving something that fits inline
   let _split = b.split_to(15);
 
   assert_eq!(b.len(), INLINE_CAP - 5);
   assert!(
-    b.is_heap_allocated(),
+    b.is_heap(),
     "ConversionFriendly should keep heap allocation"
   );
 }

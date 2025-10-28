@@ -26,13 +26,12 @@
 //! - You're building network protocols or I/O-heavy applications
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
-//! use bytes::Buf;
+//! use smol_bytes::{strategy::shared::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70);
 //! // Still heap-allocated for fast Bytes conversion
-//! assert!(data.is_heap_allocated());
+//! assert!(data.is_heap());
 //! ```
 //!
 //! ## Use `compact::SmolBytes` when:
@@ -43,13 +42,12 @@
 //! - You want to minimize heap allocations
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
-//! use bytes::Buf;
+//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70);
 //! // Automatically converted to inline storage!
-//! assert!(!data.is_heap_allocated());
+//! assert!(!data.is_heap());
 //! ```
 //!
 //! # Examples
@@ -61,11 +59,11 @@
 //!
 //! // Small data is inline
 //! let small = SmolBytes::from_static(b"hello");
-//! assert!(!small.is_heap_allocated());
+//! assert!(!small.is_heap());
 //!
 //! // Large data is heap-allocated
 //! let large = SmolBytes::from(vec![1u8; 100]);
-//! assert!(large.is_heap_allocated());
+//! assert!(large.is_heap());
 //!
 //! // Zero-copy conversion to Bytes
 //! let bytes: bytes::Bytes = large.into();
@@ -74,16 +72,15 @@
 //! ## Compact Strategy Example
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
-//! use bytes::Buf;
+//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
 //!
 //! // Start with large heap allocation
-//! let mut data = SmolBytes::from(vec![1u8; 50]);
-//! assert!(data.is_heap_allocated());
+//! let mut data = SmolBytes::from(vec![1u8; 64]);
+//! assert!(data.is_heap());
 //!
 //! // Operations automatically convert to inline when possible
 //! data.truncate(30); // Now fits inline!
-//! assert!(!data.is_heap_allocated());
+//! assert!(!data.is_heap());
 //! ```
 //!
 //! # Performance Characteristics

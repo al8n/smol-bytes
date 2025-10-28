@@ -22,8 +22,7 @@
 //! - **Trade-off**: May use more memory
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
-//! use bytes::Buf;
+//! use smol_bytes::{strategy::shared::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70); // Still heap-allocated for fast Bytes conversion
@@ -36,12 +35,11 @@
 //! - **Trade-off**: May copy data when converting to `Bytes`
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
-//! use bytes::Buf;
+//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70); // Automatically converted to inline!
-//! assert!(!data.is_heap_allocated());
+//! assert!(!data.is_heap());
 //! ```
 mod raw;
 
