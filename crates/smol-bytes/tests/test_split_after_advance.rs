@@ -1,9 +1,9 @@
 use bytes::Buf;
-use smol_bytes::SmolBytes;
+use smol_bytes::strategy::shared::SmolBytes;
 
 #[test]
 fn test_split_to_after_advance_inline() {
-  let mut b = SmolBytes::new_inline(b"hello world");
+  let mut b: SmolBytes = SmolBytes::new_inline(b"hello world");
   assert_eq!(b.as_slice(), b"hello world");
 
   // Advance by 2, so we're now at "llo world"
@@ -24,7 +24,7 @@ fn test_split_to_after_advance_inline() {
 
 #[test]
 fn test_split_off_after_advance_inline() {
-  let mut b = SmolBytes::new_inline(b"hello world");
+  let mut b: SmolBytes = SmolBytes::new_inline(b"hello world");
   assert_eq!(b.as_slice(), b"hello world");
 
   // Advance by 2, so we're now at "llo world"
@@ -49,7 +49,7 @@ fn test_split_off_after_advance_inline() {
 
 #[test]
 fn test_split_to_at_boundary_after_advance() {
-  let mut b = SmolBytes::new_inline(b"0123456789");
+  let mut b: SmolBytes = SmolBytes::new_inline(b"0123456789");
   b.advance(5);
   assert_eq!(b.as_slice(), b"56789");
 
@@ -60,7 +60,7 @@ fn test_split_to_at_boundary_after_advance() {
 
 #[test]
 fn test_split_off_at_boundary_after_advance() {
-  let mut b = SmolBytes::new_inline(b"0123456789");
+  let mut b: SmolBytes = SmolBytes::new_inline(b"0123456789");
   b.advance(5);
   assert_eq!(b.as_slice(), b"56789");
 
@@ -71,7 +71,7 @@ fn test_split_off_at_boundary_after_advance() {
 
 #[test]
 fn test_multiple_operations_inline() {
-  let mut b = SmolBytes::new_inline(b"abcdefghij");
+  let mut b: SmolBytes = SmolBytes::new_inline(b"abcdefghij");
 
   b.advance(2); // "cdefghij"
   assert_eq!(b.as_slice(), b"cdefghij");

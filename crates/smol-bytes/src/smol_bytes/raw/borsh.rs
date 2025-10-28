@@ -1,8 +1,8 @@
-use super::{SmolBytes, Strategy, INLINE_CAP};
+use super::{RawSmolBytes, Strategy, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};
 
-impl<S> BorshSerialize for SmolBytes<S>
+impl<S> BorshSerialize for RawSmolBytes<S>
 where
   Self: Strategy,
 {
@@ -11,7 +11,7 @@ where
   }
 }
 
-impl<S> BorshDeserialize for SmolBytes<S>
+impl<S> BorshDeserialize for RawSmolBytes<S>
 where
   Self: Strategy,
 {
@@ -20,11 +20,11 @@ where
     if len <= INLINE_CAP {
       let mut buf = [0u8; INLINE_CAP];
       reader.read_exact(&mut buf[..len])?;
-      Ok(SmolBytes::inline(buf, 0, len))
+      Ok(Self::inline(buf, 0, len))
     } else {
       let mut vec = vec![0; len];
       reader.read_exact(&mut vec)?;
-      Ok(SmolBytes::from(vec))
+      Ok(Self::from(vec))
     }
   }
 }

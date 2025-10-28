@@ -2,11 +2,29 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]
 
-//! A compact, clone-efficient byte buffer similar to `SmolStr` but for raw bytes.
+//! A compact, clone-efficient byte buffer with inline storage optimization.
 //!
-//! `SmolBytes` stores up to 39 bytes inline on the stack and falls back to a
-//! reference-counted [`bytes::Bytes`] allocation for longer sequences. Cloning an
-//! inline value is a simple copy, while heap-backed values share the allocation.
+//! `smol-bytes` provides space-efficient byte buffers that store up to 62 bytes inline
+//! on the stack and fall back to reference-counted heap allocation for longer sequences.
+//!
+//! # Strategies
+//!
+//! Two optimization strategies are available:
+//!
+//! - **[`strategy::shared::SmolBytes`]** - Fast conversions with `bytes::Bytes`, preserves heap allocations
+//! - **[`strategy::compact::SmolBytes`]** - Minimizes memory usage, aggressively inlines data
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! // Use the Shared strategy (recommended for most use cases)
+//! use smol_bytes::strategy::shared::SmolBytes;
+//!
+//! let data = SmolBytes::from_static(b"hello world");
+//! assert_eq!(data.as_slice(), b"hello world");
+//! ```
+//!
+//! See the [`strategy`] module for detailed comparison and usage examples.
 
 // #[cfg(not(any(feature = "std", feature = "alloc")))]
 // compile_error!("smol-bytes requires either the \"std\" or \"alloc\" feature.");
@@ -19,7 +37,7 @@ extern crate std;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use smol_bytes::{ConversionFriendly, Inline, SmolBytes, INLINE_CAP};
+pub use smol_bytes::{strategy, INLINE_CAP};
 
 // #[cfg(any(feature = "std", feature = "alloc"))]
 // #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
