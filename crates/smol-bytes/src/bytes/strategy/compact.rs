@@ -216,13 +216,13 @@
 //! ```rust
 //! // Before (Shared strategy)
 //! use smol_bytes::{strategy::{shared, compact}, Buf};
-//! 
+//!
 //! let mut data = shared::SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70); // Still heap-allocated
 //! let bytes: bytes::Bytes = data.into(); // Zero-copy ✓
 //!
 //! // After (Compact strategy)
-//! 
+//!
 //! let mut data = compact::SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70); // Now inline! Saved memory ✓
 //! let bytes: bytes::Bytes = data.into(); // Copies 30 bytes (still fast!)
@@ -233,7 +233,7 @@
 
 use super::Strategy;
 use crate::{
-  smol_bytes::raw::{RawSmolBytes, Repr},
+  bytes::raw::{RawSmolBytes, Repr},
   utils::{InlineStorage, INLINE_CAP},
 };
 use bytes::Buf;

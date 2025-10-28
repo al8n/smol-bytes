@@ -36,24 +36,24 @@ extern crate alloc as std;
 extern crate std;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
-pub use bytes::{Buf, BufMut};
+pub use ::bytes::{Buf, BufMut};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use utils::INLINE_CAP;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use smol_bytes::strategy;
+pub use bytes::strategy;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use smol_bytes_mut::SmolBytesMut;
+pub use bytes_mut::SmolBytesMut;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
-mod smol_bytes;
+mod bytes;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
-mod smol_bytes_mut;
+mod bytes_mut;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod utils;

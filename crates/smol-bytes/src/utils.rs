@@ -254,23 +254,6 @@ impl InlineStorage {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn append_slice(&mut self, src: &[u8]) -> bool {
-    let remaining = Self::remaining_mut(self);
-    let len = src.len();
-
-    if len > remaining {
-      return false;
-    }
-
-    let slen = self.len.to_usize();
-    unsafe {
-      copy_nonoverlapping(src.as_ptr(), self.buf.as_mut_ptr().add(slen) as _, len);
-    }
-    self.len = unsafe { InlineSize::from_u8(slen as u8 + len as u8) };
-    true
-  }
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn as_slice(&self) -> &[u8] {
     let ptr = self.buf.as_ptr() as *const u8;
     let remaining = self.remaining();
@@ -311,6 +294,36 @@ impl core::fmt::Debug for InlineStorage {
     }
     write!(f, "\"")?;
     Ok(())
+  }
+}
+
+impl core::fmt::LowerHex for InlineStorage {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    for &b in self.as_slice() {
+      write!(f, "{:02x}", b)?;
+    }
+    Ok(())
+  }
+}
+
+impl core::fmt::UpperHex for InlineStorage {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    for &b in self.as_slice() {
+      write!(f, "{:02X}", b)?;
+    }
+    Ok(())
+  }
+}
+
+impl core::fmt::Write for InlineStorage {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn write_str(&mut self, s: &str) -> core::fmt::Result {
+    if self.remaining_mut() >= s.len() {
+      self.put_slice(s.as_bytes());
+      Ok(())
+    } else {
+      Err(core::fmt::Error)
+    }
   }
 }
 

@@ -1,8 +1,24 @@
 use core::mem::MaybeUninit;
 
-use bytes::{BufMut, BytesMut};
+use ::bytes::{BufMut, Bytes, BytesMut};
+use bytes::Buf;
 
-use crate::{smol_bytes::RawSmolBytes, utils::InlineStorage, INLINE_CAP};
+use crate::{bytes::RawSmolBytes, utils::InlineStorage, INLINE_CAP};
+
+mod cmp;
+mod fmt;
+mod from;
+mod iter;
+mod ops;
+
+#[cfg(feature = "arbitrary")]
+mod arbitrary;
+#[cfg(feature = "quickcheck")]
+mod quickcheck;
+#[cfg(feature = "borsh")]
+mod borsh;
+#[cfg(feature = "serde")]
+mod serde;
 
 /// A mutable byte buffer with inline storage optimization.
 ///
@@ -55,6 +71,30 @@ impl Default for SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::new()
+  }
+}
+
+impl SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) fn from_bytes(bytes: Bytes) -> Self {
+    if !bytes.is_unique() && bytes.len() <= INLINE_CAP {
+      // SAFETY: bytes.len() is guaranteed to be less than or equal to INLINE_CAP
+      return Self(Repr::Inline(unsafe {
+        InlineStorage::copy_from_slice(&bytes)
+      }));
+    }
+
+    Self(Repr::Heap(bytes.into()))
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) fn from_bytes_mut(bytes: BytesMut) -> Self {
+    Self(Repr::Heap(bytes))
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) fn from_inline(bytes: InlineStorage) -> Self {
+    Self(Repr::Inline(bytes))
   }
 }
 
@@ -429,7 +469,7 @@ impl SmolBytesMut {
   }
 
   #[inline]
-  fn freeze<S>(self) -> RawSmolBytes<S>
+  pub(crate) fn freeze<S>(self) -> RawSmolBytes<S>
   where
     RawSmolBytes<S>: crate::strategy::Strategy,
   {
@@ -813,72 +853,29 @@ impl SmolBytesMut {
   }
 }
 
-impl core::fmt::Debug for SmolBytesMut {
+impl Buf for SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+  fn remaining(&self) -> usize {
     match &self.0 {
-      Repr::Inline(b) => b.fmt(f),
-      Repr::Heap(b) => b.fmt(f),
+      Repr::Inline(b) => b.remaining(),
+      Repr::Heap(b) => b.remaining(),
     }
   }
-}
-
-impl core::ops::Deref for SmolBytesMut {
-  type Target = [u8];
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn deref(&self) -> &Self::Target {
+  fn chunk(&self) -> &[u8] {
     match &self.0 {
       Repr::Inline(b) => b.as_slice(),
-      Repr::Heap(b) => b.as_ref(),
+      Repr::Heap(b) => b.chunk(),
     }
   }
-}
 
-impl core::ops::DerefMut for SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn deref_mut(&mut self) -> &mut Self::Target {
+  fn advance(&mut self, cnt: usize) {
     match &mut self.0 {
-      Repr::Inline(b) => b.as_mut_slice(),
-      Repr::Heap(b) => b.as_mut(),
+      Repr::Inline(b) => b.advance(cnt),
+      Repr::Heap(b) => b.advance(cnt),
     }
-  }
-}
-
-impl AsRef<[u8]> for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn as_ref(&self) -> &[u8] {
-    self
-  }
-}
-
-impl AsMut<[u8]> for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn as_mut(&mut self) -> &mut [u8] {
-    self
-  }
-}
-
-impl PartialEq for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &Self) -> bool {
-    self.as_ref() == other.as_ref()
-  }
-}
-
-impl Eq for SmolBytesMut {}
-
-impl PartialEq<[u8]> for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &[u8]) -> bool {
-    self.as_ref() == other
-  }
-}
-
-impl PartialEq<SmolBytesMut> for [u8] {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &SmolBytesMut) -> bool {
-    self == other.as_ref()
   }
 }
 
@@ -900,27 +897,6 @@ unsafe impl BufMut for SmolBytesMut {
       Repr::Inline(b) => b.chunk_mut(),
       Repr::Heap(b) => b.chunk_mut(),
     }
-  }
-}
-
-impl From<&[u8]> for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn from(slice: &[u8]) -> Self {
-    if slice.len() <= INLINE_CAP {
-      // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      Self(Repr::Inline(unsafe {
-        InlineStorage::copy_from_slice(slice)
-      }))
-    } else {
-      Self(Repr::Heap(BytesMut::from(slice)))
-    }
-  }
-}
-
-impl From<&str> for SmolBytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn from(s: &str) -> Self {
-    Self::from(s.as_bytes())
   }
 }
 

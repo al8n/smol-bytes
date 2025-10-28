@@ -1,24 +1,34 @@
 use core::{
-  borrow::Borrow,
-  cmp::Ordering,
-  fmt,
   hash::{Hash, Hasher},
   marker::PhantomData,
-  ops::{self, RangeBounds},
+  ops::RangeBounds,
 };
 
 use bytes::{Buf, Bytes};
 
-use std::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
+use std::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
-use crate::utils::{InlineStorage, INLINE_CAP};
+use crate::{
+  utils::{InlineStorage, INLINE_CAP},
+  SmolBytesMut,
+};
 
 use super::strategy::Strategy;
+
+mod cmp;
+mod fmt;
+mod from;
+mod ops;
+mod iter;
 
 #[cfg(feature = "borsh")]
 mod borsh;
 #[cfg(feature = "serde")]
 mod serde;
+#[cfg(feature = "arbitrary")]
+mod arbitrary;
+#[cfg(feature = "quickcheck")]
+mod quickcheck;
 
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
@@ -362,224 +372,6 @@ where
   }
 }
 
-impl<S> ops::Deref for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  type Target = [u8];
-
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn deref(&self) -> &Self::Target {
-    self.as_slice()
-  }
-}
-
-impl<S> Borrow<[u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn borrow(&self) -> &[u8] {
-    self.as_slice()
-  }
-}
-
-impl<S> AsRef<[u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn as_ref(&self) -> &[u8] {
-    self.as_slice()
-  }
-}
-
-impl<S> PartialEq for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn eq(&self, other: &Self) -> bool {
-    self.repr.ptr_eq(&other.repr) || self.as_slice() == other.as_slice()
-  }
-}
-
-impl<S> Eq for RawSmolBytes<S> where Self: Strategy {}
-
-impl<S> PartialEq<[u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &[u8]) -> bool {
-    self.as_slice() == other
-  }
-}
-
-impl<S> PartialEq<RawSmolBytes<S>> for [u8]
-where
-  RawSmolBytes<S>: Strategy,
-{
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &RawSmolBytes<S>) -> bool {
-    other == self
-  }
-}
-
-impl<S> PartialOrd for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl<S> Ord for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn cmp(&self, other: &Self) -> Ordering {
-    self.as_slice().cmp(other.as_slice())
-  }
-}
-
-impl<S> Hash for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.as_slice().hash(state)
-  }
-}
-
-impl<S> fmt::Debug for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match &self.repr {
-      Repr::Inline(b) => b.fmt(f),
-      Repr::Heap(b) => b.fmt(f),
-    }
-  }
-}
-
-impl<S> From<&[u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(slice: &[u8]) -> Self {
-    Self::copy_from_slice(slice)
-  }
-}
-
-impl<S> From<&mut [u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(slice: &mut [u8]) -> Self {
-    Self::copy_from_slice(slice)
-  }
-}
-
-impl<S> From<Vec<u8>> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(vec: Vec<u8>) -> Self {
-    Self::new_in(Repr::from_vec(vec))
-  }
-}
-
-impl<S> From<Box<[u8]>> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(slice: Box<[u8]>) -> Self {
-    Self::new_in(Repr::from_box(slice))
-  }
-}
-
-impl<S> From<Arc<[u8]>> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(arc: Arc<[u8]>) -> Self {
-    Self::new_in(Repr::from_arc(arc))
-  }
-}
-
-impl<'a, S> From<Cow<'a, [u8]>> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  #[inline]
-  fn from(cow: Cow<'a, [u8]>) -> Self {
-    match cow {
-      Cow::Borrowed(slice) => RawSmolBytes::copy_from_slice(slice),
-      Cow::Owned(vec) => RawSmolBytes::from(vec),
-    }
-  }
-}
-
-impl<S> From<RawSmolBytes<S>> for Vec<u8>
-where
-  RawSmolBytes<S>: Strategy,
-{
-  #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
-    bytes.into_vec()
-  }
-}
-
-impl<S> From<RawSmolBytes<S>> for Arc<[u8]>
-where
-  RawSmolBytes<S>: Strategy,
-{
-  #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
-    bytes.into_arc()
-  }
-}
-
-impl<S> From<RawSmolBytes<S>> for Bytes
-where
-  RawSmolBytes<S>: Strategy,
-{
-  #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
-    bytes.into_bytes()
-  }
-}
-
-impl<'a, S> core::iter::FromIterator<&'a [u8]> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
-    build_from_chunks(iter.into_iter())
-  }
-}
-
-impl<S> core::iter::FromIterator<u8> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
-    build_from_iter(iter.into_iter())
-  }
-}
-
 impl<S> Buf for RawSmolBytes<S>
 where
   Self: Strategy,
@@ -603,59 +395,6 @@ where
   fn copy_to_bytes(&mut self, len: usize) -> Bytes {
     Strategy::copy_to_bytes(self, len)
   }
-}
-
-#[allow(single_use_lifetimes)]
-fn build_from_chunks<'a, S>(mut iter: impl Iterator<Item = &'a [u8]>) -> RawSmolBytes<S>
-where
-  RawSmolBytes<S>: Strategy,
-{
-  let mut buf = InlineStorage::new();
-  let mut len = 0usize;
-  while let Some(chunk) = iter.next() {
-    let slice = chunk;
-    if len + slice.len() > INLINE_CAP {
-      let (lower, _) = iter.size_hint();
-      let mut vec = Vec::with_capacity(len + slice.len() + lower);
-      vec.extend_from_slice(buf.as_slice());
-      vec.extend_from_slice(slice);
-      for rest in iter {
-        vec.extend_from_slice(rest);
-      }
-      return RawSmolBytes::heap(Bytes::from(vec));
-    }
-    let end = len + slice.len();
-    buf.append_slice(slice);
-    len = end;
-  }
-  RawSmolBytes::inline(buf)
-}
-
-fn build_from_iter<S>(mut iter: impl Iterator<Item = u8>) -> RawSmolBytes<S>
-where
-  RawSmolBytes<S>: Strategy,
-{
-  let mut buf = InlineStorage::new();
-  let mut len = 0usize;
-  while let Some(byte) = iter.next() {
-    if len == INLINE_CAP {
-      {
-        let (lower, _) = iter.size_hint();
-        let mut vec = Vec::with_capacity(len + 1 + lower);
-        vec.extend_from_slice(buf.as_slice());
-        vec.push(byte);
-        vec.extend(iter);
-        return RawSmolBytes::heap(Bytes::from(vec));
-      }
-      #[cfg(not(any(feature = "alloc", feature = "std")))]
-      {
-        unreachable!("alloc feature required for heap allocation");
-      }
-    }
-    buf[len] = byte;
-    len += 1;
-  }
-  RawSmolBytes::inline(buf)
 }
 
 #[derive(Clone, Debug)]
@@ -789,17 +528,6 @@ impl Repr {
       Self::Inline(storage) => Arc::from(storage.as_slice()),
       Self::Heap(bytes) => Arc::from(Vec::<u8>::from(bytes)),
     }
-  }
-}
-
-#[cfg(feature = "arbitrary")]
-impl<'a, S> arbitrary::Arbitrary<'a> for RawSmolBytes<S>
-where
-  Self: Strategy,
-{
-  fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-    let bytes = <&[u8]>::arbitrary(u)?;
-    Ok(RawSmolBytes::copy_from_slice(bytes))
   }
 }
 

@@ -158,7 +158,7 @@
 
 use super::Strategy;
 use crate::{
-  smol_bytes::raw::{RawSmolBytes, Repr},
+  bytes::raw::{RawSmolBytes, Repr},
   utils::{InlineStorage, INLINE_CAP},
 };
 use bytes::Buf;
@@ -272,7 +272,6 @@ impl RawSmolBytes<Shared> {
     Self::heap(bytes::Bytes::from_owner(owner))
   }
 }
-
 
 impl Strategy for RawSmolBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
