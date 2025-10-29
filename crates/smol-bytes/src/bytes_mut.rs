@@ -249,7 +249,7 @@ impl BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn capacity(&self) -> usize {
     match &self.0 {
-      Repr::Inline(_) => INLINE_CAP,
+      Repr::Inline(b) => b.capacity(),
       Repr::Heap(b) => b.capacity(),
     }
   }
@@ -984,6 +984,24 @@ unsafe impl BufMut for BytesMut {
     match &mut self.0 {
       Repr::Inline(b) => b.chunk_mut(),
       Repr::Heap(b) => b.chunk_mut(),
+    }
+  }
+
+  fn put_slice(&mut self, src: &[u8]) {
+    self.extend_from_slice(src);
+  }
+
+  fn put_bytes(&mut self, val: u8, cnt: usize) {
+    self.reserve(cnt);
+
+    unsafe {
+      let dst = self.spare_capacity_mut();
+      // Reserved above
+      debug_assert!(dst.len() >= cnt);
+
+      core::ptr::write_bytes(dst.as_mut_ptr(), val, cnt);
+
+      self.advance_mut(cnt);
     }
   }
 }

@@ -14,8 +14,8 @@ workspace = true
 
 [features]
 default = ["std"]
-alloc = []
-std = ["bytes/default"]
+alloc = ["serde_core?/alloc"]
+std = ["bytes/default", "serde_core?/default"]
 serde = ["dep:serde_core"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]

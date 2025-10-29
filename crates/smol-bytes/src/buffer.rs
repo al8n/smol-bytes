@@ -316,7 +316,7 @@ impl Buffer {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, INLINE_CAP};
   ///
   /// let mut buf = Buffer::try_from(&b"hello world"[..]).unwrap();
   ///
@@ -325,6 +325,9 @@ impl Buffer {
   /// buf.advance(6);
   ///
   /// assert_eq!(buf.as_slice(), &b"world"[..]);
+  ///
+  /// // advancing will also reduce capacity
+  /// assert_eq!(buf.capacity(), INLINE_CAP - 6);
   /// ```
   ///
   /// # Panics
@@ -468,6 +471,15 @@ impl Buffer {
   pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
     let len = self.len.to_usize();
     unsafe { from_raw_parts_mut(self.buf.as_mut_ptr().add(len), INLINE_CAP - len) }
+  }
+
+  /// Returns the capacity of the buffer.
+  ///
+  /// The capacity is not always equal to [`INLINE_CAP`], as the [`advance`](Self::advance) method
+  /// may move the underlying cursor forward, reducing the available capacity.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn capacity(&self) -> usize {
+    INLINE_CAP - self.cur.to_usize()
   }
 
   /// Returns the initialized portion of the buffer as a slice.

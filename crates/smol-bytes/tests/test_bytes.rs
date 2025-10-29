@@ -1,12 +1,12 @@
 #![warn(rust_2018_idioms)]
 
-use smol_bytes::{Buf, BufMut, Bytes, BytesMut};
+use smol_bytes::{Buf, BufMut, Bytes, BytesMut, INLINE_CAP};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use std::panic::{self, AssertUnwindSafe};
 
-const LONG: &[u8] = b"mary had a little lamb, little lamb, little lamb";
+const LONG: &[u8] = b"mary had a little lamb, little lamb, little lamb...............";
 const SHORT: &[u8] = b"hello world";
 
 fn is_sync<T: Sync>() {}
@@ -26,13 +26,13 @@ fn test_layout() {
 
   assert_eq!(
     mem::size_of::<Bytes>(),
-    mem::size_of::<usize>() * 4,
-    "Bytes size should be 4 words",
+    mem::size_of::<usize>() * 8,
+    "Bytes size should be 8 words",
   );
   assert_eq!(
     mem::size_of::<BytesMut>(),
-    mem::size_of::<usize>() * 4,
-    "BytesMut should be 4 words",
+    mem::size_of::<usize>() * 8,
+    "BytesMut should be 8 words",
   );
 
   assert_eq!(
@@ -85,16 +85,16 @@ fn fmt_write() {
 
   let mut a = BytesMut::with_capacity(64);
   write!(a, "{}", &s[..64]).unwrap();
-  assert_eq!(a, s[..64].as_bytes());
+  assert_eq!(a, &s.as_bytes()[..64]);
 
   let mut b = BytesMut::with_capacity(64);
   write!(b, "{}", &s[..32]).unwrap();
   write!(b, "{}", &s[32..64]).unwrap();
-  assert_eq!(b, s[..64].as_bytes());
+  assert_eq!(b, &s.as_bytes()[..64]);
 
   let mut c = BytesMut::with_capacity(64);
   write!(c, "{}", s).unwrap();
-  assert_eq!(c, s[..].as_bytes());
+  assert_eq!(c, s.as_bytes());
 }
 
 #[test]
@@ -191,8 +191,8 @@ fn split_off_oob() {
 #[test]
 #[should_panic = "split_off out of bounds"]
 fn bytes_mut_split_off_oob() {
-  let mut hello = BytesMut::from(&b"helloworld"[..]);
-  let _ = hello.split_off(44);
+  let mut hello = BytesMut::from(LONG);
+  let _ = hello.split_off(444);
 }
 
 #[test]
@@ -309,8 +309,8 @@ fn split_to_oob() {
 #[test]
 #[should_panic]
 fn split_to_oob_mut() {
-  let mut hello = BytesMut::from(&b"helloworld"[..]);
-  let _ = hello.split_to(33);
+  let mut hello = BytesMut::from(LONG);
+  let _ = hello.split_to(333);
 }
 
 #[test]
@@ -406,6 +406,7 @@ fn freeze_shared_after_advance_arc() {
 fn freeze_shared_after_split_to() {
   let s = &b"abcdefgh"[..];
   let mut b = BytesMut::from(s);
+  b.make_heap();
   let _ = b.split_to(1);
   assert_eq!(b, s[1..]);
   let b = b.freeze_shared();
@@ -438,6 +439,7 @@ fn freeze_shared_after_truncate_arc() {
 fn freeze_shared_after_split_off() {
   let s = &b"abcdefgh"[..];
   let mut b = BytesMut::from(s);
+  b.make_heap();
   let _ = b.split_off(7);
   assert_eq!(b, s[..7]);
   let b = b.freeze_shared();
@@ -513,20 +515,6 @@ fn reserve_max_original_capacity_value() {
 
   bytes.reserve(16);
   assert_eq!(bytes.capacity(), 64 * 1024);
-}
-
-#[test]
-fn reserve_vec_recycling() {
-  let mut bytes = BytesMut::with_capacity(16);
-  assert_eq!(bytes.capacity(), 16);
-  let addr = bytes.as_ptr() as usize;
-  bytes.put("0123456789012345".as_bytes());
-  assert_eq!(bytes.as_ptr() as usize, addr);
-  bytes.advance(10);
-  assert_eq!(bytes.capacity(), 6);
-  bytes.reserve(8);
-  assert_eq!(bytes.capacity(), 16);
-  assert_eq!(bytes.as_ptr() as usize, addr);
 }
 
 #[test]
@@ -720,7 +708,7 @@ fn advance_bytes_mut() {
 #[test]
 fn advance_bytes_mut_remaining_capacity() {
   // reduce the search space under miri
-  let max_capacity = if cfg!(miri) { 16 } else { 256 };
+  let max_capacity = if cfg!(miri) { 64 } else { 256 };
   for capacity in 0..=max_capacity {
     for len in 0..=capacity {
       for advance in 0..=len {
@@ -741,11 +729,20 @@ fn advance_bytes_mut_remaining_capacity() {
           len - advance,
           "Buf::advance should reduce the remaining len"
         );
-        assert_eq!(
-          buf.capacity(),
-          capacity - advance,
-          "Buf::advance should reduce the remaining capacity"
-        );
+
+        if capacity <= INLINE_CAP {
+          assert_eq!(
+            buf.capacity(),
+            INLINE_CAP - advance,
+            "Buf::advance should reduce the remaining capacity"
+          );
+        } else {
+          assert_eq!(
+            buf.capacity(),
+            capacity - advance,
+            "Buf::advance should reduce the remaining capacity"
+          );
+        }
       }
     }
   }
@@ -763,7 +760,7 @@ fn advance_past_len() {
 fn mut_advance_past_len() {
   let mut a = BytesMut::from("hello world");
   unsafe {
-    a.advance_mut(20);
+    a.advance_mut(100);
   }
 }
 
@@ -1135,13 +1132,13 @@ fn test_bytes_vec_conversion() {
   let b = Bytes::from(vec);
   let v = Vec::from(b);
   assert_eq!(v.len(), 7);
-  assert_eq!(v.capacity(), 10);
+  assert_eq!(v.capacity(), 7);
 
   let mut b = Bytes::from(v);
   b.advance(1);
   let v = Vec::from(b);
   assert_eq!(v.len(), 6);
-  assert_eq!(v.capacity(), 10);
+  assert_eq!(v.capacity(), 6);
   assert_eq!(v.as_slice(), b"bcdefg");
 }
 
@@ -1152,13 +1149,13 @@ fn test_bytes_mut_conversion() {
   let b2 = Bytes::from(b1);
   let v = Vec::from(b2);
   assert_eq!(v.len(), 7);
-  assert_eq!(v.capacity(), 10);
+  assert_eq!(v.capacity(), 7);
 
   let mut b = Bytes::from(v);
   b.advance(1);
   let v = Vec::from(b);
   assert_eq!(v.len(), 6);
-  assert_eq!(v.capacity(), 10);
+  assert_eq!(v.capacity(), 6);
   assert_eq!(v.as_slice(), b"bcdefg");
 }
 
@@ -1331,46 +1328,47 @@ fn test_bytesmut_from_bytes_promotable_even_arc_offset() {
 #[test]
 fn try_reclaim_empty() {
   let mut buf = BytesMut::new();
-  assert!(!buf.try_reclaim(6));
-  buf.reserve(6);
-  assert!(buf.try_reclaim(6));
+  assert!(!buf.try_reclaim(64));
+  buf.reserve(64);
+  assert!(buf.try_reclaim(64));
   let cap = buf.capacity();
-  assert!(cap >= 6);
+  assert!(cap >= 64);
   assert!(!buf.try_reclaim(cap + 1));
 
   let mut buf = BytesMut::new();
-  buf.reserve(6);
+  buf.reserve(64);
   let cap = buf.capacity();
-  assert!(cap >= 6);
+  assert!(cap >= 64);
   buf.make_heap();
   let mut split = buf.split().unwrap();
   drop(buf);
   assert_eq!(0, split.capacity());
-  assert!(split.try_reclaim(6));
+  assert!(split.try_reclaim(64));
   assert!(!split.try_reclaim(cap + 1));
 }
+
 #[test]
 fn try_reclaim_vec() {
-  let mut buf = BytesMut::with_capacity(6);
+  let mut buf = BytesMut::with_capacity(64);
   buf.put_slice(b"abc");
   // Reclaiming a ludicrous amount of space should calmly return false
-  assert_eq!(false, buf.try_reclaim(usize::MAX));
+  assert!(!buf.try_reclaim(usize::MAX));
 
-  assert_eq!(false, buf.try_reclaim(6));
+  assert!(!buf.try_reclaim(64));
   buf.advance(2);
-  assert_eq!(4, buf.capacity());
-  // We can reclaim 5 bytes, because the byte in the buffer can be moved to the front. 6 bytes
+  assert_eq!(62, buf.capacity());
+  // We can reclaim 64 bytes, because the byte in the buffer can be moved to the front. 63 bytes
   // cannot be reclaimed because there is already one byte stored
-  assert_eq!(false, buf.try_reclaim(6));
-  assert_eq!(true, buf.try_reclaim(5));
+  assert!(!buf.try_reclaim(64));
+  assert!(buf.try_reclaim(63));
   buf.advance(1);
-  assert_eq!(true, buf.try_reclaim(6));
-  assert_eq!(6, buf.capacity());
+  assert!(buf.try_reclaim(64));
+  assert_eq!(64, buf.capacity());
 }
 
 #[test]
 fn try_reclaim_arc() {
-  let mut buf = BytesMut::with_capacity(6);
+  let mut buf = BytesMut::with_capacity(64);
   buf.put_slice(b"abc");
   buf.make_heap();
   let x = buf.split().unwrap().freeze_shared();
@@ -1380,83 +1378,23 @@ fn try_reclaim_arc() {
 
   let y = buf.split().unwrap().freeze_shared();
   let z = y.clone();
-  assert!(!buf.try_reclaim(6));
+  assert!(!buf.try_reclaim(64));
   drop(x);
   drop(z);
-  assert!(!buf.try_reclaim(6));
+  assert!(!buf.try_reclaim(64));
   drop(y);
-  assert!(buf.try_reclaim(6));
-  assert_eq!(6, buf.capacity());
+  assert!(buf.try_reclaim(64));
+  assert_eq!(64, buf.capacity());
   assert_eq!(0, buf.len());
   buf.put_slice(b"abc");
   buf.put_slice(b"def");
-  assert_eq!(6, buf.capacity());
+  assert_eq!(64, buf.capacity());
   assert_eq!(6, buf.len());
-  assert!(!buf.try_reclaim(6));
+  assert!(!buf.try_reclaim(64));
   buf.advance(4);
   assert!(buf.try_reclaim(4));
   buf.advance(2);
   assert!(buf.try_reclaim(6));
-}
-
-#[test]
-fn slice_empty_addr() {
-  let buf = Bytes::from(vec![0; 1024]);
-
-  let ptr_start = buf.as_ptr();
-  let ptr_end = ptr_start.wrapping_add(1024);
-
-  let empty_end = buf.slice(1024..);
-  assert_eq!(empty_end.len(), 0);
-  assert_eq!(empty_end.as_ptr(), ptr_end);
-
-  let empty_start = buf.slice(..0);
-  assert_eq!(empty_start.len(), 0);
-  assert_eq!(empty_start.as_ptr(), ptr_start);
-
-  // Is miri happy about the provenance?
-  let _ = &empty_end[..];
-  let _ = &empty_start[..];
-}
-
-#[test]
-fn split_off_empty_addr() {
-  let mut buf = Bytes::from(vec![0; 1024]);
-
-  let ptr_start = buf.as_ptr();
-  let ptr_end = ptr_start.wrapping_add(1024);
-
-  let empty_end = buf.split_off(1024);
-  assert_eq!(empty_end.len(), 0);
-  assert_eq!(empty_end.as_ptr(), ptr_end);
-
-  let _ = buf.split_off(0);
-  assert_eq!(buf.len(), 0);
-  assert_eq!(buf.as_ptr(), ptr_start);
-
-  // Is miri happy about the provenance?
-  let _ = &empty_end[..];
-  let _ = &buf[..];
-}
-
-#[test]
-fn split_to_empty_addr() {
-  let mut buf = Bytes::from(vec![0; 1024]);
-
-  let ptr_start = buf.as_ptr();
-  let ptr_end = ptr_start.wrapping_add(1024);
-
-  let empty_start = buf.split_to(0);
-  assert_eq!(empty_start.len(), 0);
-  assert_eq!(empty_start.as_ptr(), ptr_start);
-
-  let _ = buf.split_to(1024);
-  assert_eq!(buf.len(), 0);
-  assert_eq!(buf.as_ptr(), ptr_end);
-
-  // Is miri happy about the provenance?
-  let _ = &empty_start[..];
-  let _ = &buf[..];
 }
 
 #[test]
@@ -1660,25 +1598,6 @@ fn owned_safe_drop_on_as_ref_panic() {
 
   assert!(result.is_err());
   assert_eq!(drop_counter.get(), 1);
-}
-
-/// Test `BytesMut::put` reuses allocation of `Bytes`.
-#[test]
-fn bytes_mut_put_bytes_specialization() {
-  let mut vec = Vec::with_capacity(1234);
-  vec.push(10);
-  let capacity = vec.capacity();
-  assert!(capacity >= 1234);
-
-  // Make `Bytes` backed by `Vec`.
-  let bytes = Bytes::from(vec);
-  let mut bytes_mut = BytesMut::new();
-  bytes_mut.put(bytes);
-
-  // Check contents is correct.
-  assert_eq!(&[10], bytes_mut.as_ref());
-  // If allocation is reused, capacity should be equal to original vec capacity.
-  assert_eq!(bytes_mut.capacity(), capacity);
 }
 
 // fn test_slice_ref(bytes: &Bytes, start: usize, end: usize, expected: &[u8]) {

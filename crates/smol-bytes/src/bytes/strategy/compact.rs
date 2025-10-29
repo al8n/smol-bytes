@@ -450,6 +450,10 @@ impl Strategy for RawBytes<Compact> {
         storage.advance(cnt);
       }
       Repr::Heap(bytes) => {
+        if cnt == 0 {
+          return;
+        }
+
         // check if we can make inline after advance
         let len = bytes.len();
         assert!(
