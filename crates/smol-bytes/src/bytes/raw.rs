@@ -47,7 +47,7 @@ where
   /// ## Examples
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let empty: RawBytes::new();
   /// assert_eq!(&empty[..], b"");
@@ -64,7 +64,7 @@ where
   /// Panics if `bytes.len() > INLINE_CAP`.
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::new_inline(b"hello");
   /// assert_eq!(&b[..], b"hello");
@@ -81,7 +81,7 @@ where
   /// Creates a [`RawBytes`] from a statically allocated byte slice.
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(&b[..], b"hello");
@@ -104,7 +104,7 @@ where
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.slice(2..5);
@@ -142,7 +142,7 @@ where
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let mut a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.split_off(5);
@@ -162,7 +162,7 @@ where
   /// Splits the bytes into two at the given index.
   ///
   /// Afterwards `self` contains elements `[at, len)`, and the returned
-  /// `SmolBytes` contains elements `[0, at)`.
+  /// `Bytes` contains elements `[0, at)`.
   ///
   /// This is an `O(1)` operation that just increases the reference count and
   /// sets a few indices.
@@ -170,7 +170,7 @@ where
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let mut a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.split_to(5);
@@ -192,7 +192,7 @@ where
   /// ## Examples
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let mut b: RawBytes::from_static(b"hello world");
   /// b.truncate(5);
@@ -212,7 +212,7 @@ where
   /// ## Examples
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let mut b: RawBytes::from_static(b"hello");
   /// b.clear();
@@ -250,10 +250,10 @@ where
   ///
   /// Always returns `false` if the data is backed by a static slice, or inlined.
   ///
-  /// The result of this method may be invalidated immediately if another thread clones this value while this is being called. Ensure you have unique access to this value (&mut SmolBytes) first if you need to be certain the result is valid (i.e. for safety reasons).
+  /// The result of this method may be invalidated immediately if another thread clones this value while this is being called. Ensure you have unique access to this value (&mut Bytes) first if you need to be certain the result is valid (i.e. for safety reasons).
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::from_static(b"hello");
   /// assert!(!b.is_unique());
@@ -269,7 +269,7 @@ where
   /// Returns the length in bytes of this [`RawBytes`].
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(b.len(), 5);
@@ -282,7 +282,7 @@ where
   /// Returns `true` if this [`RawBytes`] contains no bytes.
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::new();
   /// assert!(b.is_empty());
@@ -295,7 +295,7 @@ where
   /// Creates a [`RawBytes`] from any byte slice, allocating if needed.
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let data: Vec<u8> = vec![1, 2, 3, 4, 5];
   /// let b: RawBytes::copy_from_slice(&data);
@@ -309,7 +309,7 @@ where
   /// Returns the byte slice underlying this [`RawBytes`].
   ///
   /// ```rust
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
   /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(b.as_slice(), b"hello");
@@ -333,9 +333,9 @@ where
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
-  /// let buf = SmolBytes::from(&b"hello"[..]);
+  /// let buf = Bytes::from(&b"hello"[..]);
   ///
   /// let inline_buffer = buf.unwrap_inline();
   /// assert_eq!(&inline_buffer[..], b"hello");
@@ -344,7 +344,7 @@ where
   pub fn unwrap_inline(self) -> Buffer {
     match self.repr {
       Repr::Inline(b) => b,
-      Repr::Heap(_) => panic!("called `SmolBytes::unwrap_inline()` on a heap allocated buffer"),
+      Repr::Heap(_) => panic!("called `Bytes::unwrap_inline()` on a heap allocated buffer"),
     }
   }
 
@@ -353,10 +353,10 @@ where
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::compact::SmolBytes;
+  /// use smol_bytes::compact::Bytes;
   ///
-  /// let inline_buf = SmolBytes::from(b"hello");
-  /// let heap_buf = SmolBytes::from(b"hello world and more data that exceeds inline capacity................................");
+  /// let inline_buf = Bytes::from(b"hello");
+  /// let heap_buf = Bytes::from(b"hello world and more data that exceeds inline capacity................................");
   ///
   /// assert!(inline_buf.try_unwrap_inline().is_ok());
   /// assert!(heap_buf.try_unwrap_inline().is_err());
@@ -377,9 +377,9 @@ where
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   ///
-  /// let mut buf = SmolBytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
+  /// let mut buf = Bytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
   ///
   /// let heap_buffer = buf.unwrap_heap();
   /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
@@ -387,7 +387,7 @@ where
   #[inline]
   pub fn unwrap_heap(self) -> Bytes {
     match self.repr {
-      Repr::Inline(_) => panic!("called `SmolBytes::unwrap_heap()` on an inline buffer"),
+      Repr::Inline(_) => panic!("called `Bytes::unwrap_heap()` on an inline buffer"),
       Repr::Heap(b) => b,
     }
   }
@@ -397,10 +397,10 @@ where
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::compact::SmolBytes;
+  /// use smol_bytes::compact::Bytes;
   ///
-  /// let inline_buf = SmolBytes::from(&b"hello"[..]);
-  /// let mut heap_buf = SmolBytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
+  /// let inline_buf = Bytes::from(&b"hello"[..]);
+  /// let mut heap_buf = Bytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
   ///
   /// assert!(heap_buf.try_unwrap_heap().is_ok());
   /// assert!(inline_buf.try_unwrap_heap().is_err());
@@ -578,7 +578,7 @@ impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub(crate) fn unwrap_heap_mut(&mut self) -> &mut Bytes {
     match self {
-      Self::Inline { .. } => panic!("cannot unwrap inline SmolBytes"),
+      Self::Inline { .. } => panic!("cannot unwrap inline Bytes"),
       Self::Heap(bytes) => bytes,
     }
   }
@@ -620,16 +620,16 @@ impl Repr {
 #[cfg(test)]
 mod tests {
   use super::INLINE_CAP;
-  use crate::shared::SmolBytes;
+  use crate::shared::Bytes;
 
   #[test]
   fn inline_capacity_matches_constant() {
-    assert_eq!(SmolBytes::inline_capacity(), INLINE_CAP);
+    assert_eq!(Bytes::inline_capacity(), INLINE_CAP);
   }
 
   #[test]
   fn default_is_empty() {
-    let smol: SmolBytes = SmolBytes::default();
+    let smol: Bytes = Bytes::default();
     assert!(smol.is_empty());
     assert_eq!(smol.len(), 0);
   }

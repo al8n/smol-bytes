@@ -223,7 +223,7 @@ impl Buffer {
     self.len.to_usize() - self.cur as usize
   }
 
-  /// Returns the number of bytes contained in this `SmolBytesMut`.
+  /// Returns the number of bytes contained in this `BytesMut`.
   ///
   /// ## Example
   ///
@@ -243,9 +243,9 @@ impl Buffer {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let bytes = SmolBytesMut::new();
+  /// let bytes = BytesMut::new();
   /// assert!(bytes.is_empty());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]

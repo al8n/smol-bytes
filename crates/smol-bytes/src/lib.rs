@@ -11,16 +11,16 @@
 //!
 //! Two optimization strategies are available:
 //!
-//! - **[`shared::SmolBytes`]** - Fast conversions with `bytes::Bytes`, preserves heap allocations
-//! - **[`compact::SmolBytes`]** - Minimizes memory usage, aggressively inlines data
+//! - **[`shared::Bytes`]** - Fast conversions with `bytes::Bytes`, preserves heap allocations
+//! - **[`compact::Bytes`]** - Minimizes memory usage, aggressively inlines data
 //!
 //! # Quick Start
 //!
 //! ```rust
 //! // Use the Shared strategy (recommended for most use cases)
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //!
-//! let data = SmolBytes::from_static(b"hello world");
+//! let data = Bytes::from_static(b"hello world");
 //! assert_eq!(data.as_slice(), b"hello world");
 //! ```
 //!

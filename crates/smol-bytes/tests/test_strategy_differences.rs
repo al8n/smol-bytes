@@ -3,9 +3,9 @@ use smol_bytes::{compact, shared, INLINE_CAP};
 
 #[test]
 fn test_inline_strategy_converts_heap_to_inline_on_advance() {
-  // Create heap-allocated SmolBytes (larger than INLINE_CAP)
+  // Create heap-allocated Bytes (larger than INLINE_CAP)
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
+  let mut b: compact::Bytes = compact::Bytes::from(data);
 
   assert!(b.is_heap(), "should start as heap");
 
@@ -18,9 +18,9 @@ fn test_inline_strategy_converts_heap_to_inline_on_advance() {
 
 #[test]
 fn test_conversion_friendly_keeps_heap_on_advance() {
-  // Create heap-allocated SmolBytes (larger than INLINE_CAP)
+  // Create heap-allocated Bytes (larger than INLINE_CAP)
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
+  let mut b: shared::Bytes = shared::Bytes::from(data);
 
   assert!(b.is_heap(), "should start as heap");
 
@@ -37,7 +37,7 @@ fn test_conversion_friendly_keeps_heap_on_advance() {
 #[test]
 fn test_inline_strategy_converts_heap_to_inline_on_truncate() {
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
+  let mut b: compact::Bytes = compact::Bytes::from(data);
 
   assert!(b.is_heap(), "should start as heap");
 
@@ -54,7 +54,7 @@ fn test_inline_strategy_converts_heap_to_inline_on_truncate() {
 #[test]
 fn test_conversion_friendly_keeps_heap_on_truncate() {
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
+  let mut b: shared::Bytes = shared::Bytes::from(data);
 
   assert!(b.is_heap(), "should start as heap");
 
@@ -71,7 +71,7 @@ fn test_conversion_friendly_keeps_heap_on_truncate() {
 #[test]
 fn test_inline_strategy_converts_heap_to_inline_on_split_to() {
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: compact::SmolBytes = compact::SmolBytes::from(data);
+  let mut b: compact::Bytes = compact::Bytes::from(data);
 
   assert!(b.is_heap());
 
@@ -88,7 +88,7 @@ fn test_inline_strategy_converts_heap_to_inline_on_split_to() {
 #[test]
 fn test_conversion_friendly_keeps_heap_on_split_to() {
   let data = vec![1u8; INLINE_CAP + 10];
-  let mut b: shared::SmolBytes = shared::SmolBytes::from(data);
+  let mut b: shared::Bytes = shared::Bytes::from(data);
 
   assert!(b.is_heap());
 
@@ -106,8 +106,8 @@ fn test_conversion_friendly_keeps_heap_on_split_to() {
 fn test_both_strategies_produce_same_logical_results() {
   let data = b"hello world";
 
-  let mut cf: shared::SmolBytes = shared::SmolBytes::copy_from_slice(data);
-  let mut inline: compact::SmolBytes = compact::SmolBytes::copy_from_slice(data);
+  let mut cf: shared::Bytes = shared::Bytes::copy_from_slice(data);
+  let mut inline: compact::Bytes = compact::Bytes::copy_from_slice(data);
 
   // Both should have same content
   assert_eq!(cf.as_slice(), inline.as_slice());
@@ -133,8 +133,8 @@ fn test_both_strategies_produce_same_logical_results() {
 fn test_slice_produces_same_content_both_strategies() {
   let data = b"hello world from rust";
 
-  let cf: shared::SmolBytes = shared::SmolBytes::copy_from_slice(data);
-  let inline: compact::SmolBytes = compact::SmolBytes::copy_from_slice(data);
+  let cf: shared::Bytes = shared::Bytes::copy_from_slice(data);
+  let inline: compact::Bytes = compact::Bytes::copy_from_slice(data);
 
   let cf_slice = cf.slice(6..11);
   let inline_slice = inline.slice(6..11);

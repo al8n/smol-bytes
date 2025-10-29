@@ -1,6 +1,6 @@
-//! The **Compact** strategy for `SmolBytes`.
+//! The **Compact** strategy for `Bytes`.
 //!
-//! This module provides the [`SmolBytes`] type alias configured with the [`Compact`] strategy,
+//! This module provides the [`Bytes`] type alias configured with the [`Compact`] strategy,
 //! which prioritizes **memory efficiency** by aggressively converting heap allocations back
 //! to inline storage whenever possible.
 //!
@@ -23,14 +23,14 @@
 //! # Basic Usage
 //!
 //! ```rust
-//! use smol_bytes::{compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::Bytes, Buf};
 //!
 //! // Small data (≤62 bytes) is stored inline
-//! let small = SmolBytes::from_static(b"hello world");
+//! let small = Bytes::from_static(b"hello world");
 //! assert!(!small.is_heap());
 //!
 //! // Large data starts on heap
-//! let mut large = SmolBytes::from(vec![1u8; 100]);
+//! let mut large = Bytes::from(vec![1u8; 100]);
 //! assert!(large.is_heap());
 //!
 //! // After shrinking, automatically converts to inline!
@@ -44,7 +44,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │  SmolBytes (64 bytes on stack)          │
+//! │  Bytes (64 bytes on stack)          │
 //! ├─────────────────────────────────────────┤
 //! │  Variant: Inline (≤62 bytes)            │
 //! │  ┌────────────────────────────────────┐ │
@@ -63,10 +63,10 @@
 //! ## Operations and Allocation Behavior
 //!
 //! ```rust
-//! use smol_bytes::{compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::Bytes, Buf};
 //!
 //! // Start with large heap allocation
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //! assert!(data.is_heap());
 //!
 //! // After advance, automatically inlined (Compact strategy)
@@ -108,10 +108,10 @@
 //! ## Stream Processing with Automatic Inlining
 //!
 //! ```rust
-//! use smol_bytes::{compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::Bytes, Buf};
 //!
 //! // Process incoming stream
-//! let mut buffer = SmolBytes::from(vec![0u8; 1024]);
+//! let mut buffer = Bytes::from(vec![0u8; 1024]);
 //! assert!(buffer.is_heap());
 //!
 //! // As we consume data, it automatically inlines
@@ -122,10 +122,10 @@
 //! ## Memory-Efficient Buffer Pool
 //!
 //! ```rust
-//! use smol_bytes::compact::SmolBytes;
+//! use smol_bytes::compact::Bytes;
 //!
 //! struct BufferPool {
-//!     buffers: Vec<SmolBytes>,
+//!     buffers: Vec<Bytes>,
 //! }
 //!
 //! impl BufferPool {
@@ -135,7 +135,7 @@
 //!
 //!     fn add(&mut self, data: Vec<u8>) {
 //!         // Automatically inlines if small enough
-//!         self.buffers.push(SmolBytes::from(data));
+//!         self.buffers.push(Bytes::from(data));
 //!     }
 //!
 //!     fn total_heap_allocations(&self) -> usize {
@@ -159,9 +159,9 @@
 //! ## Truncate for Memory Savings
 //!
 //! ```rust
-//! use smol_bytes::compact::SmolBytes;
+//! use smol_bytes::compact::Bytes;
 //!
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //! assert!(data.is_heap());
 //!
 //! // Truncate to small size - automatically inlines
@@ -173,9 +173,9 @@
 //! ## Smart Split Operations
 //!
 //! ```rust
-//! use smol_bytes::compact::SmolBytes;
+//! use smol_bytes::compact::Bytes;
 //!
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //!
 //! // Split off small portion - both parts optimize
 //! let first = data.split_to(30);  // first: 30 bytes (inline)
@@ -211,19 +211,19 @@
 //!
 //! # Migration Guide
 //!
-//! If you're currently using `shared::SmolBytes` and considering switching:
+//! If you're currently using `shared::Bytes` and considering switching:
 //!
 //! ```rust
 //! // Before (Shared strategy)
 //! use smol_bytes::{strategy::{shared, compact}, Buf};
 //!
-//! let mut data = shared::SmolBytes::from(vec![1u8; 100]);
+//! let mut data = shared::Bytes::from(vec![1u8; 100]);
 //! data.advance(70); // Still heap-allocated
 //! let bytes: bytes::Bytes = data.into(); // Zero-copy ✓
 //!
 //! // After (Compact strategy)
 //!
-//! let mut data = compact::SmolBytes::from(vec![1u8; 100]);
+//! let mut data = compact::Bytes::from(vec![1u8; 100]);
 //! data.advance(70); // Now inline! Saved memory ✓
 //! let bytes: bytes::Bytes = data.into(); // Copies 30 bytes (still fast!)
 //! ```
@@ -265,11 +265,11 @@ use core::ops::{Bound, RangeBounds};
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::compact::SmolBytes;
+/// use smol_bytes::compact::Bytes;
 /// use bytes::Buf;
 ///
 /// // Create heap-allocated bytes (>62 bytes)
-/// let mut data = SmolBytes::from(vec![1u8; 100]);
+/// let mut data = Bytes::from(vec![1u8; 100]);
 /// assert!(data.is_heap());
 ///
 /// // Advance past most data
@@ -489,25 +489,25 @@ impl Strategy for RawBytes<Compact> {
 ///
 /// # When to use
 ///
-/// Use `SmolBytes` (with `Compact` strategy) when:
+/// Use `Bytes` (with `Compact` strategy) when:
 /// - Memory footprint is critical
 /// - You're working with small, frequently-modified buffers
 /// - Heap allocations should be minimized
 /// - Conversions to `bytes::Bytes` are infrequent
 ///
-/// For applications that frequently convert to/from `Bytes`, consider [`shared::SmolBytes`](super::shared::SmolBytes) instead.
+/// For applications that frequently convert to/from `Bytes`, consider [`shared::Bytes`](super::shared::Bytes) instead.
 ///
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::compact::SmolBytes;
+/// use smol_bytes::compact::Bytes;
 /// use bytes::Buf;
 ///
-/// let mut data = SmolBytes::from(vec![1u8; 100]);
+/// let mut data = Bytes::from(vec![1u8; 100]);
 /// assert!(data.is_heap());
 ///
 /// // After advancing, automatically converts to inline
 /// data.advance(70);
 /// assert!(!data.is_heap()); // Saved memory!
 /// ```
-pub type SmolBytes = RawBytes<Compact>;
+pub type Bytes = RawBytes<Compact>;

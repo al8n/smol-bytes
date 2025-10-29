@@ -30,18 +30,18 @@ fn clone_benchmarks(c: &mut Criterion) {
       });
     });
 
-    // Benchmark SmolBytes (Shared strategy) clone
-    group.bench_function("SmolBytes (Shared)", |b| {
-      let smol = shared::SmolBytes::from(data.clone());
+    // Benchmark Bytes (Shared strategy) clone
+    group.bench_function("Bytes (Shared)", |b| {
+      let smol = shared::Bytes::from(data.clone());
       b.iter(|| {
         let cloned = black_box(smol.clone());
         black_box(cloned);
       });
     });
 
-    // Benchmark SmolBytes (Compact strategy) clone
-    group.bench_function("SmolBytes (Compact)", |b| {
-      let smol = compact::SmolBytes::from(data.clone());
+    // Benchmark Bytes (Compact strategy) clone
+    group.bench_function("Bytes (Compact)", |b| {
+      let smol = compact::Bytes::from(data.clone());
       b.iter(|| {
         let cloned = black_box(smol.clone());
         black_box(cloned);
@@ -71,10 +71,10 @@ fn inline_clone_benchmarks(c: &mut Criterion) {
     });
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)", size),
+      BenchmarkId::new("Bytes (Shared)", size),
       &data,
       |b, data| {
-        let smol = shared::SmolBytes::from(data.clone());
+        let smol = shared::Bytes::from(data.clone());
         b.iter(|| {
           let cloned = black_box(smol.clone());
           black_box(cloned);
@@ -83,10 +83,10 @@ fn inline_clone_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)", size),
+      BenchmarkId::new("Bytes (Compact)", size),
       &data,
       |b, data| {
-        let smol = compact::SmolBytes::from(data.clone());
+        let smol = compact::Bytes::from(data.clone());
         b.iter(|| {
           let cloned = black_box(smol.clone());
           black_box(cloned);
@@ -117,10 +117,10 @@ fn heap_clone_benchmarks(c: &mut Criterion) {
     });
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)", size),
+      BenchmarkId::new("Bytes (Shared)", size),
       &data,
       |b, data| {
-        let smol = shared::SmolBytes::from(data.clone());
+        let smol = shared::Bytes::from(data.clone());
         b.iter(|| {
           let cloned = black_box(smol.clone());
           black_box(cloned);
@@ -129,10 +129,10 @@ fn heap_clone_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)", size),
+      BenchmarkId::new("Bytes (Compact)", size),
       &data,
       |b, data| {
-        let smol = compact::SmolBytes::from(data.clone());
+        let smol = compact::Bytes::from(data.clone());
         b.iter(|| {
           let cloned = black_box(smol.clone());
           black_box(cloned);
@@ -162,9 +162,9 @@ fn clone_after_advance_benchmarks(c: &mut Criterion) {
     });
   });
 
-  group.bench_function("SmolBytes Shared (70 advanced, 30 remaining)", |b| {
+  group.bench_function("Bytes Shared (70 advanced, 30 remaining)", |b| {
     b.iter(|| {
-      let mut smol = shared::SmolBytes::from(data.clone());
+      let mut smol = shared::Bytes::from(data.clone());
       smol.advance(70);
       // Still heap-allocated, should be as fast as bytes::Bytes
       let cloned = black_box(smol.clone());
@@ -172,9 +172,9 @@ fn clone_after_advance_benchmarks(c: &mut Criterion) {
     });
   });
 
-  group.bench_function("SmolBytes Compact (70 advanced, 30 remaining)", |b| {
+  group.bench_function("Bytes Compact (70 advanced, 30 remaining)", |b| {
     b.iter(|| {
-      let mut smol = compact::SmolBytes::from(data.clone());
+      let mut smol = compact::Bytes::from(data.clone());
       smol.advance(70);
       // Converted to inline, should be slower due to memcpy
       let cloned = black_box(smol.clone());
@@ -205,8 +205,8 @@ fn sequential_clone_benchmarks(c: &mut Criterion) {
       });
     });
 
-    group.bench_function(format!("SmolBytes (Shared)/{}", name), |b| {
-      let smol = shared::SmolBytes::from(data.clone());
+    group.bench_function(format!("Bytes (Shared)/{}", name), |b| {
+      let smol = shared::Bytes::from(data.clone());
       b.iter(|| {
         let mut clones = Vec::with_capacity(10);
         for _ in 0..10 {
@@ -216,8 +216,8 @@ fn sequential_clone_benchmarks(c: &mut Criterion) {
       });
     });
 
-    group.bench_function(format!("SmolBytes (Compact)/{}", name), |b| {
-      let smol = compact::SmolBytes::from(data.clone());
+    group.bench_function(format!("Bytes (Compact)/{}", name), |b| {
+      let smol = compact::Bytes::from(data.clone());
       b.iter(|| {
         let mut clones = Vec::with_capacity(10);
         for _ in 0..10 {

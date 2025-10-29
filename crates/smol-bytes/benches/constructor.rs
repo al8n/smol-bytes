@@ -32,18 +32,18 @@ fn constructor_from_vec_benchmarks(c: &mut Criterion) {
       });
     });
 
-    // Benchmark SmolBytes (Shared) from Vec
-    group.bench_function("SmolBytes (Shared)", |b| {
+    // Benchmark Bytes (Shared) from Vec
+    group.bench_function("Bytes (Shared)", |b| {
       b.iter(|| {
-        let smol = shared::SmolBytes::from(black_box(data.clone()));
+        let smol = shared::Bytes::from(black_box(data.clone()));
         black_box(smol);
       });
     });
 
-    // Benchmark SmolBytes (Compact) from Vec
-    group.bench_function("SmolBytes (Compact)", |b| {
+    // Benchmark Bytes (Compact) from Vec
+    group.bench_function("Bytes (Compact)", |b| {
       b.iter(|| {
-        let smol = compact::SmolBytes::from(black_box(data.clone()));
+        let smol = compact::Bytes::from(black_box(data.clone()));
         black_box(smol);
       });
     });
@@ -80,18 +80,18 @@ fn constructor_from_slice_benchmarks(c: &mut Criterion) {
       });
     });
 
-    // Benchmark SmolBytes (Shared) from slice
-    group.bench_function("SmolBytes (Shared)", |b| {
+    // Benchmark Bytes (Shared) from slice
+    group.bench_function("Bytes (Shared)", |b| {
       b.iter(|| {
-        let smol = shared::SmolBytes::from(black_box(data.as_slice()));
+        let smol = shared::Bytes::from(black_box(data.as_slice()));
         black_box(smol);
       });
     });
 
-    // Benchmark SmolBytes (Compact) from slice
-    group.bench_function("SmolBytes (Compact)", |b| {
+    // Benchmark Bytes (Compact) from slice
+    group.bench_function("Bytes (Compact)", |b| {
       b.iter(|| {
-        let smol = compact::SmolBytes::from(black_box(data.as_slice()));
+        let smol = compact::Bytes::from(black_box(data.as_slice()));
         black_box(smol);
       });
     });
@@ -123,22 +123,22 @@ fn constructor_inline_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)/from_vec", size),
+      BenchmarkId::new("Bytes (Shared)/from_vec", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = shared::SmolBytes::from(black_box(data.clone()));
+          let smol = shared::Bytes::from(black_box(data.clone()));
           black_box(smol);
         });
       },
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)/from_vec", size),
+      BenchmarkId::new("Bytes (Compact)/from_vec", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = compact::SmolBytes::from(black_box(data.clone()));
+          let smol = compact::Bytes::from(black_box(data.clone()));
           black_box(smol);
         });
       },
@@ -157,22 +157,22 @@ fn constructor_inline_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)/from_slice", size),
+      BenchmarkId::new("Bytes (Shared)/from_slice", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = shared::SmolBytes::from(black_box(data.as_slice()));
+          let smol = shared::Bytes::from(black_box(data.as_slice()));
           black_box(smol);
         });
       },
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)/from_slice", size),
+      BenchmarkId::new("Bytes (Compact)/from_slice", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = compact::SmolBytes::from(black_box(data.as_slice()));
+          let smol = compact::Bytes::from(black_box(data.as_slice()));
           black_box(smol);
         });
       },
@@ -205,22 +205,22 @@ fn constructor_heap_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)/from_vec", size),
+      BenchmarkId::new("Bytes (Shared)/from_vec", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = shared::SmolBytes::from(black_box(data.clone()));
+          let smol = shared::Bytes::from(black_box(data.clone()));
           black_box(smol);
         });
       },
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)/from_vec", size),
+      BenchmarkId::new("Bytes (Compact)/from_vec", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = compact::SmolBytes::from(black_box(data.clone()));
+          let smol = compact::Bytes::from(black_box(data.clone()));
           black_box(smol);
         });
       },
@@ -239,22 +239,22 @@ fn constructor_heap_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)/from_slice", size),
+      BenchmarkId::new("Bytes (Shared)/from_slice", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = shared::SmolBytes::from(black_box(data.as_slice()));
+          let smol = shared::Bytes::from(black_box(data.as_slice()));
           black_box(smol);
         });
       },
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)/from_slice", size),
+      BenchmarkId::new("Bytes (Compact)/from_slice", size),
       &data,
       |b, data| {
         b.iter(|| {
-          let smol = compact::SmolBytes::from(black_box(data.as_slice()));
+          let smol = compact::Bytes::from(black_box(data.as_slice()));
           black_box(smol);
         });
       },
@@ -287,16 +287,16 @@ fn constructor_from_static_benchmarks(c: &mut Criterion) {
       });
     });
 
-    group.bench_function(format!("SmolBytes (Shared)/{}", name), |b| {
+    group.bench_function(format!("Bytes (Shared)/{}", name), |b| {
       b.iter(|| {
-        let smol = shared::SmolBytes::from_static(black_box(data));
+        let smol = shared::Bytes::from_static(black_box(data));
         black_box(smol);
       });
     });
 
-    group.bench_function(format!("SmolBytes (Compact)/{}", name), |b| {
+    group.bench_function(format!("Bytes (Compact)/{}", name), |b| {
       b.iter(|| {
-        let smol = compact::SmolBytes::from_static(black_box(data));
+        let smol = compact::Bytes::from_static(black_box(data));
         black_box(smol);
       });
     });
@@ -316,16 +316,16 @@ fn constructor_empty_benchmarks(c: &mut Criterion) {
     });
   });
 
-  group.bench_function("SmolBytes (Shared)::new", |b| {
+  group.bench_function("Bytes (Shared)::new", |b| {
     b.iter(|| {
-      let smol = shared::SmolBytes::new();
+      let smol = shared::Bytes::new();
       black_box(smol);
     });
   });
 
-  group.bench_function("SmolBytes (Compact)::new", |b| {
+  group.bench_function("Bytes (Compact)::new", |b| {
     b.iter(|| {
-      let smol = compact::SmolBytes::new();
+      let smol = compact::Bytes::new();
       black_box(smol);
     });
   });

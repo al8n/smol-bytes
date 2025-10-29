@@ -46,8 +46,8 @@ fn slice_benchmarks(c: &mut Criterion) {
 
   for case in &cases {
     let bytes_template = bytes::Bytes::from(vec![0u8; case.total]);
-    let shared_template = shared::SmolBytes::from(vec![0u8; case.total]);
-    let compact_template = compact::SmolBytes::from(vec![0u8; case.total]);
+    let shared_template = shared::Bytes::from(vec![0u8; case.total]);
+    let compact_template = compact::Bytes::from(vec![0u8; case.total]);
 
     group.bench_with_input(
       BenchmarkId::new("bytes::Bytes", case.label),
@@ -61,7 +61,7 @@ fn slice_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)", case.label),
+      BenchmarkId::new("Bytes (Shared)", case.label),
       &case.total,
       |b, _| {
         b.iter(|| {
@@ -72,7 +72,7 @@ fn slice_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)", case.label),
+      BenchmarkId::new("Bytes (Compact)", case.label),
       &case.total,
       |b, _| {
         b.iter(|| {

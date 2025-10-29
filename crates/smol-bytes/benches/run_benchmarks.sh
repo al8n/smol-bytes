@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Convenience script for running SmolBytes benchmarks
+# Convenience script for running Bytes benchmarks
 #
 
 set -e

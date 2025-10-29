@@ -1,6 +1,6 @@
 # smol-bytes
 
-`smol-bytes` provides `SmolBytes`, a small byte buffer that stores up to 39 bytes
+`smol-bytes` provides `Bytes`, a small byte buffer that stores up to 39 bytes
 inline and falls back to a [`bytes::Bytes`] allocation for larger data. Cloning
 inline values is a plain copy, while heap-backed buffers share the allocation.
 
@@ -20,13 +20,13 @@ smol-bytes = "0.1"
 ```
 
 ```rust
-use smol_bytes::SmolBytes;
+use smol_bytes::Bytes;
 
-let inline = SmolBytes::new(b"hello");
+let inline = Bytes::new(b"hello");
 assert_eq!(inline.as_slice(), b"hello");
 assert!(!inline.is_heap());
 
-let large = SmolBytes::new(vec![42u8; 128]);
+let large = Bytes::new(vec![42u8; 128]);
 assert!(large.is_heap());
 ```
 

@@ -62,8 +62,8 @@ mod serde;
 /// # Freezing
 ///
 /// Convert to an immutable buffer using:
-/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::SmolBytes`](crate::shared::SmolBytes)
-/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::SmolBytes`](crate::compact::SmolBytes)
+/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::Bytes`](crate::shared::Bytes)
+/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::Bytes`](crate::compact::Bytes)
 #[derive(Clone)]
 pub struct BytesMut(Repr);
 
@@ -567,7 +567,7 @@ impl BytesMut {
     }
   }
 
-  /// Converts `self` into an immutable [`shared::SmolBytes`](crate::shared::SmolBytes).
+  /// Converts `self` into an immutable [`shared::Bytes`](crate::shared::Bytes).
   ///
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion
@@ -591,11 +591,11 @@ impl BytesMut {
   /// assert_eq!(&b2[..], b"hello world");
   /// th.join().unwrap();
   /// ```
-  pub fn freeze_shared(self) -> crate::shared::SmolBytes {
+  pub fn freeze_shared(self) -> crate::shared::Bytes {
     self.freeze()
   }
 
-  /// Converts `self` into an immutable [`compact::SmolBytes`](crate::compact::SmolBytes).
+  /// Converts `self` into an immutable [`compact::Bytes`](crate::compact::Bytes).
   ///
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion
@@ -619,7 +619,7 @@ impl BytesMut {
   /// assert_eq!(&b2[..], b"hello world");
   /// th.join().unwrap();
   /// ```
-  pub fn freeze_compact(self) -> crate::compact::SmolBytes {
+  pub fn freeze_compact(self) -> crate::compact::Bytes {
     self.freeze()
   }
 

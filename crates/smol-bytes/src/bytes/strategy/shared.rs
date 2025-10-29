@@ -1,6 +1,6 @@
-//! The **Shared** strategy for `SmolBytes`.
+//! The **Shared** strategy for `Bytes`.
 //!
-//! This module provides the [`SmolBytes`] type alias configured with the [`Shared`] strategy,
+//! This module provides the [`Bytes`] type alias configured with the [`Shared`] strategy,
 //! which prioritizes **fast conversions** and **allocation sharing** with [`bytes::Bytes`].
 //!
 //! # Key Characteristics
@@ -14,7 +14,7 @@
 //!
 //! Choose this strategy when:
 //!
-//! - **Frequent `Bytes` conversions**: You often convert between `SmolBytes` and `bytes::Bytes`
+//! - **Frequent `Bytes` conversions**: You often convert between `Bytes` and `bytes::Bytes`
 //! - **Network protocols**: Building HTTP servers, WebSocket handlers, or other I/O-heavy applications
 //! - **Performance-critical paths**: Speed is more important than memory overhead
 //! - **Shared buffers**: You frequently clone buffers and want cheap reference counting
@@ -22,14 +22,14 @@
 //! # Basic Usage
 //!
 //! ```rust
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //!
 //! // Small data (≤62 bytes) is stored inline
-//! let small = SmolBytes::from_static(b"hello world");
+//! let small = Bytes::from_static(b"hello world");
 //! assert!(!small.is_heap());
 //!
 //! // Large data is heap-allocated
-//! let large = SmolBytes::from(vec![1u8; 100]);
+//! let large = Bytes::from(vec![1u8; 100]);
 //! assert!(large.is_heap());
 //!
 //! // Cheap clone (reference counting)
@@ -42,7 +42,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │  SmolBytes (64 bytes on stack)          │
+//! │  Bytes (64 bytes on stack)          │
 //! ├─────────────────────────────────────────┤
 //! │  Variant: Inline (≤62 bytes)            │
 //! │  ┌────────────────────────────────────┐ │
@@ -61,11 +61,11 @@
 //! ## Operations and Allocation Behavior
 //!
 //! ```rust
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //! use bytes::Buf;
 //!
 //! // Start with large heap allocation
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //! assert!(data.is_heap());
 //!
 //! // After advance, still heap-allocated (Shared strategy)
@@ -107,11 +107,11 @@
 //! ## Network Protocol Buffer
 //!
 //! ```rust
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //! use bytes::Buf;
 //!
 //! // Receive data from network
-//! let mut buffer = SmolBytes::from(vec![0u8; 1024]);
+//! let mut buffer = Bytes::from(vec![0u8; 1024]);
 //!
 //! // Process header (advance past it)
 //! buffer.advance(16);
@@ -127,9 +127,9 @@
 //! ## Parsing with Zero-Copy Slicing
 //!
 //! ```rust
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //!
-//! let data = SmolBytes::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+//! let data = Bytes::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 //!
 //! // Extract different segments
 //! let header = data.slice(0..2);
@@ -142,9 +142,9 @@
 //! ## Efficient Cloning
 //!
 //! ```rust
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //!
-//! let original = SmolBytes::from(vec![1u8; 100]);
+//! let original = Bytes::from(vec![1u8; 100]);
 //!
 //! // Cheap clones (just Arc reference count)
 //! let clone1 = original.clone();
@@ -175,7 +175,7 @@ use core::ops::{Bound, RangeBounds};
 /// capacity.
 ///
 /// This makes `Shared` ideal when:
-/// - You frequently convert between `SmolBytes` and `Bytes`
+/// - You frequently convert between `Bytes` and `Bytes`
 /// - You want to share heap allocations (cheap clones via reference counting)
 /// - Performance is more important than memory overhead
 ///
@@ -188,11 +188,11 @@ use core::ops::{Bound, RangeBounds};
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::shared::SmolBytes;
+/// use smol_bytes::shared::Bytes;
 /// use bytes::Buf;
 ///
 /// // Create heap-allocated bytes (>62 bytes)
-/// let mut data = SmolBytes::from(vec![1u8; 100]);
+/// let mut data = Bytes::from(vec![1u8; 100]);
 /// assert!(data.is_heap());
 ///
 /// // Advance past most data
@@ -218,7 +218,7 @@ use core::ops::{Bound, RangeBounds};
 pub struct Shared(());
 
 impl RawBytes<Shared> {
-  /// Create [`SmolBytes`] with a buffer whose lifetime is controlled
+  /// Create [`Bytes`] with a buffer whose lifetime is controlled
   /// via an explicit owner.
   ///
   /// A common use case is to zero-copy construct from mapped memory.
@@ -247,23 +247,23 @@ impl RawBytes<Shared> {
   /// #         }
   /// #     }
   /// # }
-  /// use smol_bytes::shared::SmolBytes;
+  /// use smol_bytes::shared::Bytes;
   /// use memmap2::Mmap;
   ///
   /// # fn main() -> Result<(), ()> {
   /// let file = File::open("upload_bundle.tar.gz")?;
   /// let mmap = unsafe { Mmap::map(&file) }?;
-  /// let b = SmolBytes::from_owner(mmap);
+  /// let b = Bytes::from_owner(mmap);
   /// # Ok(())
   /// # }
   /// ```
   ///
-  /// The `owner` will be transferred to the constructed [`SmolBytes`] object, which
+  /// The `owner` will be transferred to the constructed [`Bytes`] object, which
   /// will ensure it is dropped once all remaining clones of the constructed
   /// object are dropped. The owner will then be responsible for dropping the
   /// specified region of memory as part of its [Drop] implementation.
   ///
-  /// Note that converting [`SmolBytes`] constructed from an owner into a [`BytesMut`]
+  /// Note that converting [`Bytes`] constructed from an owner into a [`BytesMut`]
   /// will always create a deep copy of the buffer into newly allocated memory.
   pub fn from_owner<T>(owner: T) -> Self
   where
@@ -418,22 +418,22 @@ impl Strategy for RawBytes<Shared> {
 ///
 /// # When to use
 ///
-/// Use `SmolBytes` (with `Shared` strategy) when:
+/// Use `Bytes` (with `Shared` strategy) when:
 /// - You frequently convert to/from `bytes::Bytes`
 /// - You want fast, zero-copy operations
 /// - Memory overhead is acceptable for performance gains
 ///
-/// For memory-constrained applications, consider [`compact::SmolBytes`](super::compact::SmolBytes) instead.
+/// For memory-constrained applications, consider [`compact::Bytes`](super::compact::Bytes) instead.
 ///
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::shared::SmolBytes;
+/// use smol_bytes::shared::Bytes;
 ///
-/// let data = SmolBytes::from_static(b"hello world");
+/// let data = Bytes::from_static(b"hello world");
 /// assert_eq!(data.as_slice(), b"hello world");
 ///
 /// // Efficient conversion to Bytes
 /// let bytes: bytes::Bytes = data.into();
 /// ```
-pub type SmolBytes = RawBytes<Shared>;
+pub type Bytes = RawBytes<Shared>;

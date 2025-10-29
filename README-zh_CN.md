@@ -1,6 +1,6 @@
 # smol-bytes
 
-`smol-bytes` 提供 `SmolBytes` 类型，它能够将最多 39 字节的数据存储在栈上，
+`smol-bytes` 提供 `Bytes` 类型，它能够将最多 39 字节的数据存储在栈上，
 超出部分则使用 [`bytes::Bytes`] 自动共享堆内存。对内联数据的克隆是简单的拷贝，
 对堆数据的克隆则是引用计数递增。
 
@@ -18,13 +18,13 @@ smol-bytes = "0.1"
 ```
 
 ```rust
-use smol_bytes::SmolBytes;
+use smol_bytes::Bytes;
 
-let inline = SmolBytes::new(b"hello");
+let inline = Bytes::new(b"hello");
 assert_eq!(inline.as_slice(), b"hello");
 assert!(!inline.is_heap());
 
-let large = SmolBytes::new(vec![42u8; 128]);
+let large = Bytes::new(vec![42u8; 128]);
 assert!(large.is_heap());
 ```
 

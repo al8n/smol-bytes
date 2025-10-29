@@ -14,8 +14,8 @@ fn copy_to_bytes_benchmarks(c: &mut Criterion) {
 
   for (label, size, chunk) in cases {
     let bytes_template = bytes::Bytes::from(vec![0u8; size]);
-    let shared_template = shared::SmolBytes::from(vec![0u8; size]);
-    let compact_template = compact::SmolBytes::from(vec![0u8; size]);
+    let shared_template = shared::Bytes::from(vec![0u8; size]);
+    let compact_template = compact::Bytes::from(vec![0u8; size]);
 
     group.bench_with_input(BenchmarkId::new("bytes::Bytes", label), &size, |b, _| {
       b.iter_batched(
@@ -30,7 +30,7 @@ fn copy_to_bytes_benchmarks(c: &mut Criterion) {
     });
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Shared)", label),
+      BenchmarkId::new("Bytes (Shared)", label),
       &size,
       |b, _| {
         b.iter_batched(
@@ -46,7 +46,7 @@ fn copy_to_bytes_benchmarks(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("SmolBytes (Compact)", label),
+      BenchmarkId::new("Bytes (Compact)", label),
       &size,
       |b, _| {
         b.iter_batched(

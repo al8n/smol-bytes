@@ -1,15 +1,15 @@
 //! A compact, clone-efficient byte buffer with multiple optimization strategies.
 //!
-//! - [`shared::SmolBytes`] - Preserves heap allocations for fast [`bytes::Bytes`](bytes::Bytes) interop
-//! - [`compact::SmolBytes`] - Aggressively inlines to minimize memory usage
+//! - [`shared::Bytes`] - Preserves heap allocations for fast [`bytes::Bytes`](bytes::Bytes) interop
+//! - [`compact::Bytes`] - Aggressively inlines to minimize memory usage
 //!
 //! # Quick Start
 //!
 //! ```rust
 //! // Use the Shared strategy (fast conversions, preserves heap)
-//! use smol_bytes::shared::SmolBytes;
+//! use smol_bytes::shared::Bytes;
 //!
-//! let data = SmolBytes::from_static(b"hello world");
+//! let data = Bytes::from_static(b"hello world");
 //! assert_eq!(data.as_slice(), b"hello world");
 //! ```
 //!
@@ -22,9 +22,9 @@
 //! - **Trade-off**: May use more memory
 //!
 //! ```rust
-//! use smol_bytes::{shared::SmolBytes, Buf};
+//! use smol_bytes::{shared::Bytes, Buf};
 //!
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //! data.advance(70); // Still heap-allocated for fast Bytes conversion
 //! ```
 //!
@@ -35,9 +35,9 @@
 //! - **Trade-off**: May copy data when converting to `Bytes`
 //!
 //! ```rust
-//! use smol_bytes::{compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::Bytes, Buf};
 //!
-//! let mut data = SmolBytes::from(vec![1u8; 100]);
+//! let mut data = Bytes::from(vec![1u8; 100]);
 //! data.advance(70); // Automatically converted to inline!
 //! assert!(!data.is_heap());
 //! ```
