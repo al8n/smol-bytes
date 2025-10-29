@@ -426,6 +426,93 @@ impl Buffer {
     self.cur = InlineSize::_V0;
   }
 
+  /// Splits the buffer into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[0, at)`, and the returned `Buffer`
+  /// contains elements `[at, len)`.
+  ///
+  /// This operation copies the tail into a new `Buffer`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut a = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let b = a.split_off(5);
+  /// assert_eq!(a.as_slice(), b"hello");
+  /// assert_eq!(b.as_slice(), b" world");
+  /// ```
+  ///
+  /// ## Panics
+  ///
+  /// Panics if `at > len`.
+  #[must_use = "consider Buffer::truncate if you don't need the other half"]
+  pub fn split_off(&mut self, at: usize) -> Self {
+    let len = self.remaining();
+    assert!(at <= len, "split_off out of bounds: {} > {}", at, len);
+
+    // Copy tail [at..len] into new buffer
+    let tail_len = len - at;
+    let tail = unsafe {
+      let mut new_buf = Self::new();
+      if tail_len > 0 {
+        let src = self.as_slice().as_ptr().add(at);
+        copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, tail_len);
+        new_buf.len = InlineSize::from_u8(tail_len as u8);
+      }
+      new_buf
+    };
+
+    // Truncate self to [0..at]
+    self.truncate(at);
+
+    tail
+  }
+
+  /// Splits the buffer into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[at, len)`, and the returned `Buffer`
+  /// contains elements `[0, at)`.
+  ///
+  /// This operation copies the head into a new `Buffer`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut a = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let b = a.split_to(5);
+  /// assert_eq!(b.as_slice(), b"hello");
+  /// assert_eq!(a.as_slice(), b" world");
+  /// ```
+  ///
+  /// ## Panics
+  ///
+  /// Panics if `at > len`.
+  #[must_use = "consider Buffer::advance if you don't need the other half"]
+  pub fn split_to(&mut self, at: usize) -> Self {
+    let len = self.remaining();
+    assert!(at <= len, "split_to out of bounds: {} > {}", at, len);
+
+    // Copy head [0..at] into new buffer
+    let head = unsafe {
+      let mut new_buf = Self::new();
+      if at > 0 {
+        let src = self.as_slice().as_ptr();
+        copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, at);
+        new_buf.len = InlineSize::from_u8(at as u8);
+      }
+      new_buf
+    };
+
+    // Advance self to skip [0..at]
+    self.advance(at);
+
+    head
+  }
+
   /// Clears the buffer, removing all data. Existing capacity is preserved.
   ///
   /// ## Example

@@ -168,9 +168,15 @@ fn split_off() {
   assert_eq!(world, &b"world"[..]);
 
   let mut hello = BytesMut::from(&b"helloworld"[..]);
-  let world = hello.split_off(5);
-  assert!(world.is_none());
+  match hello.split_off(5) {
+    Ok(_) => panic!("Expected Err for inline buffer"),
+    Err(world) => {
+      assert_eq!(hello, &b"hello"[..]);
+      assert_eq!(world, &b"world"[..]);
+    }
+  }
 
+  let mut hello = BytesMut::from(&b"helloworld"[..]);
   hello.make_heap();
   let world = hello.split_off(5).unwrap();
   assert_eq!(hello, &b"hello"[..]);
@@ -219,18 +225,23 @@ fn split_off_to_loop() {
     }
     {
       let mut bytes = BytesMut::from(&s[..]);
-      loop {
-        let Some(off) = bytes.split_off(i) else {
-          assert!(bytes.is_inline());
-          bytes.make_heap();
-          continue;
-        };
-        assert_eq!(i, bytes.len());
-        let mut sum = Vec::new();
-        sum.extend(&bytes);
-        sum.extend(&off);
-        assert_eq!(&s[..], &sum[..]);
-        break;
+      match bytes.split_off(i) {
+        Ok(off) => {
+          // Heap buffer - got BytesMut (can grow)
+          assert_eq!(i, bytes.len());
+          let mut sum = Vec::new();
+          sum.extend(&bytes);
+          sum.extend(&off);
+          assert_eq!(&s[..], &sum[..]);
+        }
+        Err(off) => {
+          // Inline buffer - got Buffer (max 62 bytes), bytes was truncated
+          assert_eq!(i, bytes.len());
+          let mut sum = Vec::new();
+          sum.extend(&bytes);
+          sum.extend(&off);
+          assert_eq!(&s[..], &sum[..]);
+        }
       }
     }
     {
@@ -244,18 +255,23 @@ fn split_off_to_loop() {
     }
     {
       let mut bytes = BytesMut::from(&s[..]);
-      loop {
-        let Some(off) = bytes.split_to(i) else {
-          assert!(bytes.is_inline());
-          bytes.make_heap();
-          continue;
-        };
-        assert_eq!(i, off.len());
-        let mut sum = Vec::new();
-        sum.extend(&off);
-        sum.extend(&bytes);
-        assert_eq!(&s[..], &sum[..]);
-        break;
+      match bytes.split_to(i) {
+        Ok(off) => {
+          // Heap buffer - got BytesMut (can grow)
+          assert_eq!(i, off.len());
+          let mut sum = Vec::new();
+          sum.extend(&off);
+          sum.extend(&bytes);
+          assert_eq!(&s[..], &sum[..]);
+        }
+        Err(off) => {
+          // Inline buffer - got Buffer (max 62 bytes), bytes was advanced
+          assert_eq!(i, off.len());
+          let mut sum = Vec::new();
+          sum.extend(&off);
+          sum.extend(&bytes);
+          assert_eq!(&s[..], &sum[..]);
+        }
       }
     }
   }
@@ -357,7 +373,6 @@ fn truncate() {
 fn freeze_clone_shared() {
   let s = &b"abcdefgh"[..];
   let mut b = BytesMut::from(s);
-  assert!(b.split().is_none());
   b.make_heap();
   let b = b.split().unwrap().freeze_compact();
   assert_eq!(b, s);
@@ -844,6 +859,8 @@ fn bytes_mut_unsplit_empty_self() {
   let mut other = BytesMut::with_capacity(64);
   other.extend_from_slice(b"aaabbbcccddd");
 
+  buf.make_heap();
+  other.make_heap();
   buf.unsplit(other);
   assert_eq!(b"aaabbbcccddd", &buf[..]);
 }

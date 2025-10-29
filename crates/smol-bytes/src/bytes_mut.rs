@@ -33,16 +33,16 @@ mod serde;
 /// - **Heap**: Buffers >62 bytes are automatically promoted to heap allocation
 /// - Once promoted to heap, the buffer stays on the heap (no automatic demotion)
 ///
-/// # Limitations
+/// # Split Operations
 ///
-/// Some operations are only available for heap-allocated buffers:
-/// - [`split_off`](Self::split_off): Returns `None` for inline buffers
-/// - [`split_to`](Self::split_to): Returns `None` for inline buffers
-/// - [`split`](Self::split): Returns `None` for inline buffers
-/// - [`unsplit`](Self::unsplit): Returns the other buffer unchanged if either is inline
+/// Split operations have different behavior based on storage type:
+/// - [`split_off`](Self::split_off): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
+/// - [`split_to`](Self::split_to): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
+/// - [`split`](Self::split): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
+/// - [`unsplit`](Self::unsplit): Only works when both buffers are heap-allocated
 ///
-/// Use [`make_heap`](Self::make_heap) to explicitly promote an inline buffer to heap storage
-/// if you need these operations.
+/// `Buffer` is a mutable inline-only buffer (max 62 bytes), while `BytesMut` can grow.
+/// Use [`make_heap`](Self::make_heap) to explicitly promote an inline buffer to heap storage.
 ///
 /// # Examples
 ///
@@ -404,57 +404,66 @@ impl BytesMut {
     }
   }
 
-  /// Splits the bytes into two at the given index if the buffer is heap allocated.
-  /// If the buffer is inline, this function will do nothing and return `None`.
+  /// Splits the bytes into two at the given index.
   ///
-  /// Afterwards `self` contains elements `[0, at)`, and the returned
-  /// `BytesMut` contains elements `[at, capacity)`. It's guaranteed that the
-  /// memory does not move, that is, the address of `self` does not change,
-  /// and the address of the returned slice is `at` bytes after that.
+  /// Afterwards `self` contains elements `[0, at)`, and the returned value
+  /// contains elements `[at, len)`.
   ///
-  /// This is an `O(1)` operation that just increases the reference count
-  /// and sets a few indices.
+  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
+  /// reference count and returns `Ok(BytesMut)`.
+  ///
+  /// For inline buffers, the tail is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   ///
   /// # Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
   ///
+  /// // Inline buffer
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// let b = a.split_off(5);
-  /// assert!(b.is_none());
+  /// match a.split_off(5) {
+  ///     Ok(mut b) => {
+  ///         // Heap: BytesMut can grow beyond 62 bytes
+  ///         b[0] = b'!';
+  ///         assert_eq!(&b[..], b"!world");
+  ///     }
+  ///     Err(mut b) => {
+  ///         // Inline: Buffer is limited to 62 bytes but still mutable
+  ///         assert_eq!(&b[..], b" world");
+  ///     }
+  /// }
+  /// assert_eq!(&a[..], b"hello");
   ///
-  /// a.make_heap();
-  ///
+  /// // Heap buffer
+  /// let mut a = BytesMut::with_capacity(64);
+  /// a.extend_from_slice(b"hello world");
   /// let mut b = a.split_off(5).unwrap();
-  ///
   /// a[0] = b'j';
   /// b[0] = b'!';
-  ///
   /// assert_eq!(&a[..], b"jello");
   /// assert_eq!(&b[..], b"!world");
   /// ```
   ///
   /// # Panics
   ///
-  /// Panics if `at > capacity`.
+  /// Panics if `at > len`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
-  pub fn split_off(&mut self, at: usize) -> Option<Self> {
+  pub fn split_off(&mut self, at: usize) -> Result<Self, Buffer> {
     match &mut self.0 {
-      Repr::Inline(_) => None,
-      Repr::Heap(b) => Some(Self(Repr::Heap(b.split_off(at)))),
+      Repr::Inline(b) => Err(b.split_off(at)),
+      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_off(at)))),
     }
   }
 
-  /// Removes the bytes from the current view if the buffer is heap allocated, returning them in a new
-  /// `BytesMut` handle if the buffer is heap allocated. Otherwise, it returns `None`.
+  /// Removes the bytes from the current view, returning them in a new buffer.
   ///
   /// Afterwards, `self` will be empty, but will retain any additional
   /// capacity that it had before the operation. This is identical to
   /// `self.split_to(self.len())`.
   ///
-  /// This is an `O(1)` operation that just increases the reference count and
-  /// sets a few indices.
+  /// For heap buffers, this is an `O(1)` operation.
+  /// For inline buffers, the data is copied into a `Buffer`.
   ///
   /// # Examples
   ///
@@ -463,46 +472,53 @@ impl BytesMut {
   ///
   /// let mut buf = BytesMut::with_capacity(1024);
   /// buf.put(&b"hello world"[..]);
-  ///
   /// let other = buf.split().unwrap();
-  ///
   /// assert!(buf.is_empty());
-  /// assert_eq!(1013, buf.capacity());
-  ///
   /// assert_eq!(other, b"hello world"[..]);
   /// ```
   #[must_use = "consider BytesMut::clear if you don't need the other half"]
-  pub fn split(&mut self) -> Option<Self> {
+  pub fn split(&mut self) -> Result<Self, Buffer> {
     let len = self.len();
     self.split_to(len)
   }
 
   /// Splits the buffer into two at the given index.
   ///
-  /// Afterwards `self` contains elements `[at, len)`, and the returned `BytesMut`
+  /// Afterwards `self` contains elements `[at, len)`, and the returned value
   /// contains elements `[0, at)`.
   ///
-  /// This is an `O(1)` operation that just increases the reference count and
-  /// sets a few indices.
+  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
+  /// reference count and returns `Ok(BytesMut)`.
+  ///
+  /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   ///
   /// # Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
   ///
+  /// // Inline buffer
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// let mut b = a.split_to(5);
-  /// // If the buffer is inline, split_to returns None
-  /// assert!(b.is_none());
+  /// match a.split_to(5) {
+  ///     Ok(mut b) => {
+  ///         // Heap: BytesMut can grow beyond 62 bytes
+  ///         b[0] = b'j';
+  ///         assert_eq!(&b[..], b"jello");
+  ///     }
+  ///     Err(b) => {
+  ///         // Inline: Buffer is limited to 62 bytes but still mutable
+  ///         assert_eq!(&b[..], b"hello");
+  ///     }
+  /// }
+  /// assert_eq!(&a[..], b" world");
   ///
-  /// a.make_heap();
-  ///
-  /// // In this case, the buffer is heap allocated
-  /// // thus split_to returns Some(BytesMut)
+  /// // Heap buffer
+  /// let mut a = BytesMut::with_capacity(64);
+  /// a.extend_from_slice(b"hello world");
   /// let mut b = a.split_to(5).unwrap();
-  /// a[0] = b'!';
+  /// a[0] = b'!';  // Replaces the space with '!'
   /// b[0] = b'j';
-  ///
   /// assert_eq!(&a[..], b"!world");
   /// assert_eq!(&b[..], b"jello");
   /// ```
@@ -511,10 +527,10 @@ impl BytesMut {
   ///
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::advance if you don't need the other half"]
-  pub fn split_to(&mut self, at: usize) -> Option<Self> {
+  pub fn split_to(&mut self, at: usize) -> Result<Self, Buffer> {
     match &mut self.0 {
-      Repr::Inline(_) => None,
-      Repr::Heap(b) => Some(Self(Repr::Heap(b.split_to(at)))),
+      Repr::Inline(b) => Err(b.split_to(at)),
+      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_to(at)))),
     }
   }
 
