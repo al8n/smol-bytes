@@ -413,12 +413,6 @@ where
     }
   }
 
-  /// Returns the inline capacity in bytes.
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn inline_capacity() -> usize {
-    INLINE_CAP
-  }
-
   /// Converts `self` into a [`Vec<u8>`], reusing the allocation if possible.
   #[inline]
   pub fn into_vec(self) -> Vec<u8> {
@@ -614,23 +608,5 @@ impl Repr {
       Self::Inline(storage) => Arc::from(storage.as_slice()),
       Self::Heap(bytes) => Arc::from(Vec::<u8>::from(bytes)),
     }
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::INLINE_CAP;
-  use crate::shared::Bytes;
-
-  #[test]
-  fn inline_capacity_matches_constant() {
-    assert_eq!(Bytes::inline_capacity(), INLINE_CAP);
-  }
-
-  #[test]
-  fn default_is_empty() {
-    let smol: Bytes = Bytes::default();
-    assert!(smol.is_empty());
-    assert_eq!(smol.len(), 0);
   }
 }

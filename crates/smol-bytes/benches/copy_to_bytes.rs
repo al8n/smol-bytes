@@ -29,37 +29,29 @@ fn copy_to_bytes_benchmarks(c: &mut Criterion) {
       );
     });
 
-    group.bench_with_input(
-      BenchmarkId::new("Bytes (Shared)", label),
-      &size,
-      |b, _| {
-        b.iter_batched(
-          || shared_template.clone(),
-          |mut data| {
-            let result = data.copy_to_bytes(chunk);
-            black_box(result);
-            black_box(&data);
-          },
-          BatchSize::SmallInput,
-        );
-      },
-    );
+    group.bench_with_input(BenchmarkId::new("Bytes (Shared)", label), &size, |b, _| {
+      b.iter_batched(
+        || shared_template.clone(),
+        |mut data| {
+          let result = data.copy_to_bytes(chunk);
+          black_box(result);
+          black_box(&data);
+        },
+        BatchSize::SmallInput,
+      );
+    });
 
-    group.bench_with_input(
-      BenchmarkId::new("Bytes (Compact)", label),
-      &size,
-      |b, _| {
-        b.iter_batched(
-          || compact_template.clone(),
-          |mut data| {
-            let result = data.copy_to_bytes(chunk);
-            black_box(result);
-            black_box(&data);
-          },
-          BatchSize::SmallInput,
-        );
-      },
-    );
+    group.bench_with_input(BenchmarkId::new("Bytes (Compact)", label), &size, |b, _| {
+      b.iter_batched(
+        || compact_template.clone(),
+        |mut data| {
+          let result = data.copy_to_bytes(chunk);
+          black_box(result);
+          black_box(&data);
+        },
+        BatchSize::SmallInput,
+      );
+    });
   }
 
   group.finish();
