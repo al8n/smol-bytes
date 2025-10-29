@@ -1,6 +1,6 @@
 use crate::strategy::Strategy;
 
-use std::{vec::Vec, boxed::Box, sync::Arc, rc::Rc};
+use std::{boxed::Box, rc::Rc, sync::Arc, vec::Vec};
 
 use super::*;
 
@@ -9,9 +9,7 @@ impl From<&[u8]> for SmolBytesMut {
   fn from(slice: &[u8]) -> Self {
     if slice.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      Self(Repr::Inline(unsafe {
-        InlineStorage::copy_from_slice(slice)
-      }))
+      Self(Repr::Inline(unsafe { Buffer::copy_from_slice(slice) }))
     } else {
       Self(Repr::Heap(BytesMut::from(slice)))
     }
@@ -82,9 +80,7 @@ impl From<Vec<u8>> for SmolBytesMut {
   fn from(vec: Vec<u8>) -> Self {
     if vec.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      Self(Repr::Inline(unsafe {
-        InlineStorage::copy_from_slice(&vec)
-      }))
+      Self(Repr::Inline(unsafe { Buffer::copy_from_slice(&vec) }))
     } else {
       Self(Repr::Heap(BytesMut::from(Bytes::from(vec))))
     }
@@ -103,9 +99,7 @@ impl From<Box<[u8]>> for SmolBytesMut {
   fn from(vec: Box<[u8]>) -> Self {
     if vec.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      Self(Repr::Inline(unsafe {
-        InlineStorage::copy_from_slice(&vec)
-      }))
+      Self(Repr::Inline(unsafe { Buffer::copy_from_slice(&vec) }))
     } else {
       Self(Repr::Heap(BytesMut::from(Bytes::from(vec))))
     }

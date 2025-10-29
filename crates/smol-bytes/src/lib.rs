@@ -38,8 +38,7 @@ extern crate std;
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use ::bytes::{Buf, BufMut};
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-pub use utils::INLINE_CAP;
+pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
@@ -55,5 +54,4 @@ mod bytes;
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes_mut;
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-mod utils;
+mod buffer;

@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use ::bytes::{BufMut, Bytes, BytesMut};
 use bytes::Buf;
 
-use crate::{bytes::RawSmolBytes, utils::InlineStorage, INLINE_CAP};
+use crate::{buffer::Buffer, bytes::RawSmolBytes, INLINE_CAP};
 
 mod cmp;
 mod fmt;
@@ -13,10 +13,10 @@ mod ops;
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
-#[cfg(feature = "quickcheck")]
-mod quickcheck;
 #[cfg(feature = "borsh")]
 mod borsh;
+#[cfg(feature = "quickcheck")]
+mod quickcheck;
 #[cfg(feature = "serde")]
 mod serde;
 
@@ -79,9 +79,7 @@ impl SmolBytesMut {
   pub(crate) fn from_bytes(bytes: Bytes) -> Self {
     if !bytes.is_unique() && bytes.len() <= INLINE_CAP {
       // SAFETY: bytes.len() is guaranteed to be less than or equal to INLINE_CAP
-      return Self(Repr::Inline(unsafe {
-        InlineStorage::copy_from_slice(&bytes)
-      }));
+      return Self(Repr::Inline(unsafe { Buffer::copy_from_slice(&bytes) }));
     }
 
     Self(Repr::Heap(bytes.into()))
@@ -93,7 +91,7 @@ impl SmolBytesMut {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) fn from_inline(bytes: InlineStorage) -> Self {
+  pub(crate) fn from_inline(bytes: Buffer) -> Self {
     Self(Repr::Inline(bytes))
   }
 }
@@ -122,7 +120,7 @@ impl SmolBytesMut {
   pub fn zeroed(len: usize) -> Self {
     if len <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      Self(Repr::Inline(unsafe { InlineStorage::zeroed(len) }))
+      Self(Repr::Inline(unsafe { Buffer::zeroed(len) }))
     } else {
       Self(Repr::Heap(BytesMut::zeroed(len)))
     }
@@ -140,7 +138,7 @@ impl SmolBytesMut {
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn new() -> Self {
-    Self(Repr::Inline(InlineStorage::new()))
+    Self(Repr::Inline(Buffer::new()))
   }
 
   /// Creates a new `SmolBytesMut` with the specified capacity.
@@ -151,7 +149,7 @@ impl SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn with_capacity(capacity: usize) -> Self {
     if capacity <= INLINE_CAP {
-      Self(Repr::Inline(InlineStorage::new()))
+      Self(Repr::Inline(Buffer::new()))
     } else {
       Self(Repr::Heap(BytesMut::with_capacity(capacity)))
     }
@@ -902,6 +900,6 @@ unsafe impl BufMut for SmolBytesMut {
 
 #[derive(Clone)]
 enum Repr {
-  Inline(InlineStorage),
+  Inline(Buffer),
   Heap(BytesMut),
 }

@@ -62,12 +62,11 @@ impl<'a> FromIterator<&'a u8> for SmolBytesMut {
   }
 }
 
-impl<'a> FromIterator<&'a [u8]> for SmolBytesMut
-{
+impl<'a> FromIterator<&'a [u8]> for SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
     let mut smol_bytes_mut = SmolBytesMut::new();
-    
+
     for slice in iter {
       smol_bytes_mut.extend_from_slice(slice);
     }

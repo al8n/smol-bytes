@@ -158,8 +158,8 @@
 
 use super::Strategy;
 use crate::{
+  buffer::{Buffer, INLINE_CAP},
   bytes::raw::{RawSmolBytes, Repr},
-  utils::{InlineStorage, INLINE_CAP},
 };
 use bytes::Buf;
 use core::mem;
@@ -305,7 +305,7 @@ impl Strategy for RawSmolBytes<Shared> {
     match &self.repr {
       Repr::Inline(storage) => {
         // SAFETY: bounds checked above, and we are slicing within inline storage.
-        Self::inline(unsafe { InlineStorage::copy_from_slice(&storage[begin..end]) })
+        Self::inline(unsafe { Buffer::copy_from_slice(&storage[begin..end]) })
       }
       Repr::Heap(bytes) => Self::heap(bytes.slice(begin..end)),
     }
@@ -327,7 +327,7 @@ impl Strategy for RawSmolBytes<Shared> {
     let ret = if at <= INLINE_CAP {
       let src = self.as_slice();
       // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { InlineStorage::copy_from_slice(&src[..at]) })
+      Self::inline(unsafe { Buffer::copy_from_slice(&src[..at]) })
     } else {
       // output cannot be inline, which means it must be heap allocated
       let mut bytes = self.repr.unwrap_heap_mut().clone();
@@ -364,7 +364,7 @@ impl Strategy for RawSmolBytes<Shared> {
     let ret = if output_size <= INLINE_CAP {
       let src = self.as_slice();
       // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { InlineStorage::copy_from_slice(&src[at..len]) })
+      Self::inline(unsafe { Buffer::copy_from_slice(&src[at..len]) })
     } else {
       // output cannot be inline, which means it must be heap allocated
       let mut bytes = self.repr.unwrap_heap_mut().clone();

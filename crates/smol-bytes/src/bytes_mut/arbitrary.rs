@@ -5,4 +5,3 @@ impl<'a> arbitrary::Arbitrary<'a> for SmolBytesMut {
     <&[u8]>::arbitrary(u).map(Self::from)
   }
 }
-

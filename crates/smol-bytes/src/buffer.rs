@@ -1,0 +1,751 @@
+use core::{
+  borrow::Borrow,
+  mem::{transmute, MaybeUninit},
+  ptr::{copy_nonoverlapping, write_bytes},
+  slice::from_raw_parts_mut,
+};
+
+mod cmp;
+mod fmt;
+mod from;
+mod iter;
+mod ops;
+
+#[cfg(feature = "arbitrary")]
+mod arbitrary;
+#[cfg(feature = "borsh")]
+mod borsh;
+#[cfg(all(feature = "quickcheck", any(feature = "std", feature = "alloc")))]
+mod quickcheck;
+#[cfg(feature = "serde")]
+mod serde;
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use bytes::TryGetError;
+
+/// Number of bytes that can be stored inline.
+pub const INLINE_CAP: usize = InlineSize::MAX as usize;
+
+/// A type used internally to encode inline lengths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum InlineSize {
+  _V0 = 0,
+  _V1,
+  _V2,
+  _V3,
+  _V4,
+  _V5,
+  _V6,
+  _V7,
+  _V8,
+  _V9,
+  _V10,
+  _V11,
+  _V12,
+  _V13,
+  _V14,
+  _V15,
+  _V16,
+  _V17,
+  _V18,
+  _V19,
+  _V20,
+  _V21,
+  _V22,
+  _V23,
+  _V24,
+  _V25,
+  _V26,
+  _V27,
+  _V28,
+  _V29,
+  _V30,
+  _V31,
+  _V32,
+  _V33,
+  _V34,
+  _V35,
+  _V36,
+  _V37,
+  _V38,
+  _V39,
+  _V40,
+  _V41,
+  _V42,
+  _V43,
+  _V44,
+  _V45,
+  _V46,
+  _V47,
+  _V48,
+  _V49,
+  _V50,
+  _V51,
+  _V52,
+  _V53,
+  _V54,
+  _V55,
+  _V56,
+  _V57,
+  _V58,
+  _V59,
+  _V60,
+  _V61,
+  _V62,
+}
+
+impl core::ops::Sub for InlineSize {
+  type Output = Self;
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn sub(self, rhs: Self) -> Self::Output {
+    // Safety: subtraction result is guaranteed to be less than or equal to INLINE_CAP
+    unsafe { InlineSize::from_u8(self.to_u8() - rhs.to_u8()) }
+  }
+}
+
+impl InlineSize {
+  const MAX: u8 = InlineSize::_V62 as u8;
+
+  /// # Safety
+  ///
+  /// `value` must be less than or equal to [`INLINE_CAP`].
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) const unsafe fn from_u8(value: u8) -> Self {
+    debug_assert!(value <= InlineSize::MAX);
+    transmute::<u8, InlineSize>(value)
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) const fn to_u8(self) -> u8 {
+    self as u8
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) const fn to_usize(self) -> usize {
+    self as usize
+  }
+}
+
+/// A fixed-size buffer for inline storage.
+///
+/// This type can inline at most [`INLINE_CAP`] bytes.
+#[derive(Clone, Copy)]
+pub struct Buffer {
+  // The write cursor
+  len: InlineSize,
+  // The read cursor
+  cur: InlineSize,
+  buf: [MaybeUninit<u8>; INLINE_CAP],
+}
+
+impl Default for Buffer {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl Buffer {
+  /// Creates a new, empty `Buffer`.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let buf = Buffer::new();
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn new() -> Self {
+    Self {
+      len: InlineSize::_V0,
+      cur: InlineSize::_V0,
+      buf: [const { MaybeUninit::uninit() }; INLINE_CAP],
+    }
+  }
+
+  /// Creates a new `Buffer` with the specified length, filled with zeroes.
+  ///
+  /// # Safety
+  /// - `len` must be less than or equal to [`INLINE_CAP`].
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) const unsafe fn zeroed(len: usize) -> Self {
+    let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
+    core::ptr::write_bytes(storage.as_mut_ptr(), 0, len);
+    Self {
+      cur: InlineSize::_V0,
+      // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
+      len: unsafe { InlineSize::from_u8(len as u8) },
+      buf: storage,
+    }
+  }
+
+  /// Creates a new `Buffer` from the given array and length.
+  ///
+  /// # Safety
+  /// - `len` must be less than or equal to [`INLINE_CAP`].
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[allow(unused)]
+  pub(crate) const unsafe fn from_array(buf: [u8; INLINE_CAP], len: usize) -> Self {
+    Self {
+      cur: InlineSize::_V0,
+      // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
+      len: unsafe { InlineSize::from_u8(len as u8) },
+      // SAFETY: all bytes are initialized
+      buf: unsafe { transmute::<[u8; INLINE_CAP], [MaybeUninit<u8>; INLINE_CAP]>(buf) },
+    }
+  }
+
+  /// Creates a new `Buffer` by copying from the given slice.
+  ///
+  /// # Safety
+  /// - the length of `src` must be less than or equal to [`INLINE_CAP`].
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const unsafe fn copy_from_slice(src: &[u8]) -> Self {
+    let len = src.len();
+    let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
+
+    // SAFETY: caller guarantees that `len` is less than or equal to `INLINE_CAP`.
+    copy_nonoverlapping(src.as_ptr(), storage.as_mut_ptr() as _, len);
+
+    Self {
+      // SAFETY: caller guarantees that `len` is less than or equal to `INLINE_CAP`.
+      len: InlineSize::from_u8(len as u8),
+      cur: InlineSize::_V0,
+      buf: storage,
+    }
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub(crate) const fn remaining(&self) -> usize {
+    self.len.to_usize() - self.cur as usize
+  }
+
+  /// Returns the number of bytes contained in this `SmolBytesMut`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let bytes = Buffer::new();
+  /// assert_eq!(bytes.len(), 0);
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn len(&self) -> usize {
+    self.len.to_usize()
+  }
+
+  /// Returns `true` if the BytesMut has a length of `0`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::SmolBytesMut;
+  ///
+  /// let bytes = SmolBytesMut::new();
+  /// assert!(bytes.is_empty());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
+
+  /// Returns the number of bytes that can be written from the current
+  /// position until the end of the buffer is reached.
+  ///
+  /// This value is equal to the length of the slice returned
+  /// by `chunk_mut()`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut dst = Buffer::new();
+  /// let mut buf = &mut dst[..];
+  ///
+  /// let original_remaining = buf.remaining_mut();
+  /// buf.put(&b"hello"[..]);
+  ///
+  /// assert_eq!(original_remaining - 5, buf.remaining_mut());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn remaining_mut(&self) -> usize {
+    INLINE_CAP - (self.len.to_usize())
+  }
+
+  /// Sets the length of the buffer.
+  ///
+  /// This will explicitly set the size of the buffer without actually
+  /// modifying the data, so it is up to the caller to ensure that the data
+  /// has been initialized.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut b = Buffer::try_from(&b"hello world"[..]).unwrap();
+  ///
+  /// unsafe {
+  ///     b.set_len(5);
+  /// }
+  ///
+  /// assert_eq!(&b[..], b"hello");
+  ///
+  /// unsafe {
+  ///     b.set_len(11);
+  /// }
+  ///
+  /// assert_eq!(&b[..], b"hello world");
+  /// ```
+  #[allow(clippy::missing_safety_doc)]
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const unsafe fn set_len(&mut self, len: usize) {
+    debug_assert!(len <= INLINE_CAP, "set_len out of bounds");
+    self.len = unsafe { InlineSize::from_u8(len as u8) };
+  }
+
+  /// Advance the internal cursor of the `Buffer`
+  ///
+  /// The next call to `as_slice()` will return a slice starting `cnt` bytes
+  /// further into the underlying buffer.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::try_from(&b"hello world"[..]).unwrap();
+  ///
+  /// assert_eq!(buf.as_slice(), &b"hello world"[..]);
+  ///
+  /// buf.advance(6);
+  ///
+  /// assert_eq!(buf.as_slice(), &b"world"[..]);
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panics if `cnt > self.remaining()`.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn advance(&mut self, requested: usize) {
+    if requested == 0 {
+      return;
+    }
+
+    let available = (self.len - self.cur).to_usize();
+    if available < requested {
+      panic_advance(available, requested)
+    }
+    self.cur = unsafe { InlineSize::from_u8(self.cur.to_u8() + requested as u8) };
+  }
+
+  /// Advance the internal write cursor of the `Buffer`
+  ///
+  /// The next call to [`spare_capacity_mut`](Self::spare_capacity_mut) will return a slice starting `cnt` bytes
+  /// further into the underlying buffer.
+  ///
+  /// # Safety
+  ///
+  /// The caller must ensure that the next `cnt` bytes of `chunk` are
+  /// initialized.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::new();
+  ///
+  /// // Write some data
+  /// unsafe {
+  ///   let tmp = buf.spare_capacity_mut();
+  ///   core::ptr::copy(b"he".as_ptr(), tmp.as_mut_ptr(), 2);
+  ///   buf.advance_mut(2);
+  /// }
+  ///
+  /// // write more bytes
+  /// unsafe {
+  ///   let tmp = buf.spare_capacity_mut();
+  ///   core::ptr::copy(b"llo".as_ptr(), tmp.as_mut_ptr(), 3);
+  ///   buf.advance_mut(3);
+  /// }
+  ///
+  /// assert_eq!(5, buf.len());
+  /// assert_eq!(buf, b"hello");
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panic if `requested > self.remaining_mut()`.
+  pub unsafe fn advance_mut(&mut self, requested: usize) {
+    let available = self.remaining_mut();
+    if requested > available {
+      panic_advance(available, requested)
+    }
+
+    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + requested as u8) };
+  }
+
+  /// Shortens the buffer, keeping the first len bytes and dropping the rest.
+  ///
+  /// If len is greater than the buffer’s current length, this has no effect.
+  ///
+  /// Existing underlying capacity is preserved.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut bytes = Buffer::try_from(&b"hello world"[..]).unwrap();
+  ///
+  /// bytes.truncate(5);
+  /// assert_eq!(bytes.as_mut_slice(), b"hello");
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn truncate(&mut self, new_len: usize) {
+    if new_len == 0 {
+      return self.clear();
+    }
+
+    let remaining = self.remaining();
+    if new_len >= remaining {
+      return;
+    }
+
+    let cur = self.cur as usize;
+    self.buf.copy_within(cur..cur + new_len, 0);
+    self.len = unsafe { InlineSize::from_u8(new_len as u8) };
+    self.cur = InlineSize::_V0;
+  }
+
+  /// Clears the buffer, removing all data. Existing capacity is preserved.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut bytes = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// bytes.clear();
+  /// assert_eq!(bytes.len(), 0);
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn clear(&mut self) {
+    self.len = InlineSize::_V0;
+    self.cur = InlineSize::_V0;
+  }
+
+  /// Returns the remaining spare capacity of the buffer as a slice of [`MaybeUninit<u8>`].
+  ///
+  /// The returned slice can be used to fill the buffer with data (e.g. by reading from a file) before marking the data as initialized using the [`set_len`](Self::set_len) method.
+  ///
+  /// ## Example
+  ///
+  /// ```
+  /// use smol_bytes::{Buffer, INLINE_CAP};
+  ///
+  /// let mut buf = Buffer::new();
+  ///
+  /// // Fill in the first 3 elements.
+  /// let uninit = buf.spare_capacity_mut();
+  /// uninit[0].write(0);
+  /// uninit[1].write(1);
+  /// uninit[2].write(2);
+  ///
+  /// // Mark the first 3 bytes of the buffer as being initialized.
+  /// unsafe {
+  ///   buf.set_len(3);
+  /// }
+  ///
+  /// assert_eq!(buf.as_slice(), &[0, 1, 2]);
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+    let len = self.len.to_usize();
+    unsafe { from_raw_parts_mut(self.buf.as_mut_ptr().add(len), INLINE_CAP - len) }
+  }
+
+  /// Returns the initialized portion of the buffer as a slice.
+  ///
+  /// This will include all bytes from the start of the buffer up to the current length.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn as_slice(&self) -> &[u8] {
+    let ptr = self.buf.as_ptr() as *const u8;
+    let remaining = self.remaining();
+    unsafe { core::slice::from_raw_parts(ptr.add(self.cur.to_usize()), remaining) }
+  }
+
+  /// Returns the mutable initialized portion of the buffer as a mutable slice.
+  ///
+  /// This will include all bytes from the start of the buffer up to the current length.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn as_mut_slice(&mut self) -> &mut [u8] {
+    let ptr = self.buf.as_mut_ptr() as *mut u8;
+    let remaining = Self::remaining(self);
+    unsafe { core::slice::from_raw_parts_mut(ptr.add(self.cur.to_usize()), remaining) }
+  }
+
+  /// Transfer bytes into `self` from `src` and advance the cursor by the
+  /// number of bytes written.
+  ///
+  /// `self` must have enough remaining capacity to contain all of `src`.
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.put_slice(b"hello");
+  ///     assert_eq!(57, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!(b"hello\0", &dst);
+  /// ```
+  #[inline]
+  pub fn put_slice(&mut self, src: &[u8]) {
+    self
+      .try_put_slice(src)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+  }
+
+  /// Try to transfer bytes into `self` from `src` and advance the cursor by the
+  /// number of bytes written.
+  ///
+  /// `self` must have enough remaining capacity to contain all of `src`.
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.try_put_slice(b"hello").unwrap();
+  ///     assert_eq!(57, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!(b"hello\0", &dst);
+  /// ```
+  #[inline]
+  pub const fn try_put_slice(&mut self, src: &[u8]) -> Result<(), TryPutError> {
+    let available = self.remaining_mut();
+    let requested = src.len();
+
+    if requested > available {
+      return Err(TryPutError {
+        requested,
+        available,
+      });
+    }
+
+    let slen = self.len.to_usize();
+    unsafe {
+      copy_nonoverlapping(
+        src.as_ptr(),
+        self.buf.as_mut_ptr().add(slen) as _,
+        requested,
+      );
+    }
+    self.len = unsafe { InlineSize::from_u8(slen as u8 + requested as u8) };
+    Ok(())
+  }
+
+  /// Put `cnt` bytes `val` into `self`.
+  ///
+  /// Logically equivalent to calling `self.put_u8(val)` `cnt` times, but may work faster.
+  ///
+  /// `self` must have at least `cnt` remaining capacity.
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.put_bytes(b'a', 4);
+  ///     assert_eq!(2, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!(b"aaaa\0\0", &dst);
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panics if there is not enough remaining capacity in
+  /// `self`.
+  #[inline]
+  pub fn put_bytes(&mut self, val: u8, cnt: usize) {
+    self
+      .try_put_bytes(val, cnt)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+  }
+
+  /// Try to put `cnt` bytes `val` into `self`.
+  ///
+  /// Logically equivalent to calling `self.put_u8(val)` `cnt` times, but may work faster.
+  ///
+  /// `self` must have at least `cnt` remaining capacity.
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.try_put_bytes(b'a', 4).unwrap();
+  ///     assert_eq!(2, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!(b"aaaa\0\0", &dst);
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panics if there is not enough remaining capacity in
+  /// `self`.
+  #[inline]
+  pub const fn try_put_bytes(&mut self, val: u8, cnt: usize) -> Result<(), TryPutError> {
+    let available = self.remaining_mut();
+    if available < cnt {
+      return Err(TryPutError {
+        requested: cnt,
+        available,
+      });
+    }
+
+    // Safety: we have already checked that there is enough capacity.
+    unsafe {
+      write_bytes(self.buf.as_mut_ptr().add(self.len.to_usize()), val, cnt);
+    }
+    Ok(())
+  }
+}
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+const _: () = {
+  use bytes::{buf::UninitSlice, Buf, BufMut};
+
+  impl Buf for Buffer {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn remaining(&self) -> usize {
+      Self::remaining(self)
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn chunk(&self) -> &[u8] {
+      self.borrow()
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn advance(&mut self, cnt: usize) {
+      Self::advance(self, cnt);
+    }
+  }
+
+  #[cfg(any(feature = "alloc", feature = "std"))]
+  unsafe impl BufMut for Buffer {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn remaining_mut(&self) -> usize {
+      Self::remaining_mut(self)
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    unsafe fn advance_mut(&mut self, cnt: usize) {
+      Self::advance_mut(self, cnt);
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn chunk_mut(&mut self) -> &mut UninitSlice {
+      let len = self.len.to_usize();
+      if len >= INLINE_CAP {
+        return UninitSlice::new(&mut []);
+      }
+      UninitSlice::uninit(&mut self.buf[len..])
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn put_slice(&mut self, src: &[u8]) {
+      Self::put_slice(self, src);
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn put_bytes(&mut self, val: u8, requested: usize) {
+      Self::put_bytes(self, val, requested);
+    }
+  }
+};
+
+/// Error type for the `try_get_` methods of [`Buffer`].
+/// Indicates that there were not enough remaining
+/// bytes in the buffer while attempting
+/// to get a value from a [`Buffer`] with one
+/// of the `try_get_` methods.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+pub struct TryGetError {
+  /// The number of bytes necessary to get the value
+  pub requested: usize,
+
+  /// The number of bytes available in the buffer
+  pub available: usize,
+}
+
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+const _: () = {
+  impl core::fmt::Display for TryGetError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+      write!(
+        f,
+        "Not enough bytes remaining in buffer to read value (requested {} but only {} available)",
+        self.requested, self.available
+      )
+    }
+  }
+
+  impl core::error::Error for TryGetError {}
+};
+
+/// Error type for the `try_put_` methods of [`Buffer`].
+/// Indicates that there were not enough remaining
+/// capacity in the buffer while attempting
+/// to put a value to a [`Buffer`] with one
+/// of the `try_put_` methods.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TryPutError {
+  /// The number of bytes necessary to put the value
+  pub requested: usize,
+
+  /// The number of bytes available in the buffer
+  pub available: usize,
+}
+
+impl core::fmt::Display for TryPutError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    write!(
+      f,
+      "Not enough bytes remaining in buffer to write value (requested {} but only {} available)",
+      self.requested, self.available
+    )
+  }
+}
+
+impl core::error::Error for TryPutError {}
+
+#[cfg(feature = "std")]
+impl From<TryPutError> for std::io::Error {
+  fn from(value: TryPutError) -> Self {
+    std::io::Error::other(value)
+  }
+}
+
+/// Panic with a nice error message.
+#[cold]
+fn panic_advance(available: usize, requested: usize) -> ! {
+  panic!("advance out of bounds: the len is {available} but advancing by {requested}",);
+}

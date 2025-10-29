@@ -14,7 +14,6 @@ where
   }
 
   fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-    Box::new(<Vec<u8> as Arbitrary>::shrink(&self.to_vec())
-      .map(Self::from))
+    Box::new(<Vec<u8> as Arbitrary>::shrink(&self.to_vec()).map(Self::from))
   }
 }

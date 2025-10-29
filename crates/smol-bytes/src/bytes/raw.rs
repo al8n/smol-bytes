@@ -9,7 +9,7 @@ use bytes::{Buf, Bytes};
 use std::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use crate::{
-  utils::{InlineStorage, INLINE_CAP},
+  buffer::{Buffer, INLINE_CAP},
   SmolBytesMut,
 };
 
@@ -18,17 +18,17 @@ use super::strategy::Strategy;
 mod cmp;
 mod fmt;
 mod from;
-mod ops;
 mod iter;
+mod ops;
 
-#[cfg(feature = "borsh")]
-mod borsh;
-#[cfg(feature = "serde")]
-mod serde;
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
+#[cfg(feature = "borsh")]
+mod borsh;
 #[cfg(feature = "quickcheck")]
 mod quickcheck;
+#[cfg(feature = "serde")]
+mod serde;
 
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
@@ -54,7 +54,7 @@ where
   /// ```
   #[inline]
   pub const fn new() -> Self {
-    Self::inline(InlineStorage::new())
+    Self::inline(Buffer::new())
   }
 
   /// Creates an inline [`RawSmolBytes`] without allocating.
@@ -75,7 +75,7 @@ where
     assert!(blen <= INLINE_CAP);
 
     // SAFETY: We checked that blen <= INLINE_CAP
-    Self::inline(unsafe { InlineStorage::copy_from_slice(bytes) })
+    Self::inline(unsafe { Buffer::copy_from_slice(bytes) })
   }
 
   /// Creates a [`RawSmolBytes`] from a statically allocated byte slice.
@@ -237,7 +237,7 @@ where
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn inline(storage: InlineStorage) -> Self {
+  pub(crate) const fn inline(storage: Buffer) -> Self {
     Self::new_in(Repr::inline(storage))
   }
 
@@ -399,13 +399,13 @@ where
 
 #[derive(Clone, Debug)]
 pub(crate) enum Repr {
-  Inline(InlineStorage),
+  Inline(Buffer),
   Heap(Bytes),
 }
 
 impl Repr {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn inline(storage: InlineStorage) -> Self {
+  pub(crate) const fn inline(storage: Buffer) -> Self {
     Self::Inline(storage)
   }
 
@@ -449,9 +449,7 @@ impl Repr {
   const fn new_on_stack(bytes: &[u8]) -> Option<Self> {
     if bytes.len() <= INLINE_CAP {
       // SAFETY: we checked that bytes.len() <= INLINE_CAP.
-      Some(Self::Inline(unsafe {
-        InlineStorage::copy_from_slice(bytes)
-      }))
+      Some(Self::Inline(unsafe { Buffer::copy_from_slice(bytes) }))
     } else {
       None
     }
