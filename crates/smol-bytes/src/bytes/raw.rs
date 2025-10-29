@@ -33,12 +33,12 @@ mod serde;
 /// A compact, clone-efficient byte buffer.
 #[derive(Clone)]
 #[repr(transparent)]
-pub struct RawSmolBytes<S> {
+pub struct RawBytes<S> {
   pub(crate) repr: Repr,
   _strategy: PhantomData<S>,
 }
 
-impl<S> RawSmolBytes<S>
+impl<S> RawBytes<S>
 where
   Self: Strategy,
 {
@@ -49,7 +49,7 @@ where
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let empty: RawSmolBytes::new();
+  /// let empty: RawBytes::new();
   /// assert_eq!(&empty[..], b"");
   /// ```
   #[inline]
@@ -57,7 +57,7 @@ where
     Self::inline(Buffer::new())
   }
 
-  /// Creates an inline [`RawSmolBytes`] without allocating.
+  /// Creates an inline [`RawBytes`] without allocating.
   ///
   /// # Panics
   ///
@@ -66,7 +66,7 @@ where
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::new_inline(b"hello");
+  /// let b: RawBytes::new_inline(b"hello");
   /// assert_eq!(&b[..], b"hello");
   /// ```
   #[inline]
@@ -78,12 +78,12 @@ where
     Self::inline(unsafe { Buffer::copy_from_slice(bytes) })
   }
 
-  /// Creates a [`RawSmolBytes`] from a statically allocated byte slice.
+  /// Creates a [`RawBytes`] from a statically allocated byte slice.
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::from_static(b"hello");
+  /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(&b[..], b"hello");
   /// ```
   #[inline]
@@ -106,12 +106,12 @@ where
   /// ```
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let a: RawSmolBytes::from(&b"hello world"[..]);
+  /// let a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.slice(2..5);
   ///
   /// assert_eq!(&b[..], b"llo");
   ///
-  /// let a: RawSmolBytes::from(vec![1; 100]);
+  /// let a: RawBytes::from(vec![1; 100]);
   /// let b = a.slice(10..90);
   /// assert_eq!(b.len(), 80);
   /// assert_eq!(&b[..], &[1; 80]);
@@ -144,7 +144,7 @@ where
   /// ```
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let mut a: RawSmolBytes::from(&b"hello world"[..]);
+  /// let mut a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.split_off(5);
   ///
   /// assert_eq!(&a[..], b"hello");
@@ -154,7 +154,7 @@ where
   /// # Panics
   ///
   /// Panics if `at > len`.
-  #[must_use = "consider RawSmolBytes::truncate if you don't need the other half"]
+  #[must_use = "consider RawBytes::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Self {
     Strategy::split_off(self, at)
   }
@@ -172,7 +172,7 @@ where
   /// ```
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let mut a: RawSmolBytes::from(&b"hello world"[..]);
+  /// let mut a: RawBytes::from(&b"hello world"[..]);
   /// let b = a.split_to(5);
   ///
   /// assert_eq!(&a[..], b" world");
@@ -182,23 +182,23 @@ where
   /// # Panics
   ///
   /// Panics if `at > len`.
-  #[must_use = "consider RawSmolBytes::advance if you don't need the other half"]
+  #[must_use = "consider RawBytes::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Self {
     Strategy::split_to(self, at)
   }
 
-  /// Truncates this [`RawSmolBytes`] to the specified length.
+  /// Truncates this [`RawBytes`] to the specified length.
   ///
   /// ## Examples
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let mut b: RawSmolBytes::from_static(b"hello world");
+  /// let mut b: RawBytes::from_static(b"hello world");
   /// b.truncate(5);
   /// assert_eq!(&b[..], b"hello");
   ///
-  /// let mut b2: RawSmolBytes::from(vec![1u8; 100]);
+  /// let mut b2: RawBytes::from(vec![1u8; 100]);
   /// b2.truncate(10);
   /// assert_eq!(b2.len(), 10);
   /// ```
@@ -207,14 +207,14 @@ where
     Strategy::truncate(self, new_len);
   }
 
-  /// Clears the contents of this [`RawSmolBytes`].
+  /// Clears the contents of this [`RawBytes`].
   ///
   /// ## Examples
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let mut b: RawSmolBytes::from_static(b"hello");
+  /// let mut b: RawBytes::from_static(b"hello");
   /// b.clear();
   /// assert!(b.is_empty());
   /// ```
@@ -224,7 +224,7 @@ where
   }
 }
 
-impl<S> RawSmolBytes<S>
+impl<S> RawBytes<S>
 where
   Self: Strategy,
 {
@@ -255,10 +255,10 @@ where
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::from_static(b"hello");
+  /// let b: RawBytes::from_static(b"hello");
   /// assert!(!b.is_unique());
   ///
-  /// let b2: RawSmolBytes::from(vec![1; 100]);
+  /// let b2: RawBytes::from(vec![1; 100]);
   /// assert!(b2.is_unique());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -266,12 +266,12 @@ where
     self.repr.is_unique()
   }
 
-  /// Returns the length in bytes of this [`RawSmolBytes`].
+  /// Returns the length in bytes of this [`RawBytes`].
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::from_static(b"hello");
+  /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(b.len(), 5);
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -279,12 +279,12 @@ where
     self.repr.len()
   }
 
-  /// Returns `true` if this [`RawSmolBytes`] contains no bytes.
+  /// Returns `true` if this [`RawBytes`] contains no bytes.
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::new();
+  /// let b: RawBytes::new();
   /// assert!(b.is_empty());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -292,13 +292,13 @@ where
     self.repr.is_empty()
   }
 
-  /// Creates a [`RawSmolBytes`] from any byte slice, allocating if needed.
+  /// Creates a [`RawBytes`] from any byte slice, allocating if needed.
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
   /// let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-  /// let b: RawSmolBytes::copy_from_slice(&data);
+  /// let b: RawBytes::copy_from_slice(&data);
   /// assert_eq!(&b[..], &data[..]);
   /// ```
   #[inline]
@@ -306,12 +306,12 @@ where
     Self::new_in(Repr::new(bytes.as_ref()))
   }
 
-  /// Returns the byte slice underlying this [`RawSmolBytes`].
+  /// Returns the byte slice underlying this [`RawBytes`].
   ///
   /// ```rust
   /// use smol_bytes::shared::SmolBytes;
   ///
-  /// let b: RawSmolBytes::from_static(b"hello");
+  /// let b: RawBytes::from_static(b"hello");
   /// assert_eq!(b.as_slice(), b"hello");
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -319,7 +319,7 @@ where
     self.repr.as_slice()
   }
 
-  /// Returns `true` if this [`RawSmolBytes`] is backed by a heap allocation.
+  /// Returns `true` if this [`RawBytes`] is backed by a heap allocation.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn is_heap(&self) -> bool {
     matches!(self.repr, Repr::Heap(..))
@@ -450,7 +450,7 @@ where
   }
 }
 
-impl<S> Default for RawSmolBytes<S>
+impl<S> Default for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -460,7 +460,7 @@ where
   }
 }
 
-impl<S> Buf for RawSmolBytes<S>
+impl<S> Buf for RawBytes<S>
 where
   Self: Strategy,
 {

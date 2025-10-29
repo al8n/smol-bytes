@@ -1,6 +1,6 @@
 use super::*;
 
-impl<S> core::fmt::Debug for RawSmolBytes<S>
+impl<S> core::fmt::Debug for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -13,7 +13,7 @@ where
   }
 }
 
-impl<S> core::fmt::LowerHex for RawSmolBytes<S>
+impl<S> core::fmt::LowerHex for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -26,7 +26,7 @@ where
   }
 }
 
-impl<S> core::fmt::UpperHex for RawSmolBytes<S>
+impl<S> core::fmt::UpperHex for RawBytes<S>
 where
   Self: Strategy,
 {

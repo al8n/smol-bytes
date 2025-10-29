@@ -118,21 +118,21 @@ impl PartialOrd<BytesMut> for [u8] {
   }
 }
 
-// --- RawSmolBytes comparisons ----
+// --- RawBytes comparisons ----
 
-impl<S> PartialEq<RawSmolBytes<S>> for BytesMut
+impl<S> PartialEq<RawBytes<S>> for BytesMut
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &RawSmolBytes<S>) -> bool {
+  fn eq(&self, other: &RawBytes<S>) -> bool {
     self.as_ref() == other.as_ref()
   }
 }
 
-impl<S> PartialEq<BytesMut> for RawSmolBytes<S>
+impl<S> PartialEq<BytesMut> for RawBytes<S>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &BytesMut) -> bool {
@@ -140,19 +140,19 @@ where
   }
 }
 
-impl<S> PartialOrd<RawSmolBytes<S>> for BytesMut
+impl<S> PartialOrd<RawBytes<S>> for BytesMut
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn partial_cmp(&self, other: &RawSmolBytes<S>) -> Option<Ordering> {
+  fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     Some(self.as_ref().cmp(other.as_ref()))
   }
 }
 
-impl<S> PartialOrd<BytesMut> for RawSmolBytes<S>
+impl<S> PartialOrd<BytesMut> for RawBytes<S>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &BytesMut) -> Option<Ordering> {

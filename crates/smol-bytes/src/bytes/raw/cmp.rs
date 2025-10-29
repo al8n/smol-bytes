@@ -6,7 +6,7 @@ use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 macro_rules! bail {
   ($($ty:ty => $method:ident($other:ty)),+$(,)?) => {
     $(
-      impl<S> ::core::cmp::PartialEq<$ty> for RawSmolBytes<S>
+      impl<S> ::core::cmp::PartialEq<$ty> for RawBytes<S>
       where
         Self: Strategy,
       {
@@ -16,17 +16,17 @@ macro_rules! bail {
         }
       }
 
-      impl<S> ::core::cmp::PartialEq<RawSmolBytes<S>> for $ty
+      impl<S> ::core::cmp::PartialEq<RawBytes<S>> for $ty
       where
-        RawSmolBytes<S>: Strategy,
+        RawBytes<S>: Strategy,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
-        fn eq(&self, other: &RawSmolBytes<S>) -> ::core::primitive::bool {
-          <RawSmolBytes<S> as ::core::cmp::PartialEq<$ty>>::eq(other, self)
+        fn eq(&self, other: &RawBytes<S>) -> ::core::primitive::bool {
+          <RawBytes<S> as ::core::cmp::PartialEq<$ty>>::eq(other, self)
         }
       }
 
-      impl<S> ::core::cmp::PartialOrd<$ty> for RawSmolBytes<S>
+      impl<S> ::core::cmp::PartialOrd<$ty> for RawBytes<S>
       where
         Self: Strategy,
       {
@@ -36,20 +36,20 @@ macro_rules! bail {
         }
       }
 
-      impl<S> ::core::cmp::PartialOrd<RawSmolBytes<S>> for $ty
+      impl<S> ::core::cmp::PartialOrd<RawBytes<S>> for $ty
       where
-        RawSmolBytes<S>: Strategy,
+        RawBytes<S>: Strategy,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
-        fn partial_cmp(&self, other: &RawSmolBytes<S>) -> ::core::option::Option<::core::cmp::Ordering> {
-          <$other as ::core::cmp::PartialOrd<RawSmolBytes<S>>>::partial_cmp(self.$method(), other)
+        fn partial_cmp(&self, other: &RawBytes<S>) -> ::core::option::Option<::core::cmp::Ordering> {
+          <$other as ::core::cmp::PartialOrd<RawBytes<S>>>::partial_cmp(self.$method(), other)
         }
       }
     )*
   };
 }
 
-impl<S> Hash for RawSmolBytes<S>
+impl<S> Hash for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -59,7 +59,7 @@ where
   }
 }
 
-impl<'a, T: ?Sized, S> PartialEq<&'a T> for RawSmolBytes<S>
+impl<'a, T: ?Sized, S> PartialEq<&'a T> for RawBytes<S>
 where
   Self: PartialEq<T> + Strategy,
 {
@@ -69,7 +69,7 @@ where
   }
 }
 
-impl<'a, T: ?Sized, S> PartialOrd<&'a T> for RawSmolBytes<S>
+impl<'a, T: ?Sized, S> PartialOrd<&'a T> for RawBytes<S>
 where
   Self: PartialOrd<T> + Strategy,
 {
@@ -79,7 +79,7 @@ where
   }
 }
 
-impl<S> PartialEq for RawSmolBytes<S>
+impl<S> PartialEq for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -89,9 +89,9 @@ where
   }
 }
 
-impl<S> Eq for RawSmolBytes<S> where Self: Strategy {}
+impl<S> Eq for RawBytes<S> where Self: Strategy {}
 
-impl<S> PartialOrd for RawSmolBytes<S>
+impl<S> PartialOrd for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -101,7 +101,7 @@ where
   }
 }
 
-impl<S> Ord for RawSmolBytes<S>
+impl<S> Ord for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -112,7 +112,7 @@ where
 }
 
 // ---- [u8] comparisons ----
-impl<S> PartialEq<[u8]> for RawSmolBytes<S>
+impl<S> PartialEq<[u8]> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -122,17 +122,17 @@ where
   }
 }
 
-impl<S> PartialEq<RawSmolBytes<S>> for [u8]
+impl<S> PartialEq<RawBytes<S>> for [u8]
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &RawSmolBytes<S>) -> bool {
-    <RawSmolBytes<S> as PartialEq<[u8]>>::eq(other, self)
+  fn eq(&self, other: &RawBytes<S>) -> bool {
+    <RawBytes<S> as PartialEq<[u8]>>::eq(other, self)
   }
 }
 
-impl<S> PartialOrd<[u8]> for RawSmolBytes<S>
+impl<S> PartialOrd<[u8]> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -142,55 +142,55 @@ where
   }
 }
 
-impl<S> PartialOrd<RawSmolBytes<S>> for [u8]
+impl<S> PartialOrd<RawBytes<S>> for [u8]
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn partial_cmp(&self, other: &RawSmolBytes<S>) -> Option<Ordering> {
+  fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     Some(self.cmp(other.as_slice()))
   }
 }
 
 // ---- &[u8] comparisons ----
-impl<S> PartialEq<RawSmolBytes<S>> for &[u8]
+impl<S> PartialEq<RawBytes<S>> for &[u8]
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &RawSmolBytes<S>) -> bool {
-    <[u8] as PartialEq<RawSmolBytes<S>>>::eq(self, other)
+  fn eq(&self, other: &RawBytes<S>) -> bool {
+    <[u8] as PartialEq<RawBytes<S>>>::eq(self, other)
   }
 }
 
-impl<S> PartialOrd<RawSmolBytes<S>> for &[u8]
+impl<S> PartialOrd<RawBytes<S>> for &[u8]
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn partial_cmp(&self, other: &RawSmolBytes<S>) -> Option<Ordering> {
-    <[u8] as PartialOrd<RawSmolBytes<S>>>::partial_cmp(self, other)
+  fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
+    <[u8] as PartialOrd<RawBytes<S>>>::partial_cmp(self, other)
   }
 }
 
 // ---- &str comparisons ----
-impl<S> PartialEq<RawSmolBytes<S>> for &str
+impl<S> PartialEq<RawBytes<S>> for &str
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn eq(&self, other: &RawSmolBytes<S>) -> bool {
-    <str as PartialEq<RawSmolBytes<S>>>::eq(self, other)
+  fn eq(&self, other: &RawBytes<S>) -> bool {
+    <str as PartialEq<RawBytes<S>>>::eq(self, other)
   }
 }
 
-impl<S> PartialOrd<RawSmolBytes<S>> for &str
+impl<S> PartialOrd<RawBytes<S>> for &str
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn partial_cmp(&self, other: &RawSmolBytes<S>) -> Option<Ordering> {
-    <str as PartialOrd<RawSmolBytes<S>>>::partial_cmp(self, other)
+  fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
+    <str as PartialOrd<RawBytes<S>>>::partial_cmp(self, other)
   }
 }
 

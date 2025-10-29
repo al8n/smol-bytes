@@ -1,6 +1,6 @@
 use super::*;
 
-impl<S> From<&[u8]> for RawSmolBytes<S>
+impl<S> From<&[u8]> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -10,7 +10,7 @@ where
   }
 }
 
-impl<S> From<&str> for RawSmolBytes<S>
+impl<S> From<&str> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -20,7 +20,7 @@ where
   }
 }
 
-impl<S> From<Box<[u8]>> for RawSmolBytes<S>
+impl<S> From<Box<[u8]>> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -30,7 +30,7 @@ where
   }
 }
 
-impl<S> From<Vec<u8>> for RawSmolBytes<S>
+impl<S> From<Vec<u8>> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -40,7 +40,7 @@ where
   }
 }
 
-impl<S> From<String> for RawSmolBytes<S>
+impl<S> From<String> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -50,7 +50,7 @@ where
   }
 }
 
-impl<S> From<Arc<[u8]>> for RawSmolBytes<S>
+impl<S> From<Arc<[u8]>> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -60,20 +60,20 @@ where
   }
 }
 
-impl<'a, S> From<Cow<'a, [u8]>> for RawSmolBytes<S>
+impl<'a, S> From<Cow<'a, [u8]>> for RawBytes<S>
 where
   Self: Strategy,
 {
   #[inline]
   fn from(cow: Cow<'a, [u8]>) -> Self {
     match cow {
-      Cow::Borrowed(slice) => RawSmolBytes::copy_from_slice(slice),
-      Cow::Owned(vec) => RawSmolBytes::from(vec),
+      Cow::Borrowed(slice) => RawBytes::copy_from_slice(slice),
+      Cow::Owned(vec) => RawBytes::from(vec),
     }
   }
 }
 
-impl<S> From<Buffer> for RawSmolBytes<S>
+impl<S> From<Buffer> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -83,37 +83,37 @@ where
   }
 }
 
-impl<S> From<RawSmolBytes<S>> for Vec<u8>
+impl<S> From<RawBytes<S>> for Vec<u8>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
+  fn from(bytes: RawBytes<S>) -> Self {
     bytes.into_vec()
   }
 }
 
-impl<S> From<RawSmolBytes<S>> for Arc<[u8]>
+impl<S> From<RawBytes<S>> for Arc<[u8]>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
+  fn from(bytes: RawBytes<S>) -> Self {
     bytes.into_arc()
   }
 }
 
-impl<S> From<RawSmolBytes<S>> for Bytes
+impl<S> From<RawBytes<S>> for Bytes
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[inline]
-  fn from(bytes: RawSmolBytes<S>) -> Self {
+  fn from(bytes: RawBytes<S>) -> Self {
     bytes.into_bytes()
   }
 }
 
-impl<S> From<BytesMut> for RawSmolBytes<S>
+impl<S> From<BytesMut> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -123,7 +123,7 @@ where
   }
 }
 
-impl<S> From<::bytes::BytesMut> for RawSmolBytes<S>
+impl<S> From<::bytes::BytesMut> for RawBytes<S>
 where
   Self: Strategy,
 {

@@ -1,6 +1,6 @@
-use super::{RawSmolBytes, Strategy};
+use super::{RawBytes, Strategy};
 
-impl<'a, S> arbitrary::Arbitrary<'a> for RawSmolBytes<S>
+impl<'a, S> arbitrary::Arbitrary<'a> for RawBytes<S>
 where
   Self: Strategy,
 {

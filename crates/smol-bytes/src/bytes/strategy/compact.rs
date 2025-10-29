@@ -234,7 +234,7 @@
 use super::Strategy;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
-  bytes::raw::{RawSmolBytes, Repr},
+  bytes::raw::{RawBytes, Repr},
 };
 use bytes::Buf;
 use core::mem;
@@ -290,13 +290,13 @@ use core::ops::{Bound, RangeBounds};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Compact(());
 
-impl From<bytes::Bytes> for RawSmolBytes<Compact> {
+impl From<bytes::Bytes> for RawBytes<Compact> {
   fn from(bytes: bytes::Bytes) -> Self {
     Self::heap(bytes)
   }
 }
 
-impl Strategy for RawSmolBytes<Compact> {
+impl Strategy for RawBytes<Compact> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
     let len = self.len();
 
@@ -485,7 +485,7 @@ impl Strategy for RawSmolBytes<Compact> {
 
 /// A memory-efficient byte buffer that aggressively inlines data to minimize heap usage.
 ///
-/// This is a type alias for [`RawSmolBytes<Compact>`](crate::smol_bytes::RawSmolBytes) using the [`Compact`] strategy.
+/// This is a type alias for [`RawBytes<Compact>`](crate::smol_bytes::RawBytes) using the [`Compact`] strategy.
 ///
 /// # When to use
 ///
@@ -510,4 +510,4 @@ impl Strategy for RawSmolBytes<Compact> {
 /// data.advance(70);
 /// assert!(!data.is_heap()); // Saved memory!
 /// ```
-pub type SmolBytes = RawSmolBytes<Compact>;
+pub type SmolBytes = RawBytes<Compact>;

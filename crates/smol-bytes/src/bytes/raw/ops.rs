@@ -1,6 +1,6 @@
 use super::*;
 
-impl<S> core::ops::Deref for RawSmolBytes<S>
+impl<S> core::ops::Deref for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -12,7 +12,7 @@ where
   }
 }
 
-impl<S> core::borrow::Borrow<[u8]> for RawSmolBytes<S>
+impl<S> core::borrow::Borrow<[u8]> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -22,7 +22,7 @@ where
   }
 }
 
-impl<S> AsRef<[u8]> for RawSmolBytes<S>
+impl<S> AsRef<[u8]> for RawBytes<S>
 where
   Self: Strategy,
 {

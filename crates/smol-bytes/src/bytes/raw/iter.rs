@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'a, S> FromIterator<&'a [u8]> for RawSmolBytes<S>
+impl<'a, S> FromIterator<&'a [u8]> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -9,7 +9,7 @@ where
   }
 }
 
-impl<S> FromIterator<u8> for RawSmolBytes<S>
+impl<S> FromIterator<u8> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -18,7 +18,7 @@ where
   }
 }
 
-impl<'a, S> FromIterator<&'a u8> for RawSmolBytes<S>
+impl<'a, S> FromIterator<&'a u8> for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -27,9 +27,9 @@ where
   }
 }
 
-impl<'a, S> IntoIterator for &'a RawSmolBytes<S>
+impl<'a, S> IntoIterator for &'a RawBytes<S>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   type Item = &'a u8;
   type IntoIter = core::slice::Iter<'a, u8>;
@@ -40,12 +40,12 @@ where
   }
 }
 
-impl<S> IntoIterator for RawSmolBytes<S>
+impl<S> IntoIterator for RawBytes<S>
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   type Item = u8;
-  type IntoIter = ::bytes::buf::IntoIter<RawSmolBytes<S>>;
+  type IntoIter = ::bytes::buf::IntoIter<RawBytes<S>>;
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn into_iter(self) -> Self::IntoIter {

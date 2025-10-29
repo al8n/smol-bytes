@@ -20,12 +20,12 @@ impl Extend<bytes::Bytes> for BytesMut {
   }
 }
 
-impl<S> Extend<RawSmolBytes<S>> for BytesMut
+impl<S> Extend<RawBytes<S>> for BytesMut
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn extend<T: IntoIterator<Item = RawSmolBytes<S>>>(&mut self, iter: T) {
+  fn extend<T: IntoIterator<Item = RawBytes<S>>>(&mut self, iter: T) {
     for smol_bytes in iter {
       self.extend_from_slice(smol_bytes.as_ref());
     }

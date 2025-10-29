@@ -43,7 +43,7 @@
 //! ```
 mod raw;
 
-pub(crate) use raw::{RawSmolBytes, Repr};
+pub(crate) use raw::{RawBytes, Repr};
 
 /// Strategy implementations and type aliases.
 pub mod strategy;

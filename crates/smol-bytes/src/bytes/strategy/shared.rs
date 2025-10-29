@@ -159,7 +159,7 @@
 use super::Strategy;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
-  bytes::raw::{RawSmolBytes, Repr},
+  bytes::raw::{RawBytes, Repr},
 };
 use bytes::Buf;
 use core::mem;
@@ -217,7 +217,7 @@ use core::ops::{Bound, RangeBounds};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Shared(());
 
-impl RawSmolBytes<Shared> {
+impl RawBytes<Shared> {
   /// Create [`SmolBytes`] with a buffer whose lifetime is controlled
   /// via an explicit owner.
   ///
@@ -273,7 +273,7 @@ impl RawSmolBytes<Shared> {
   }
 }
 
-impl Strategy for RawSmolBytes<Shared> {
+impl Strategy for RawBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
     let len = self.len();
 
@@ -414,7 +414,7 @@ impl Strategy for RawSmolBytes<Shared> {
 
 /// A space-efficient byte buffer that shares heap allocations with [`bytes::Bytes`].
 ///
-/// This is a type alias for [`RawSmolBytes<Shared>`](crate::smol_bytes::RawSmolBytes) using the [`Shared`] strategy.
+/// This is a type alias for [`RawBytes<Shared>`](crate::smol_bytes::RawBytes) using the [`Shared`] strategy.
 ///
 /// # When to use
 ///
@@ -436,4 +436,4 @@ impl Strategy for RawSmolBytes<Shared> {
 /// // Efficient conversion to Bytes
 /// let bytes: bytes::Bytes = data.into();
 /// ```
-pub type SmolBytes = RawSmolBytes<Shared>;
+pub type SmolBytes = RawBytes<Shared>;

@@ -44,12 +44,12 @@ impl From<bytes::BytesMut> for BytesMut {
   }
 }
 
-impl<S> From<RawSmolBytes<S>> for BytesMut
+impl<S> From<RawBytes<S>> for BytesMut
 where
-  RawSmolBytes<S>: Strategy,
+  RawBytes<S>: Strategy,
 {
   #[inline]
-  fn from(v: RawSmolBytes<S>) -> Self {
+  fn from(v: RawBytes<S>) -> Self {
     use crate::bytes::Repr;
     match v.repr {
       Repr::Inline(inline_storage) => BytesMut::from_inline(inline_storage),

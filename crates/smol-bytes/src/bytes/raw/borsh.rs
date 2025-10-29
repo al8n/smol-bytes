@@ -1,10 +1,10 @@
 use crate::buffer::Buffer;
 
-use super::{RawSmolBytes, Strategy, INLINE_CAP};
+use super::{RawBytes, Strategy, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};
 
-impl<S> BorshSerialize for RawSmolBytes<S>
+impl<S> BorshSerialize for RawBytes<S>
 where
   Self: Strategy,
 {
@@ -13,7 +13,7 @@ where
   }
 }
 
-impl<S> BorshDeserialize for RawSmolBytes<S>
+impl<S> BorshDeserialize for RawBytes<S>
 where
   Self: Strategy,
 {

@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{buffer::Buffer, bytes::RawSmolBytes, INLINE_CAP};
+use crate::{buffer::Buffer, bytes::RawBytes, INLINE_CAP};
 
 mod cmp;
 mod fmt;
@@ -557,13 +557,13 @@ impl BytesMut {
   }
 
   #[inline]
-  pub(crate) fn freeze<S>(self) -> RawSmolBytes<S>
+  pub(crate) fn freeze<S>(self) -> RawBytes<S>
   where
-    RawSmolBytes<S>: crate::strategy::Strategy,
+    RawBytes<S>: crate::strategy::Strategy,
   {
     match self.0 {
-      Repr::Inline(storage) => RawSmolBytes::inline(storage),
-      Repr::Heap(b) => RawSmolBytes::heap(b.freeze()),
+      Repr::Inline(storage) => RawBytes::inline(storage),
+      Repr::Heap(b) => RawBytes::heap(b.freeze()),
     }
   }
 
