@@ -113,12 +113,12 @@ where
   }
 }
 
-impl<S> From<SmolBytesMut> for RawSmolBytes<S>
+impl<S> From<BytesMut> for RawSmolBytes<S>
 where
   Self: Strategy,
 {
   #[inline]
-  fn from(v: SmolBytesMut) -> Self {
+  fn from(v: BytesMut) -> Self {
     v.freeze()
   }
 }
@@ -129,6 +129,6 @@ where
 {
   #[inline]
   fn from(v: ::bytes::BytesMut) -> Self {
-    Self::from(SmolBytesMut::from_bytes_mut(v))
+    Self::from(BytesMut::from_bytes_mut(v))
   }
 }

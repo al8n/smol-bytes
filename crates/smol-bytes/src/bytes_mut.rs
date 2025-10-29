@@ -1,6 +1,6 @@
 use core::mem::MaybeUninit;
 
-use ::bytes::{BufMut, Bytes, BytesMut};
+use ::bytes::BufMut;
 use bytes::Buf;
 
 use crate::{buffer::Buffer, bytes::RawSmolBytes, INLINE_CAP};
@@ -22,14 +22,14 @@ mod serde;
 
 /// A mutable byte buffer with inline storage optimization.
 ///
-/// `SmolBytesMut` is similar to [`BytesMut`] but optimized for small buffers.
+/// `BytesMut` is similar to [`BytesMut`] but optimized for small buffers.
 /// It stores data inline (on the stack) for buffers up to 62 bytes, avoiding heap
 /// allocations. For larger buffers, it automatically promotes to heap storage using
 /// [`BytesMut`] internally.
 ///
 /// # Inline vs Heap Storage
 ///
-/// - **Inline**: Buffers ≤62 bytes are stored directly in the `SmolBytesMut` struct
+/// - **Inline**: Buffers ≤62 bytes are stored directly in the `BytesMut` struct
 /// - **Heap**: Buffers >62 bytes are automatically promoted to heap allocation
 /// - Once promoted to heap, the buffer stays on the heap (no automatic demotion)
 ///
@@ -47,10 +47,10 @@ mod serde;
 /// # Examples
 ///
 /// ```
-/// use smol_bytes::SmolBytesMut;
+/// use smol_bytes::BytesMut;
 ///
 /// // Small buffer uses inline storage
-/// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+/// let mut buf = BytesMut::from(&b"hello"[..]);
 /// assert!(buf.is_inline());
 /// assert_eq!(&buf[..], b"hello");
 ///
@@ -65,18 +65,18 @@ mod serde;
 /// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::SmolBytes`](crate::shared::SmolBytes)
 /// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::SmolBytes`](crate::compact::SmolBytes)
 #[derive(Clone)]
-pub struct SmolBytesMut(Repr);
+pub struct BytesMut(Repr);
 
-impl Default for SmolBytesMut {
+impl Default for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl SmolBytesMut {
+impl BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) fn from_bytes(bytes: Bytes) -> Self {
+  pub(crate) fn from_bytes(bytes: bytes::Bytes) -> Self {
     if !bytes.is_unique() && bytes.len() <= INLINE_CAP {
       // SAFETY: bytes.len() is guaranteed to be less than or equal to INLINE_CAP
       return Self(Repr::Inline(unsafe { Buffer::copy_from_slice(&bytes) }));
@@ -86,7 +86,7 @@ impl SmolBytesMut {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) fn from_bytes_mut(bytes: BytesMut) -> Self {
+  pub(crate) fn from_bytes_mut(bytes: bytes::BytesMut) -> Self {
     Self(Repr::Heap(bytes))
   }
 
@@ -96,7 +96,7 @@ impl SmolBytesMut {
   }
 }
 
-impl SmolBytesMut {
+impl BytesMut {
   /// Creates a new `BytesMut` containing `len` zeros.
   ///
   /// The resulting object has a length of `len` and a capacity greater
@@ -109,9 +109,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let zeros = SmolBytesMut::zeroed(42);
+  /// let zeros = BytesMut::zeroed(42);
   ///
   /// assert!(zeros.capacity() >= 42);
   /// assert_eq!(zeros.len(), 42);
@@ -122,18 +122,18 @@ impl SmolBytesMut {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
       Self(Repr::Inline(unsafe { Buffer::zeroed(len) }))
     } else {
-      Self(Repr::Heap(BytesMut::zeroed(len)))
+      Self(Repr::Heap(bytes::BytesMut::zeroed(len)))
     }
   }
 
-  /// Creates a new, empty `SmolBytesMut`.
+  /// Creates a new, empty `BytesMut`.
   ///
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let bytes = SmolBytesMut::new();
+  /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -141,9 +141,9 @@ impl SmolBytesMut {
     Self(Repr::Inline(Buffer::new()))
   }
 
-  /// Creates a new `SmolBytesMut` with the specified capacity.
+  /// Creates a new `BytesMut` with the specified capacity.
   ///
-  /// The returned `SmolBytesMut` will be able to hold at least capacity bytes without reallocating.
+  /// The returned `BytesMut` will be able to hold at least capacity bytes without reallocating.
   ///
   /// It is important to note that this function does not specify the length of the returned BytesMut, but only the capacity.
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -151,7 +151,7 @@ impl SmolBytesMut {
     if capacity <= INLINE_CAP {
       Self(Repr::Inline(Buffer::new()))
     } else {
-      Self(Repr::Heap(BytesMut::with_capacity(capacity)))
+      Self(Repr::Heap(bytes::BytesMut::with_capacity(capacity)))
     }
   }
 
@@ -163,9 +163,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::with_capacity(0);
+  /// let mut buf = BytesMut::with_capacity(0);
   /// buf.extend_from_slice(b"aaabbb");
   /// buf.extend_from_slice(b"cccddd");
   ///
@@ -182,7 +182,7 @@ impl SmolBytesMut {
           return;
         }
 
-        let mut new_buf = BytesMut::with_capacity(b.len() + requested);
+        let mut new_buf = bytes::BytesMut::with_capacity(b.len() + requested);
         new_buf.put_slice(b.as_slice());
         new_buf.extend_from_slice(extend);
         self.0 = Repr::Heap(new_buf);
@@ -196,9 +196,9 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut bytes = SmolBytesMut::from(&b"hello world"[..]);
+  /// let mut bytes = BytesMut::from(&b"hello world"[..]);
   /// bytes.clear();
   /// assert_eq!(bytes.len(), 0);
   /// ```
@@ -219,9 +219,9 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut bytes = SmolBytesMut::from(&b"hello world"[..]);
+  /// let mut bytes = BytesMut::from(&b"hello world"[..]);
   ///
   /// bytes.truncate(5);
   /// assert_eq!(bytes.as_slice(), b"hello");
@@ -234,15 +234,15 @@ impl SmolBytesMut {
     }
   }
 
-  /// Returns the number of bytes the `SmolBytesMut` can hold without reallocating.
+  /// Returns the number of bytes the `BytesMut` can hold without reallocating.
   ///
   /// ## Example
   ///
   /// ```rust
   ///
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let bytes = SmolBytesMut::with_capacity(100);
+  /// let bytes = BytesMut::with_capacity(100);
   ///
   /// assert_eq!(bytes.capacity(), 100);
   /// ```
@@ -254,17 +254,17 @@ impl SmolBytesMut {
     }
   }
 
-  /// Returns `true` if the `SmolBytesMut` is using inline storage.
+  /// Returns `true` if the `BytesMut` is using inline storage.
   ///
   /// ## Examples
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let inline_buf = SmolBytesMut::with_capacity(10);
+  /// let inline_buf = BytesMut::with_capacity(10);
   /// assert!(inline_buf.is_inline());
   ///
-  /// let heap_buf = SmolBytesMut::with_capacity(100);
+  /// let heap_buf = BytesMut::with_capacity(100);
   /// assert!(!heap_buf.is_inline());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -272,17 +272,17 @@ impl SmolBytesMut {
     matches!(&self.0, Repr::Inline(_))
   }
 
-  /// Returns `true` if the `SmolBytesMut` is using heap storage.
+  /// Returns `true` if the `BytesMut` is using heap storage.
   ///
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let inline_buf = SmolBytesMut::with_capacity(10);
+  /// let inline_buf = BytesMut::with_capacity(10);
   /// assert!(!inline_buf.is_heap());
   ///
-  /// let heap_buf = SmolBytesMut::with_capacity(100);
+  /// let heap_buf = BytesMut::with_capacity(100);
   /// assert!(heap_buf.is_heap());
   /// ```
   pub const fn is_heap(&self) -> bool {
@@ -297,9 +297,9 @@ impl SmolBytesMut {
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let buf = SmolBytesMut::from(&b"hello"[..]);
+  /// let buf = BytesMut::from(&b"hello"[..]);
   ///
   /// let inline_buffer = buf.unwrap_inline();
   /// assert_eq!(&inline_buffer[..], b"hello");
@@ -308,7 +308,7 @@ impl SmolBytesMut {
   pub fn unwrap_inline(self) -> Buffer {
     match self.0 {
       Repr::Inline(b) => b,
-      Repr::Heap(_) => panic!("called `SmolBytesMut::unwrap_inline()` on a heap allocated buffer"),
+      Repr::Heap(_) => panic!("called `BytesMut::unwrap_inline()` on a heap allocated buffer"),
     }
   }
 
@@ -317,16 +317,16 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let inline_buf = SmolBytesMut::from(&b"hello"[..]);
-  /// let heap_buf = SmolBytesMut::with_capacity(100);
+  /// let inline_buf = BytesMut::from(&b"hello"[..]);
+  /// let heap_buf = BytesMut::with_capacity(100);
   ///
   /// assert!(inline_buf.try_unwrap_inline().is_ok());
   /// assert!(heap_buf.try_unwrap_inline().is_err());
   /// ```
   #[inline]
-  pub fn try_unwrap_inline(self) -> Result<Buffer, BytesMut> {
+  pub fn try_unwrap_inline(self) -> Result<Buffer, bytes::BytesMut> {
     match self.0 {
       Repr::Inline(b) => Ok(b),
       Repr::Heap(b) => Err(b),
@@ -341,18 +341,18 @@ impl SmolBytesMut {
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::with_capacity(100);
+  /// let mut buf = BytesMut::with_capacity(100);
   /// buf.extend_from_slice(b"hello world and more data that exceeds inline capacity................................");
   ///
   /// let heap_buffer = buf.unwrap_heap();
   /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
   /// ```
   #[inline]
-  pub fn unwrap_heap(self) -> BytesMut {
+  pub fn unwrap_heap(self) -> bytes::BytesMut {
     match self.0 {
-      Repr::Inline(_) => panic!("called `SmolBytesMut::unwrap_heap()` on an inline buffer"),
+      Repr::Inline(_) => panic!("called `BytesMut::unwrap_heap()` on an inline buffer"),
       Repr::Heap(b) => b,
     }
   }
@@ -362,33 +362,33 @@ impl SmolBytesMut {
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let inline_buf = SmolBytesMut::from(&b"hello"[..]);
-  /// let mut heap_buf = SmolBytesMut::with_capacity(100);
+  /// let inline_buf = BytesMut::from(&b"hello"[..]);
+  /// let mut heap_buf = BytesMut::with_capacity(100);
   /// heap_buf.extend_from_slice(b"hello world and more data that exceeds inline capacity................................");
   ///
   /// assert!(heap_buf.try_unwrap_heap().is_ok());
   /// assert!(inline_buf.try_unwrap_heap().is_err());
   /// ```
   #[inline]
-  pub fn try_unwrap_heap(self) -> Result<BytesMut, Buffer> {
+  pub fn try_unwrap_heap(self) -> Result<bytes::BytesMut, Buffer> {
     match self.0 {
       Repr::Inline(b) => Err(b),
       Repr::Heap(b) => Ok(b),
     }
   }
 
-  /// Converts the `SmolBytesMut` into a heap allocated buffer if it is currently inline.
+  /// Converts the `BytesMut` into a heap allocated buffer if it is currently inline.
   ///
   /// If the buffer is already heap allocated, this function does nothing.
   ///
   /// ## Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+  /// let mut buf = BytesMut::from(&b"hello"[..]);
   /// assert!(buf.is_inline());
   /// buf.make_heap();
   /// assert!(buf.is_heap());
@@ -396,7 +396,7 @@ impl SmolBytesMut {
   pub fn make_heap(&mut self) {
     match &mut self.0 {
       Repr::Inline(b) => {
-        let mut new_buf = BytesMut::with_capacity(b.len());
+        let mut new_buf = bytes::BytesMut::with_capacity(b.len());
         new_buf.put_slice(b.as_slice());
         self.0 = Repr::Heap(new_buf);
       }
@@ -418,9 +418,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut a = SmolBytesMut::from(&b"hello world"[..]);
+  /// let mut a = BytesMut::from(&b"hello world"[..]);
   /// let b = a.split_off(5);
   /// assert!(b.is_none());
   ///
@@ -438,7 +438,7 @@ impl SmolBytesMut {
   /// # Panics
   ///
   /// Panics if `at > capacity`.
-  #[must_use = "consider SmolBytesMut::truncate if you don't need the other half"]
+  #[must_use = "consider BytesMut::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Option<Self> {
     match &mut self.0 {
       Repr::Inline(_) => None,
@@ -459,9 +459,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::{SmolBytesMut, BufMut};
+  /// use smol_bytes::{BytesMut, BufMut};
   ///
-  /// let mut buf = SmolBytesMut::with_capacity(1024);
+  /// let mut buf = BytesMut::with_capacity(1024);
   /// buf.put(&b"hello world"[..]);
   ///
   /// let other = buf.split().unwrap();
@@ -471,7 +471,7 @@ impl SmolBytesMut {
   ///
   /// assert_eq!(other, b"hello world"[..]);
   /// ```
-  #[must_use = "consider SmolBytesMut::clear if you don't need the other half"]
+  #[must_use = "consider BytesMut::clear if you don't need the other half"]
   pub fn split(&mut self) -> Option<Self> {
     let len = self.len();
     self.split_to(len)
@@ -488,9 +488,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut a = SmolBytesMut::from(&b"hello world"[..]);
+  /// let mut a = BytesMut::from(&b"hello world"[..]);
   /// let mut b = a.split_to(5);
   /// // If the buffer is inline, split_to returns None
   /// assert!(b.is_none());
@@ -498,7 +498,7 @@ impl SmolBytesMut {
   /// a.make_heap();
   ///
   /// // In this case, the buffer is heap allocated
-  /// // thus split_to returns Some(SmolBytesMut)
+  /// // thus split_to returns Some(BytesMut)
   /// let mut b = a.split_to(5).unwrap();
   /// a[0] = b'!';
   /// b[0] = b'j';
@@ -510,7 +510,7 @@ impl SmolBytesMut {
   /// # Panics
   ///
   /// Panics if `at > len`.
-  #[must_use = "consider SmolBytesMut::advance if you don't need the other half"]
+  #[must_use = "consider BytesMut::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Option<Self> {
     match &mut self.0 {
       Repr::Inline(_) => None,
@@ -518,14 +518,14 @@ impl SmolBytesMut {
     }
   }
 
-  /// Absorbs a `SmolBytesMut` that was previously split off.
+  /// Absorbs a `BytesMut` that was previously split off.
   ///
-  /// Both `SmolBytesMut` objects must be heap allocated for this to succeed. If one of them
+  /// Both `BytesMut` objects must be heap allocated for this to succeed. If one of them
   /// is inline, the method returns `Some(other)`, leaving `self` unchanged.
   ///
-  /// If the two `SmolBytesMut` objects were previously contiguous and not mutated
+  /// If the two `BytesMut` objects were previously contiguous and not mutated
   /// in a way that causes re-allocation i.e., if `other` was created by
-  /// calling `split_off` on this `SmolBytesMut`, then this is an `O(1)` operation
+  /// calling `split_off` on this `BytesMut`, then this is an `O(1)` operation
   /// that just decreases a reference count and sets a few indices.
   /// Otherwise this method degenerates to
   /// `self.extend_from_slice(other.as_ref())`.
@@ -533,9 +533,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::with_capacity(64);
+  /// let mut buf = BytesMut::with_capacity(64);
   /// buf.extend_from_slice(b"aaabbbcccddd");
   ///
   /// let split = buf.split_off(6).unwrap();
@@ -576,10 +576,10 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::{SmolBytesMut, BufMut};
+  /// use smol_bytes::{BytesMut, BufMut};
   /// use std::thread;
   ///
-  /// let mut b = SmolBytesMut::with_capacity(64);
+  /// let mut b = BytesMut::with_capacity(64);
   /// b.put(&b"hello world"[..]);
   /// let b1 = b.freeze_shared();
   /// let b2 = b1.clone();
@@ -604,10 +604,10 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::{SmolBytesMut, BufMut};
+  /// use smol_bytes::{BytesMut, BufMut};
   /// use std::thread;
   ///
-  /// let mut b = SmolBytesMut::with_capacity(64);
+  /// let mut b = BytesMut::with_capacity(64);
   /// b.put(&b"hello world"[..]);
   /// let b1 = b.freeze_compact();
   /// let b2 = b1.clone();
@@ -630,10 +630,10 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```
-  /// use smol_bytes::{SmolBytesMut, INLINE_CAP};
+  /// use smol_bytes::{BytesMut, INLINE_CAP};
   ///
   /// // Allocate buffer big enough for 10 bytes.
-  /// let mut buf = SmolBytesMut::with_capacity(10);
+  /// let mut buf = BytesMut::with_capacity(10);
   ///
   /// // Fill in the first 3 elements.
   /// let uninit = buf.spare_capacity_mut();
@@ -673,9 +673,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::with_capacity(64);
+  /// let mut buf = BytesMut::with_capacity(64);
   /// assert_eq!(true, buf.try_reclaim(64));
   /// assert_eq!(64, buf.capacity());
   ///
@@ -699,7 +699,7 @@ impl SmolBytesMut {
   /// assert_eq!(64, split.capacity());
   /// ```
   #[inline]
-  #[must_use = "consider SmolBytesMut::reserve if you need an infallible reservation"]
+  #[must_use = "consider BytesMut::reserve if you need an infallible reservation"]
   pub fn try_reclaim(&mut self, additional: usize) -> bool {
     match &mut self.0 {
       Repr::Inline(b) => {
@@ -725,9 +725,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut b = SmolBytesMut::from(&b"hello world"[..]);
+  /// let mut b = BytesMut::from(&b"hello world"[..]);
   ///
   /// unsafe {
   ///     b.set_len(5);
@@ -759,9 +759,9 @@ impl SmolBytesMut {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::new();
+  /// let mut buf = BytesMut::new();
   ///
   /// buf.resize(3, 0x1);
   /// assert_eq!(&buf[..], &[0x1, 0x1, 0x1]);
@@ -802,7 +802,7 @@ impl SmolBytesMut {
           }
           return;
         }
-        let mut new_buf = BytesMut::with_capacity(storage.len() + additional);
+        let mut new_buf = bytes::BytesMut::with_capacity(storage.len() + additional);
         new_buf.put_slice(storage.as_slice());
         let dst = new_buf.spare_capacity_mut().as_mut_ptr();
 
@@ -847,9 +847,9 @@ impl SmolBytesMut {
   /// In the following example, a new buffer is allocated.
   ///
   /// ```
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+  /// let mut buf = BytesMut::from(&b"hello"[..]);
   /// buf.reserve(64);
   /// assert!(buf.capacity() >= 69);
   /// ```
@@ -868,7 +868,7 @@ impl SmolBytesMut {
           // there is no further work needed to be done.
           return;
         }
-        let mut new_buf = BytesMut::with_capacity(storage.len() + additional);
+        let mut new_buf = bytes::BytesMut::with_capacity(storage.len() + additional);
         new_buf.extend_from_slice(storage.as_slice());
         self.0 = Repr::Heap(new_buf);
       }
@@ -876,14 +876,14 @@ impl SmolBytesMut {
     }
   }
 
-  /// Returns the number of bytes contained in this `SmolBytesMut`.
+  /// Returns the number of bytes contained in this `BytesMut`.
   ///
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let bytes = SmolBytesMut::new();
+  /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -899,9 +899,9 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let bytes = SmolBytesMut::new();
+  /// let bytes = BytesMut::new();
   /// assert!(bytes.is_empty());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -914,9 +914,9 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let buf = SmolBytesMut::from(&b"hello"[..]);
+  /// let buf = BytesMut::from(&b"hello"[..]);
   /// assert_eq!(buf.as_slice(), b"hello");
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -929,9 +929,9 @@ impl SmolBytesMut {
   /// ## Example
   ///
   /// ```rust
-  /// use smol_bytes::SmolBytesMut;
+  /// use smol_bytes::BytesMut;
   ///
-  /// let mut buf = SmolBytesMut::from(&b"hello"[..]);
+  /// let mut buf = BytesMut::from(&b"hello"[..]);
   /// buf.as_mut_slice()[0] = b'j';
   /// assert_eq!(buf.as_slice(), b"jello");
   /// ```
@@ -941,7 +941,7 @@ impl SmolBytesMut {
   }
 }
 
-impl Buf for SmolBytesMut {
+impl Buf for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn remaining(&self) -> usize {
     match &self.0 {
@@ -967,7 +967,7 @@ impl Buf for SmolBytesMut {
   }
 }
 
-unsafe impl BufMut for SmolBytesMut {
+unsafe impl BufMut for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn remaining_mut(&self) -> usize {
     usize::MAX - self.len()
@@ -991,5 +991,5 @@ unsafe impl BufMut for SmolBytesMut {
 #[derive(Clone)]
 enum Repr {
   Inline(Buffer),
-  Heap(BytesMut),
+  Heap(bytes::BytesMut),
 }

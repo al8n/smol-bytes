@@ -10,7 +10,7 @@ use std::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use crate::{
   buffer::{Buffer, INLINE_CAP},
-  SmolBytesMut,
+  BytesMut,
 };
 
 use super::strategy::Strategy;

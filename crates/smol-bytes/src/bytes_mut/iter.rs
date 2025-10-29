@@ -2,7 +2,7 @@ use crate::strategy::Strategy;
 
 use super::*;
 
-impl<'a> Extend<&'a [u8]> for SmolBytesMut {
+impl<'a> Extend<&'a [u8]> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn extend<T: IntoIterator<Item = &'a [u8]>>(&mut self, iter: T) {
     for slice in iter {
@@ -11,16 +11,16 @@ impl<'a> Extend<&'a [u8]> for SmolBytesMut {
   }
 }
 
-impl Extend<Bytes> for SmolBytesMut {
+impl Extend<bytes::Bytes> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn extend<T: IntoIterator<Item = Bytes>>(&mut self, iter: T) {
+  fn extend<T: IntoIterator<Item = bytes::Bytes>>(&mut self, iter: T) {
     for bytes in iter {
       self.extend_from_slice(&bytes);
     }
   }
 }
 
-impl<S> Extend<RawSmolBytes<S>> for SmolBytesMut
+impl<S> Extend<RawSmolBytes<S>> for BytesMut
 where
   RawSmolBytes<S>: Strategy,
 {
@@ -32,7 +32,7 @@ where
   }
 }
 
-impl Extend<u8> for SmolBytesMut {
+impl Extend<u8> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
     let iter = iter.into_iter();
@@ -46,26 +46,26 @@ impl Extend<u8> for SmolBytesMut {
   }
 }
 
-impl FromIterator<u8> for SmolBytesMut {
+impl FromIterator<u8> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
-    let mut smol_bytes_mut = SmolBytesMut::new();
+    let mut smol_bytes_mut = BytesMut::new();
     smol_bytes_mut.extend(iter);
     smol_bytes_mut
   }
 }
 
-impl<'a> FromIterator<&'a u8> for SmolBytesMut {
+impl<'a> FromIterator<&'a u8> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from_iter<T: IntoIterator<Item = &'a u8>>(iter: T) -> Self {
     Self::from_iter(iter.into_iter().copied())
   }
 }
 
-impl<'a> FromIterator<&'a [u8]> for SmolBytesMut {
+impl<'a> FromIterator<&'a [u8]> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
-    let mut smol_bytes_mut = SmolBytesMut::new();
+    let mut smol_bytes_mut = BytesMut::new();
 
     for slice in iter {
       smol_bytes_mut.extend_from_slice(slice);
@@ -74,9 +74,9 @@ impl<'a> FromIterator<&'a [u8]> for SmolBytesMut {
   }
 }
 
-impl IntoIterator for SmolBytesMut {
+impl IntoIterator for BytesMut {
   type Item = u8;
-  type IntoIter = ::bytes::buf::IntoIter<SmolBytesMut>;
+  type IntoIter = ::bytes::buf::IntoIter<BytesMut>;
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn into_iter(self) -> Self::IntoIter {
@@ -84,7 +84,7 @@ impl IntoIterator for SmolBytesMut {
   }
 }
 
-impl<'a> IntoIterator for &'a SmolBytesMut {
+impl<'a> IntoIterator for &'a BytesMut {
   type Item = &'a u8;
   type IntoIter = core::slice::Iter<'a, u8>;
 

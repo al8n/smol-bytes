@@ -263,7 +263,7 @@ impl RawSmolBytes<Shared> {
   /// object are dropped. The owner will then be responsible for dropping the
   /// specified region of memory as part of its [Drop] implementation.
   ///
-  /// Note that converting [`SmolBytes`] constructed from an owner into a [`SmolBytesMut`]
+  /// Note that converting [`SmolBytes`] constructed from an owner into a [`BytesMut`]
   /// will always create a deep copy of the buffer into newly allocated memory.
   pub fn from_owner<T>(owner: T) -> Self
   where

@@ -50,7 +50,7 @@ pub(crate) use bytes::strategy;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use bytes_mut::SmolBytesMut;
+pub use bytes_mut::BytesMut;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;

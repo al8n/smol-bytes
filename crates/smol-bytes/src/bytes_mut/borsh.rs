@@ -1,16 +1,16 @@
 use crate::buffer::Buffer;
 
-use super::{SmolBytesMut, INLINE_CAP};
+use super::{BytesMut, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};
 
-impl BorshSerialize for SmolBytesMut {
+impl BorshSerialize for BytesMut {
   fn serialize<W: Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
     self.as_slice().serialize(writer)
   }
 }
 
-impl BorshDeserialize for SmolBytesMut {
+impl BorshDeserialize for BytesMut {
   fn deserialize_reader<R: Read>(reader: &mut R) -> borsh::io::Result<Self> {
     let len = u32::deserialize_reader(reader)? as usize;
     if len <= INLINE_CAP {

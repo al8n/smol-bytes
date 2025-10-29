@@ -1,16 +1,16 @@
-use super::SmolBytesMut;
+use super::BytesMut;
 
 use quickcheck::Arbitrary;
 use std::{boxed::Box, vec::Vec};
 
-impl Arbitrary for SmolBytesMut {
+impl Arbitrary for BytesMut {
   fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-    SmolBytesMut::from(<Vec<u8> as Arbitrary>::arbitrary(g).as_slice())
+    BytesMut::from(<Vec<u8> as Arbitrary>::arbitrary(g).as_slice())
   }
 
   fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
     Box::new(
-      <Vec<u8> as Arbitrary>::shrink(&self.to_vec()).map(|vec| SmolBytesMut::from(vec.as_slice())),
+      <Vec<u8> as Arbitrary>::shrink(&self.to_vec()).map(|vec| BytesMut::from(vec.as_slice())),
     )
   }
 }

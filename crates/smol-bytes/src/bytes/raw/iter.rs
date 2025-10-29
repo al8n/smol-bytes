@@ -5,7 +5,7 @@ where
   Self: Strategy,
 {
   fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
-    SmolBytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze()
   }
 }
 
@@ -14,7 +14,7 @@ where
   Self: Strategy,
 {
   fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
-    SmolBytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze()
   }
 }
 
@@ -23,7 +23,7 @@ where
   Self: Strategy,
 {
   fn from_iter<T: IntoIterator<Item = &'a u8>>(iter: T) -> Self {
-    SmolBytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze()
   }
 }
 

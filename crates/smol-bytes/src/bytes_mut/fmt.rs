@@ -1,6 +1,6 @@
 use super::*;
 
-impl core::fmt::Debug for SmolBytesMut {
+impl core::fmt::Debug for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match &self.0 {
@@ -10,7 +10,7 @@ impl core::fmt::Debug for SmolBytesMut {
   }
 }
 
-impl core::fmt::LowerHex for SmolBytesMut {
+impl core::fmt::LowerHex for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match &self.0 {
@@ -20,7 +20,7 @@ impl core::fmt::LowerHex for SmolBytesMut {
   }
 }
 
-impl core::fmt::UpperHex for SmolBytesMut {
+impl core::fmt::UpperHex for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match &self.0 {
@@ -30,7 +30,7 @@ impl core::fmt::UpperHex for SmolBytesMut {
   }
 }
 
-impl core::fmt::Write for SmolBytesMut {
+impl core::fmt::Write for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn write_str(&mut self, s: &str) -> core::fmt::Result {
     match &mut self.0 {
