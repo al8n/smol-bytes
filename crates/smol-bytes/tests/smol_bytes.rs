@@ -1,4 +1,4 @@
-use smol_bytes::{strategy::shared::SmolBytes, INLINE_CAP};
+use smol_bytes::{shared::SmolBytes, INLINE_CAP};
 use std::sync::Arc;
 
 #[test]

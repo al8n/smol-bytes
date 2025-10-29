@@ -73,6 +73,16 @@ where
   }
 }
 
+impl<S> From<Buffer> for RawSmolBytes<S>
+where
+  Self: Strategy
+{
+  #[inline]
+  fn from(value: Buffer) -> Self {
+    Self::inline(value)
+  }
+}
+
 impl<S> From<RawSmolBytes<S>> for Vec<u8>
 where
   RawSmolBytes<S>: Strategy,

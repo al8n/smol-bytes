@@ -4,6 +4,13 @@ use std::{boxed::Box, rc::Rc, sync::Arc, vec::Vec};
 
 use super::*;
 
+impl From<Buffer> for SmolBytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(buffer: Buffer) -> Self {
+    Self(Repr::Inline(buffer))
+  }
+}
+
 impl From<&[u8]> for SmolBytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(slice: &[u8]) -> Self {

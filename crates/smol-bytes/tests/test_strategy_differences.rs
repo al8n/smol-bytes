@@ -1,6 +1,6 @@
 use bytes::Buf;
 use smol_bytes::{
-  strategy::{compact, shared},
+  compact, shared,
   INLINE_CAP,
 };
 

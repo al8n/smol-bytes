@@ -325,6 +325,94 @@ where
     matches!(self.repr, Repr::Heap(..))
   }
 
+  /// Unwraps the inline buffer, consuming `self`.
+  /// 
+  /// # Panics
+  /// - Panics if the buffer is heap allocated.
+  /// 
+  /// ## Examples
+  /// 
+  /// ```
+  /// use smol_bytes::shared::SmolBytes;
+  /// 
+  /// let buf = SmolBytes::from(&b"hello"[..]);
+  ///
+  /// let inline_buffer = buf.unwrap_inline();
+  /// assert_eq!(&inline_buffer[..], b"hello");
+  /// ```
+  #[inline]
+  pub fn unwrap_inline(self) -> Buffer {
+    match self.repr {
+      Repr::Inline(b) => b,
+      Repr::Heap(_) => panic!("called `SmolBytes::unwrap_inline()` on a heap allocated buffer"),
+    }
+  }
+
+  /// Attempts to unwrap the inline buffer, consuming `self`.
+  /// 
+  /// ## Examples
+  /// 
+  /// ```
+  /// use smol_bytes::compact::SmolBytes;
+  /// 
+  /// let inline_buf = SmolBytes::from(b"hello");
+  /// let heap_buf = SmolBytes::from(b"hello world and more data that exceeds inline capacity................................");
+  /// 
+  /// assert!(inline_buf.try_unwrap_inline().is_ok());
+  /// assert!(heap_buf.try_unwrap_inline().is_err());
+  /// ```
+  #[inline]
+  pub fn try_unwrap_inline(self) -> Result<Buffer, Bytes> {
+    match self.repr {
+      Repr::Inline(b) => Ok(b),
+      Repr::Heap(b) => Err(b),
+    }
+  }
+
+  /// Unwraps the heap buffer, consuming `self`.
+  /// 
+  /// # Panics
+  /// - Panics if the buffer is inline.
+  /// 
+  /// ## Examples
+  /// 
+  /// ```
+  /// use smol_bytes::shared::SmolBytes;
+  /// 
+  /// let mut buf = SmolBytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
+  /// 
+  /// let heap_buffer = buf.unwrap_heap();
+  /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
+  /// ```
+  #[inline]
+  pub fn unwrap_heap(self) -> Bytes {
+    match self.repr {
+      Repr::Inline(_) => panic!("called `SmolBytes::unwrap_heap()` on an inline buffer"),
+      Repr::Heap(b) => b,
+    }
+  }
+
+  /// Attempts to unwrap the heap buffer, consuming `self`.
+  /// 
+  /// ## Examples
+  /// 
+  /// ```
+  /// use smol_bytes::compact::SmolBytes;
+  /// 
+  /// let inline_buf = SmolBytes::from(&b"hello"[..]);
+  /// let mut heap_buf = SmolBytes::from_slice(b"hello world and more data that exceeds inline capacity................................");
+  /// 
+  /// assert!(heap_buf.try_unwrap_heap().is_ok());
+  /// assert!(inline_buf.try_unwrap_heap().is_err());
+  /// ```
+  #[inline]
+  pub fn try_unwrap_heap(self) -> Result<Bytes, Buffer> {
+    match self.repr {
+      Repr::Inline(b) => Err(b),
+      Repr::Heap(b) => Ok(b),
+    }
+  }
+
   /// Returns the inline capacity in bytes.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn inline_capacity() -> usize {

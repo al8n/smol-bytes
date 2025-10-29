@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use smol_bytes::strategy::{compact, shared};
+use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
 /// Benchmark constructor performance for different data sizes (from Vec)

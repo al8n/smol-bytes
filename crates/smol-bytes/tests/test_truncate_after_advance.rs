@@ -1,5 +1,5 @@
 use bytes::Buf;
-use smol_bytes::strategy::{compact, shared};
+use smol_bytes::{compact, shared};
 
 #[test]
 fn test_truncate_after_advance_inline_conversion_friendly() {

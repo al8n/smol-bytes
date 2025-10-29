@@ -1,5 +1,5 @@
 use bytes::Buf;
-use smol_bytes::strategy::shared::SmolBytes;
+use smol_bytes::shared::SmolBytes;
 
 #[test]
 fn test_split_to_after_advance_inline() {

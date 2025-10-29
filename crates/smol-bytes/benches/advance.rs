@@ -1,6 +1,6 @@
 use bytes::Buf;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use smol_bytes::strategy::{compact, shared};
+use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
 fn advance_benchmarks(c: &mut Criterion) {
