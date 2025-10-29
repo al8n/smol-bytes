@@ -1,8 +1,5 @@
 use bytes::Buf;
-use smol_bytes::{
-  compact, shared,
-  INLINE_CAP,
-};
+use smol_bytes::{compact, shared, INLINE_CAP};
 
 #[test]
 fn test_inline_strategy_converts_heap_to_inline_on_advance() {

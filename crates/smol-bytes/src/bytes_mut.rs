@@ -62,8 +62,8 @@ mod serde;
 /// # Freezing
 ///
 /// Convert to an immutable buffer using:
-/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::SmolBytes`](crate::strategy::shared::SmolBytes)
-/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::SmolBytes`](crate::strategy::compact::SmolBytes)
+/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::SmolBytes`](crate::shared::SmolBytes)
+/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::SmolBytes`](crate::compact::SmolBytes)
 #[derive(Clone)]
 pub struct SmolBytesMut(Repr);
 
@@ -290,17 +290,17 @@ impl SmolBytesMut {
   }
 
   /// Unwraps the inline buffer, consuming `self`.
-  /// 
+  ///
   /// # Panics
   /// - Panics if the buffer is heap allocated.
-  /// 
+  ///
   /// ## Examples
-  /// 
+  ///
   /// ```
   /// use smol_bytes::SmolBytesMut;
-  /// 
+  ///
   /// let buf = SmolBytesMut::from(&b"hello"[..]);
-  /// 
+  ///
   /// let inline_buffer = buf.unwrap_inline();
   /// assert_eq!(&inline_buffer[..], b"hello");
   /// ```
@@ -313,15 +313,15 @@ impl SmolBytesMut {
   }
 
   /// Attempts to unwrap the inline buffer, consuming `self`.
-  /// 
+  ///
   /// # Examples
-  /// 
+  ///
   /// ```
   /// use smol_bytes::SmolBytesMut;
-  /// 
+  ///
   /// let inline_buf = SmolBytesMut::from(&b"hello"[..]);
   /// let heap_buf = SmolBytesMut::with_capacity(100);
-  /// 
+  ///
   /// assert!(inline_buf.try_unwrap_inline().is_ok());
   /// assert!(heap_buf.try_unwrap_inline().is_err());
   /// ```
@@ -334,18 +334,18 @@ impl SmolBytesMut {
   }
 
   /// Unwraps the heap buffer, consuming `self`.
-  /// 
+  ///
   /// # Panics
   /// - Panics if the buffer is inline.
-  /// 
+  ///
   /// ## Examples
-  /// 
+  ///
   /// ```
   /// use smol_bytes::SmolBytesMut;
-  /// 
+  ///
   /// let mut buf = SmolBytesMut::with_capacity(100);
   /// buf.extend_from_slice(b"hello world and more data that exceeds inline capacity................................");
-  /// 
+  ///
   /// let heap_buffer = buf.unwrap_heap();
   /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
   /// ```
@@ -358,16 +358,16 @@ impl SmolBytesMut {
   }
 
   /// Attempts to unwrap the heap buffer, consuming `self`.
-  /// 
+  ///
   /// ## Examples
-  /// 
+  ///
   /// ```
   /// use smol_bytes::SmolBytesMut;
-  /// 
+  ///
   /// let inline_buf = SmolBytesMut::from(&b"hello"[..]);
   /// let mut heap_buf = SmolBytesMut::with_capacity(100);
   /// heap_buf.extend_from_slice(b"hello world and more data that exceeds inline capacity................................");
-  /// 
+  ///
   /// assert!(heap_buf.try_unwrap_heap().is_ok());
   /// assert!(inline_buf.try_unwrap_heap().is_err());
   /// ```
@@ -567,7 +567,7 @@ impl SmolBytesMut {
     }
   }
 
-  /// Converts `self` into an immutable [`shared::SmolBytes`](crate::strategy::shared::SmolBytes).
+  /// Converts `self` into an immutable [`shared::SmolBytes`](crate::shared::SmolBytes).
   ///
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion
@@ -595,7 +595,7 @@ impl SmolBytesMut {
     self.freeze()
   }
 
-  /// Converts `self` into an immutable [`compact::SmolBytes`](crate::strategy::compact::SmolBytes).
+  /// Converts `self` into an immutable [`compact::SmolBytes`](crate::compact::SmolBytes).
   ///
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion

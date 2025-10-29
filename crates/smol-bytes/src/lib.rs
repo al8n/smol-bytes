@@ -11,14 +11,14 @@
 //!
 //! Two optimization strategies are available:
 //!
-//! - **[`strategy::shared::SmolBytes`]** - Fast conversions with `bytes::Bytes`, preserves heap allocations
-//! - **[`strategy::compact::SmolBytes`]** - Minimizes memory usage, aggressively inlines data
+//! - **[`shared::SmolBytes`]** - Fast conversions with `bytes::Bytes`, preserves heap allocations
+//! - **[`compact::SmolBytes`]** - Minimizes memory usage, aggressively inlines data
 //!
 //! # Quick Start
 //!
 //! ```rust
 //! // Use the Shared strategy (recommended for most use cases)
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //!
 //! let data = SmolBytes::from_static(b"hello world");
 //! assert_eq!(data.as_slice(), b"hello world");
@@ -42,7 +42,7 @@ pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use bytes::strategy::{shared, compact};
+pub use bytes::strategy::{compact, shared};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]

@@ -23,7 +23,7 @@
 //! # Basic Usage
 //!
 //! ```rust
-//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::SmolBytes, Buf};
 //!
 //! // Small data (≤62 bytes) is stored inline
 //! let small = SmolBytes::from_static(b"hello world");
@@ -63,7 +63,7 @@
 //! ## Operations and Allocation Behavior
 //!
 //! ```rust
-//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::SmolBytes, Buf};
 //!
 //! // Start with large heap allocation
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
@@ -108,7 +108,7 @@
 //! ## Stream Processing with Automatic Inlining
 //!
 //! ```rust
-//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::SmolBytes, Buf};
 //!
 //! // Process incoming stream
 //! let mut buffer = SmolBytes::from(vec![0u8; 1024]);
@@ -122,7 +122,7 @@
 //! ## Memory-Efficient Buffer Pool
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
+//! use smol_bytes::compact::SmolBytes;
 //!
 //! struct BufferPool {
 //!     buffers: Vec<SmolBytes>,
@@ -159,7 +159,7 @@
 //! ## Truncate for Memory Savings
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
+//! use smol_bytes::compact::SmolBytes;
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! assert!(data.is_heap());
@@ -173,7 +173,7 @@
 //! ## Smart Split Operations
 //!
 //! ```rust
-//! use smol_bytes::strategy::compact::SmolBytes;
+//! use smol_bytes::compact::SmolBytes;
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //!
@@ -265,7 +265,7 @@ use core::ops::{Bound, RangeBounds};
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::strategy::compact::SmolBytes;
+/// use smol_bytes::compact::SmolBytes;
 /// use bytes::Buf;
 ///
 /// // Create heap-allocated bytes (>62 bytes)
@@ -500,7 +500,7 @@ impl Strategy for RawSmolBytes<Compact> {
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::strategy::compact::SmolBytes;
+/// use smol_bytes::compact::SmolBytes;
 /// use bytes::Buf;
 ///
 /// let mut data = SmolBytes::from(vec![1u8; 100]);

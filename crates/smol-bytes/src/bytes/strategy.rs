@@ -26,7 +26,7 @@
 //! - You're building network protocols or I/O-heavy applications
 //!
 //! ```rust
-//! use smol_bytes::{strategy::shared::SmolBytes, Buf};
+//! use smol_bytes::{shared::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70);
@@ -42,7 +42,7 @@
 //! - You want to minimize heap allocations
 //!
 //! ```rust
-//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::SmolBytes, Buf};
 //!
 //! let mut data = SmolBytes::from(vec![1u8; 100]);
 //! data.advance(70);
@@ -55,7 +55,7 @@
 //! ## Shared Strategy Example
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //!
 //! // Small data is inline
 //! let small = SmolBytes::from_static(b"hello");
@@ -72,7 +72,7 @@
 //! ## Compact Strategy Example
 //!
 //! ```rust
-//! use smol_bytes::{strategy::compact::SmolBytes, Buf};
+//! use smol_bytes::{compact::SmolBytes, Buf};
 //!
 //! // Start with large heap allocation
 //! let mut data = SmolBytes::from(vec![1u8; 64]);

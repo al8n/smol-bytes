@@ -22,7 +22,7 @@
 //! # Basic Usage
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //!
 //! // Small data (≤62 bytes) is stored inline
 //! let small = SmolBytes::from_static(b"hello world");
@@ -61,7 +61,7 @@
 //! ## Operations and Allocation Behavior
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //! use bytes::Buf;
 //!
 //! // Start with large heap allocation
@@ -107,7 +107,7 @@
 //! ## Network Protocol Buffer
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //! use bytes::Buf;
 //!
 //! // Receive data from network
@@ -127,7 +127,7 @@
 //! ## Parsing with Zero-Copy Slicing
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //!
 //! let data = SmolBytes::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 //!
@@ -142,7 +142,7 @@
 //! ## Efficient Cloning
 //!
 //! ```rust
-//! use smol_bytes::strategy::shared::SmolBytes;
+//! use smol_bytes::shared::SmolBytes;
 //!
 //! let original = SmolBytes::from(vec![1u8; 100]);
 //!
@@ -188,7 +188,7 @@ use core::ops::{Bound, RangeBounds};
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::strategy::shared::SmolBytes;
+/// use smol_bytes::shared::SmolBytes;
 /// use bytes::Buf;
 ///
 /// // Create heap-allocated bytes (>62 bytes)
@@ -247,7 +247,7 @@ impl RawSmolBytes<Shared> {
   /// #         }
   /// #     }
   /// # }
-  /// use smol_bytes::strategy::shared::SmolBytes;
+  /// use smol_bytes::shared::SmolBytes;
   /// use memmap2::Mmap;
   ///
   /// # fn main() -> Result<(), ()> {
@@ -428,7 +428,7 @@ impl Strategy for RawSmolBytes<Shared> {
 /// # Example
 ///
 /// ```rust
-/// use smol_bytes::strategy::shared::SmolBytes;
+/// use smol_bytes::shared::SmolBytes;
 ///
 /// let data = SmolBytes::from_static(b"hello world");
 /// assert_eq!(data.as_slice(), b"hello world");

@@ -75,7 +75,7 @@ where
 
 impl<S> From<Buffer> for RawSmolBytes<S>
 where
-  Self: Strategy
+  Self: Strategy,
 {
   #[inline]
   fn from(value: Buffer) -> Self {
