@@ -215,7 +215,7 @@
 //!
 //! ```rust
 //! // Before (Shared strategy)
-//! use smol_bytes::{strategy::{shared, compact}, Buf};
+//! use smol_bytes::{shared, compact, Buf};
 //!
 //! let mut data = shared::Bytes::from(vec![1u8; 100]);
 //! data.advance(70); // Still heap-allocated

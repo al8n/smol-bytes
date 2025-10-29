@@ -118,6 +118,34 @@ impl PartialOrd<BytesMut> for [u8] {
   }
 }
 
+impl<const N: usize> PartialEq<[u8; N]> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &[u8; N]) -> bool {
+    self.as_ref() == other
+  }
+}
+
+impl<const N: usize> PartialEq<BytesMut> for [u8; N] {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &BytesMut) -> bool {
+    other.eq(self)
+  }
+}
+
+impl<const N: usize> PartialOrd<[u8; N]> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &[u8; N]) -> Option<Ordering> {
+    Some(self.as_ref().cmp(other))
+  }
+}
+
+impl<const N: usize> PartialOrd<BytesMut> for [u8; N] {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &BytesMut) -> Option<Ordering> {
+    Some(self.as_slice().cmp(other.as_ref()))
+  }
+}
+
 // --- RawBytes comparisons ----
 
 impl<S> PartialEq<RawBytes<S>> for BytesMut

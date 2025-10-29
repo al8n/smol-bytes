@@ -115,7 +115,7 @@ impl BytesMut {
   ///
   /// assert!(zeros.capacity() >= 42);
   /// assert_eq!(zeros.len(), 42);
-  /// zeros.into_iter().for_each(|x| assert_eq!(*x, 0));
+  /// zeros.into_iter().for_each(|x| assert_eq!(x, 0));
   /// ```
   pub fn zeroed(len: usize) -> Self {
     if len <= INLINE_CAP {

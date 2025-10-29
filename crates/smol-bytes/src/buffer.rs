@@ -262,15 +262,14 @@ impl Buffer {
   /// # Examples
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, BufMut};
   ///
   /// let mut dst = Buffer::new();
-  /// let mut buf = &mut dst[..];
   ///
-  /// let original_remaining = buf.remaining_mut();
-  /// buf.put(&b"hello"[..]);
+  /// let original_remaining = dst.remaining_mut();
+  /// dst.put(&b"hello"[..]);
   ///
-  /// assert_eq!(original_remaining - 5, buf.remaining_mut());
+  /// assert_eq!(original_remaining - 5, dst.remaining_mut());
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn remaining_mut(&self) -> usize {
@@ -364,19 +363,19 @@ impl Buffer {
   /// // Write some data
   /// unsafe {
   ///   let tmp = buf.spare_capacity_mut();
-  ///   core::ptr::copy(b"he".as_ptr(), tmp.as_mut_ptr(), 2);
+  ///   core::ptr::copy(b"he".as_ptr(), tmp.as_mut_ptr() as _, 2);
   ///   buf.advance_mut(2);
   /// }
   ///
   /// // write more bytes
   /// unsafe {
   ///   let tmp = buf.spare_capacity_mut();
-  ///   core::ptr::copy(b"llo".as_ptr(), tmp.as_mut_ptr(), 3);
+  ///   core::ptr::copy(b"llo".as_ptr(), tmp.as_mut_ptr() as _, 3);
   ///   buf.advance_mut(3);
   /// }
   ///
   /// assert_eq!(5, buf.len());
-  /// assert_eq!(buf, b"hello");
+  /// assert_eq!(buf, "hello".as_bytes());
   /// ```
   ///
   /// # Panics
@@ -497,16 +496,16 @@ impl Buffer {
   /// `self` must have enough remaining capacity to contain all of `src`.
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, INLINE_CAP};
   ///
   /// let mut dst = Buffer::new();
   ///
   /// {
   ///     dst.put_slice(b"hello");
-  ///     assert_eq!(57, dst.remaining_mut());
+  ///     assert_eq!(INLINE_CAP - 5, dst.remaining_mut());
   /// }
   ///
-  /// assert_eq!(b"hello\0", &dst);
+  /// assert_eq!(dst, "hello");
   /// ```
   #[inline]
   pub fn put_slice(&mut self, src: &[u8]) {
@@ -521,16 +520,16 @@ impl Buffer {
   /// `self` must have enough remaining capacity to contain all of `src`.
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, INLINE_CAP};
   ///
   /// let mut dst = Buffer::new();
   ///
   /// {
   ///     dst.try_put_slice(b"hello").unwrap();
-  ///     assert_eq!(57, dst.remaining_mut());
+  ///     assert_eq!(INLINE_CAP - 5, dst.remaining_mut());
   /// }
   ///
-  /// assert_eq!(b"hello\0", &dst);
+  /// assert_eq!("hello", &dst);
   /// ```
   #[inline]
   pub const fn try_put_slice(&mut self, src: &[u8]) -> Result<(), TryPutError> {
@@ -563,16 +562,16 @@ impl Buffer {
   /// `self` must have at least `cnt` remaining capacity.
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, INLINE_CAP};
   ///
   /// let mut dst = Buffer::new();
   ///
   /// {
   ///     dst.put_bytes(b'a', 4);
-  ///     assert_eq!(2, dst.remaining_mut());
+  ///     assert_eq!(INLINE_CAP - 4, dst.remaining_mut());
   /// }
   ///
-  /// assert_eq!(b"aaaa\0\0", &dst);
+  /// assert_eq!("aaaa", &dst);
   /// ```
   ///
   /// # Panics
@@ -593,16 +592,16 @@ impl Buffer {
   /// `self` must have at least `cnt` remaining capacity.
   ///
   /// ```
-  /// use smol_bytes::Buffer;
+  /// use smol_bytes::{Buffer, INLINE_CAP};
   ///
   /// let mut dst = Buffer::new();
   ///
   /// {
   ///     dst.try_put_bytes(b'a', 4).unwrap();
-  ///     assert_eq!(2, dst.remaining_mut());
+  ///     assert_eq!(INLINE_CAP - 4, dst.remaining_mut());
   /// }
   ///
-  /// assert_eq!(b"aaaa\0\0", &dst);
+  /// assert_eq!("aaaa".as_bytes(), &dst);
   /// ```
   ///
   /// # Panics
@@ -611,6 +610,10 @@ impl Buffer {
   /// `self`.
   #[inline]
   pub const fn try_put_bytes(&mut self, val: u8, cnt: usize) -> Result<(), TryPutError> {
+    if cnt == 0 {
+      return Ok(());
+    }
+
     let available = self.remaining_mut();
     if available < cnt {
       return Err(TryPutError {
@@ -623,6 +626,7 @@ impl Buffer {
     unsafe {
       write_bytes(self.buf.as_mut_ptr().add(self.len.to_usize()), val, cnt);
     }
+    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + cnt as u8) };
     Ok(())
   }
 }

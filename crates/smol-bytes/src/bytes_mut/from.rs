@@ -4,6 +4,25 @@ use std::{boxed::Box, rc::Rc, sync::Arc, vec::Vec};
 
 use super::*;
 
+impl<const N: usize> From<[u8; N]> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(array: [u8; N]) -> Self {
+    Self::from(&array)
+  }
+}
+
+impl<const N: usize> From<&[u8; N]> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(array: &[u8; N]) -> Self {
+    if N <= INLINE_CAP {
+      // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
+      Self(Repr::Inline(unsafe { Buffer::copy_from_slice(array) }))
+    } else {
+      Self(Repr::Heap(bytes::BytesMut::from(array.as_slice())))
+    }
+  }
+}
+
 impl From<Buffer> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(buffer: Buffer) -> Self {

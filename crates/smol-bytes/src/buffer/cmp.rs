@@ -115,6 +115,34 @@ impl PartialOrd<Buffer> for [u8] {
   }
 }
 
+impl<const N: usize> PartialEq<[u8; N]> for Buffer {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &[u8; N]) -> bool {
+    N == self.len() && self.as_ref() == other.as_slice()
+  }
+}
+
+impl<const N: usize> PartialEq<Buffer> for [u8; N] {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &Buffer) -> bool {
+    other.eq(self)
+  }
+}
+
+impl<const N: usize> PartialOrd<[u8; N]> for Buffer {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &[u8; N]) -> Option<Ordering> {
+    Some(self.as_ref().cmp(other.as_slice()))
+  }
+}
+
+impl<const N: usize> PartialOrd<Buffer> for [u8; N] {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &Buffer) -> Option<Ordering> {
+    Some(self.as_slice().cmp(other.as_ref()))
+  }
+}
+
 // ---- &[u8] comparisons ----
 impl PartialEq<Buffer> for &[u8] {
   #[cfg_attr(not(tarpaulin), inline(always))]

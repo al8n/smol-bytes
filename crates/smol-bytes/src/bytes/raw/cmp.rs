@@ -152,6 +152,46 @@ where
   }
 }
 
+impl<S, const N: usize> PartialEq<[u8; N]> for RawBytes<S>
+where
+  Self: Strategy,
+{
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &[u8; N]) -> bool {
+    N == self.len() && self.as_slice() == other.as_slice()
+  }
+}
+
+impl<S, const N: usize> PartialEq<RawBytes<S>> for [u8; N]
+where
+  RawBytes<S>: Strategy,
+{
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn eq(&self, other: &RawBytes<S>) -> bool {
+    other.eq(self)
+  }
+}
+
+impl<S, const N: usize> PartialOrd<[u8; N]> for RawBytes<S>
+where
+  Self: Strategy,
+{
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &[u8; N]) -> Option<Ordering> {
+    Some(self.as_slice().cmp(other.as_slice()))
+  }
+}
+
+impl<S, const N: usize> PartialOrd<RawBytes<S>> for [u8; N]
+where
+  RawBytes<S>: Strategy,
+{
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
+    Some(self.as_slice().cmp(other.as_slice()))
+  }
+}
+
 // ---- &[u8] comparisons ----
 impl<S> PartialEq<RawBytes<S>> for &[u8]
 where

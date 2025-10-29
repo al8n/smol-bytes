@@ -1,5 +1,30 @@
 use super::*;
 
+impl<S, const N: usize> From<[u8; N]> for RawBytes<S>
+where
+  Self: Strategy,
+{
+  #[inline]
+  fn from(array: [u8; N]) -> Self {
+    Self::from(&array)
+  }
+}
+
+impl<S, const N: usize> From<&[u8; N]> for RawBytes<S>
+where
+  Self: Strategy,
+{
+  #[inline]
+  fn from(array: &[u8; N]) -> Self {
+    if N <= INLINE_CAP {
+      // SAFETY: N is guaranteed to be less than or equal to INLINE_CAP
+      Self::inline(unsafe { Buffer::copy_from_slice(array) })
+    } else {
+      Self::heap(::bytes::Bytes::copy_from_slice(array.as_slice()))
+    }
+  }
+}
+
 impl<S> From<&[u8]> for RawBytes<S>
 where
   Self: Strategy,
