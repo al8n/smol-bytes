@@ -113,6 +113,46 @@ impl From<Vec<u8>> for BytesMut {
   }
 }
 
+impl From<BytesMut> for Vec<u8> {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(smol_bytes_mut: BytesMut) -> Self {
+    match smol_bytes_mut.0 {
+      Repr::Inline(storage) => storage.as_slice().to_vec(),
+      Repr::Heap(b) => b.into(),
+    }
+  }
+}
+
+impl From<BytesMut> for Box<[u8]> {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(smol_bytes_mut: BytesMut) -> Self {
+    match smol_bytes_mut.0 {
+      Repr::Inline(storage) => storage.as_slice().into(),
+      Repr::Heap(b) => Vec::from(b).into(),
+    }
+  }
+}
+
+impl From<BytesMut> for Arc<[u8]> {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(smol_bytes_mut: BytesMut) -> Self {
+    match smol_bytes_mut.0 {
+      Repr::Inline(storage) => Arc::from(storage.as_slice()),
+      Repr::Heap(b) => Arc::from(Vec::from(b)),
+    }
+  }
+}
+
+impl From<BytesMut> for Rc<[u8]> {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn from(smol_bytes_mut: BytesMut) -> Self {
+    match smol_bytes_mut.0 {
+      Repr::Inline(storage) => Rc::from(storage.as_slice()),
+      Repr::Heap(b) => Rc::from(Vec::from(b)),
+    }
+  }
+}
+
 impl From<String> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(s: String) -> Self {

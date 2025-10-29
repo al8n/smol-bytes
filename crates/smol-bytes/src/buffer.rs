@@ -753,3 +753,8 @@ impl From<TryPutError> for std::io::Error {
 fn panic_advance(available: usize, requested: usize) -> ! {
   panic!("advance out of bounds: the len is {available} but advancing by {requested}",);
 }
+
+const _: () = {
+  const fn _assert<T: Send + Sync>() {}
+  _assert::<Buffer>();
+};

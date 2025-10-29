@@ -443,6 +443,34 @@ where
     }
   }
 
+  /// Try to convert self into `BytesMut`.
+  ///
+  /// If `self` is unique for the entire original buffer, this will succeed
+  /// and return a `BytesMut` with the contents of `self` without copying.
+  /// If `self` is not unique for the entire original buffer, this will fail
+  /// and return self.
+  ///
+  /// This will also always fail if the buffer was constructed via either
+  /// [from_owner](Bytes::from_owner) or [from_static](Bytes::from_static).
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Bytes, BytesMut};
+  ///
+  /// let bytes = Bytes::from(b"hello".to_vec());
+  /// assert_eq!(bytes.try_into_mut(), Ok(BytesMut::from(&b"hello"[..])));
+  ///
+  /// let bytes = Bytes::from("a".repeat(100).as_bytes());
+  /// assert_eq!(bytes.try_into_mut(), Ok(BytesMut::from("a".repeat(100).as_bytes())));
+  /// ```
+  pub fn try_into_mut(self) -> Result<BytesMut, Bytes> {
+    match self.repr {
+      Repr::Inline(storage) => Ok(BytesMut::from_inline(storage)),
+      Repr::Heap(bytes) => bytes.try_into_mut().map(BytesMut::from_bytes_mut),
+    }
+  }
+
   /// Converts `self` into a [`Vec<u8>`], reusing the allocation if possible.
   #[inline]
   pub fn into_vec(self) -> Vec<u8> {

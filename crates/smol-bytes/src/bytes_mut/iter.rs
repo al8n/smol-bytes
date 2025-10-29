@@ -11,6 +11,27 @@ impl<'a> Extend<&'a [u8]> for BytesMut {
   }
 }
 
+impl<'a> Extend<&'a u8> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn extend<T: IntoIterator<Item = &'a u8>>(&mut self, iter: T) {
+    self.extend(iter.into_iter().copied());
+  }
+}
+
+impl Extend<u8> for BytesMut {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
+    let iter = iter.into_iter();
+
+    let (lower, _) = iter.size_hint();
+    self.reserve(lower);
+
+    for b in iter {
+      self.put_u8(b);
+    }
+  }
+}
+
 impl Extend<bytes::Bytes> for BytesMut {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn extend<T: IntoIterator<Item = bytes::Bytes>>(&mut self, iter: T) {
@@ -28,20 +49,6 @@ where
   fn extend<T: IntoIterator<Item = RawBytes<S>>>(&mut self, iter: T) {
     for smol_bytes in iter {
       self.extend_from_slice(smol_bytes.as_ref());
-    }
-  }
-}
-
-impl Extend<u8> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
-    let iter = iter.into_iter();
-
-    let (lower, _) = iter.size_hint();
-    self.reserve(lower);
-
-    for b in iter {
-      self.put_u8(b);
     }
   }
 }
