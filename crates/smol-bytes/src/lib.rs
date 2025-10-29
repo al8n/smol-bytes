@@ -26,9 +26,6 @@
 //!
 //! See the [`strategy`] module for detailed comparison and usage examples.
 
-// #[cfg(not(any(feature = "std", feature = "alloc")))]
-// compile_error!("smol-bytes requires either the \"std\" or \"alloc\" feature.");
-
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 extern crate alloc as std;
 
@@ -42,7 +39,7 @@ pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use bytes::strategy::{compact, shared};
+pub use bytes::strategy::{compact, shared::{self, Bytes}};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
