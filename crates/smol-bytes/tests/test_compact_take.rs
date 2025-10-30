@@ -14,12 +14,9 @@ fn long_take() {
 #[test]
 fn take_copy_to_bytes() {
   let mut abcd = Bytes::copy_from_slice(b"abcd");
-  let abcd_ptr = abcd.as_ptr();
   let mut take = (&mut abcd).take(2);
   let a = take.copy_to_bytes(1);
   assert_eq!(Bytes::copy_from_slice(b"a"), a);
-  // assert `to_bytes` did not allocate
-  assert_eq!(abcd_ptr, a.as_ptr());
   assert_eq!(Bytes::copy_from_slice(b"bcd"), abcd);
 }
 

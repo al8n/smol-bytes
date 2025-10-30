@@ -222,7 +222,7 @@ fn split_off_to_loop() {
       let mut bytes = Bytes::from(&s[..]);
       let off = bytes.split_off(i);
       assert_eq!(i, bytes.len());
-      let mut sum = Vec::new();
+      let mut sum: Vec<u8> = Vec::new();
       sum.extend(bytes.iter());
       sum.extend(off.iter());
       assert_eq!(&s[..], &sum[..]);
@@ -233,7 +233,7 @@ fn split_off_to_loop() {
         Ok(off) => {
           // Heap buffer - got BytesMut (can grow)
           assert_eq!(i, bytes.len());
-          let mut sum = Vec::new();
+          let mut sum: Vec<u8> = Vec::new();
           sum.extend(&bytes);
           sum.extend(&off);
           assert_eq!(&s[..], &sum[..]);
@@ -241,7 +241,7 @@ fn split_off_to_loop() {
         Err(off) => {
           // Inline buffer - got Buffer (max 62 bytes), bytes was truncated
           assert_eq!(i, bytes.len());
-          let mut sum = Vec::new();
+          let mut sum: Vec<u8> = Vec::new();
           sum.extend(&bytes);
           sum.extend(&off);
           assert_eq!(&s[..], &sum[..]);
@@ -252,7 +252,7 @@ fn split_off_to_loop() {
       let mut bytes = Bytes::from(&s[..]);
       let off = bytes.split_to(i);
       assert_eq!(i, off.len());
-      let mut sum = Vec::new();
+      let mut sum: Vec<u8> = Vec::new();
       sum.extend(off.iter());
       sum.extend(bytes.iter());
       assert_eq!(&s[..], &sum[..]);
@@ -263,7 +263,7 @@ fn split_off_to_loop() {
         Ok(off) => {
           // Heap buffer - got BytesMut (can grow)
           assert_eq!(i, off.len());
-          let mut sum = Vec::new();
+          let mut sum: Vec<u8> = Vec::new();
           sum.extend(&off);
           sum.extend(&bytes);
           assert_eq!(&s[..], &sum[..]);
@@ -271,7 +271,7 @@ fn split_off_to_loop() {
         Err(off) => {
           // Inline buffer - got Buffer (max 62 bytes), bytes was advanced
           assert_eq!(i, off.len());
-          let mut sum = Vec::new();
+          let mut sum: Vec<u8> = Vec::new();
           sum.extend(&off);
           sum.extend(&bytes);
           assert_eq!(&s[..], &sum[..]);
