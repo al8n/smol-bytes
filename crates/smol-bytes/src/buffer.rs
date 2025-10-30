@@ -10,6 +10,7 @@ mod fmt;
 mod from;
 mod iter;
 mod ops;
+mod io;
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -728,6 +729,73 @@ impl Buffer {
     self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + cnt as u8) };
     Ok(())
   }
+
+  /// Put `cnt` bytes `val` into `self`.
+  ///
+  /// Logically equivalent to calling `self.put_u8(val)` `cnt` times, but may work faster.
+  ///
+  /// `self` must have at least `cnt` remaining capacity.
+  ///
+  /// ```
+  /// use smol_bytes::{Buffer, INLINE_CAP};
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.put_u8(b'a');
+  ///     assert_eq!(INLINE_CAP - 1, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!("a", &dst);
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panics if there is not enough remaining capacity in
+  /// `self`.
+  #[inline]
+  pub fn put_u8(&mut self, val: u8) {
+    self.try_put_u8(val)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+  }
+
+  /// Try to put `cnt` bytes `val` into `self`.
+  ///
+  /// Logically equivalent to calling `self.put_u8(val)` `cnt` times, but may work faster.
+  ///
+  /// `self` must have at least `cnt` remaining capacity.
+  ///
+  /// ```
+  /// use smol_bytes::{Buffer, INLINE_CAP};
+  ///
+  /// let mut dst = Buffer::new();
+  ///
+  /// {
+  ///     dst.try_put_u8(b'a').unwrap();
+  ///     assert_eq!(INLINE_CAP - 1, dst.remaining_mut());
+  /// }
+  ///
+  /// assert_eq!("a".as_bytes(), &dst);
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// This function panics if there is not enough remaining capacity in
+  /// `self`.
+  #[inline]
+  pub const fn try_put_u8(&mut self, val: u8) -> Result<(), TryPutError> {
+    let available = self.remaining_mut();
+    if available < 1 {
+      return Err(TryPutError {
+        requested: 1,
+        available,
+      });
+    }
+
+    self.buf[self.len.to_usize()].write(val);
+    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + 1) };
+    Ok(())
+  }
 }
 
 #[cfg(any(feature = "alloc", feature = "std"))]
@@ -780,6 +848,16 @@ const _: () = {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn put_bytes(&mut self, val: u8, requested: usize) {
       Self::put_bytes(self, val, requested);
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn put_u8(&mut self, val: u8) {
+      Self::put_u8(self, val);
+    }
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn put_i8(&mut self, val: i8) {
+      Self::put_u8(self, val as u8);
     }
   }
 };
@@ -851,6 +929,14 @@ impl From<TryPutError> for std::io::Error {
 #[cold]
 fn panic_advance(available: usize, requested: usize) -> ! {
   panic!("advance out of bounds: the len is {available} but advancing by {requested}",);
+}
+
+#[cold]
+fn panic_does_not_fit(size: usize, nbytes: usize) -> ! {
+  panic!(
+    "size too large: the integer type can fit {} bytes, but nbytes is {}",
+    size, nbytes
+  );
 }
 
 const _: () = {
