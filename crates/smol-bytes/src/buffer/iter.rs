@@ -20,3 +20,32 @@ impl IntoIterator for Buffer {
     ::bytes::buf::IntoIter::new(self)
   }
 }
+
+/// Iterator over the bytes contained by the buffer.
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+#[derive(Debug)]
+pub struct IntoIter<T> {
+  inner: T,
+}
+
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+const _: () = {
+  impl Iterator for IntoIter<Buffer> {
+    type Item = u8;
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn next(&mut self) -> Option<Self::Item> {
+      self.inner.try_get_u8().ok()
+    }
+  }
+
+  impl IntoIterator for Buffer {
+    type Item = u8;
+    type IntoIter = IntoIter<Buffer>;
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn into_iter(self) -> Self::IntoIter {
+      IntoIter { inner: self }
+    }
+  }
+};

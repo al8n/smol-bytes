@@ -1,8 +1,10 @@
 macro_rules! method_forward {
   ($repr:tt { $(
+    $(#[$meta:meta])*
     fn $name:ident($( $arg:ident : $arg_ty:ty ),*) $(-> $ret:ty)?
   );+$(;)? }) => {
     $(
+      $(#[$meta])*
       #[cfg_attr(not(tarpaulin), inline(always))]
       fn $name(&mut self, $( $arg : $arg_ty ),*) $(-> $ret)? {
         match &mut self.$repr {
@@ -13,9 +15,11 @@ macro_rules! method_forward {
     )*
   };
   ($(
+    $(#[$meta:meta])*
     fn $name:ident($($arg:ident : $arg_ty:ty ),*) $(-> $ret:ty)?
   );+$(;)?) => {
     $(
+      $(#[$meta])*
       #[cfg_attr(not(tarpaulin), inline(always))]
       fn $name(&mut self, $( $arg : $arg_ty ),*) $(-> $ret)? {
         Self::$name(self, $( $arg ),*)

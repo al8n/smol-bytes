@@ -1,9 +1,12 @@
 use core::{
   borrow::Borrow,
   mem::{transmute, MaybeUninit},
+  ops::{Bound, RangeBounds},
   ptr::{copy_nonoverlapping, write_bytes},
-  slice::from_raw_parts_mut,
+  slice::{from_raw_parts, from_raw_parts_mut},
 };
+
+use super::error::*;
 
 mod cmp;
 mod fmt;
@@ -20,6 +23,9 @@ mod borsh;
 mod quickcheck;
 #[cfg(feature = "serde")]
 mod serde;
+
+#[cfg(feature = "pyo3")]
+mod python;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use bytes::TryGetError;
@@ -133,7 +139,7 @@ impl InlineSize {
 ///
 /// This type can inline at most [`INLINE_CAP`] bytes.
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "pyo3", pyo3::prelude::pyclass)]
+#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
 pub struct Buffer {
   // The write cursor
   len: InlineSize,
@@ -437,7 +443,7 @@ impl Buffer {
   /// assert_eq!(bytes.as_mut_slice(), b"hello");
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub fn truncate(&mut self, new_len: usize) {
+  pub const fn truncate(&mut self, new_len: usize) {
     if new_len == 0 {
       return self.clear();
     }
@@ -448,7 +454,16 @@ impl Buffer {
     }
 
     let cur = self.cur as usize;
-    self.buf.copy_within(cur..cur + new_len, 0);
+    if cur == 0 {
+      self.len = unsafe { InlineSize::from_u8(new_len as u8) };
+      return;
+    }
+
+    let (head, tail) = self.buf.split_at_mut(cur);
+    unsafe {
+      // SAFETY: new_len < remaining, so tail[new_len..] is valid
+      copy_nonoverlapping(tail.as_ptr(), head.as_mut_ptr(), new_len);
+    }
     self.len = unsafe { InlineSize::from_u8(new_len as u8) };
     self.cur = InlineSize::_V0;
   }
@@ -476,25 +491,9 @@ impl Buffer {
   /// Panics if `at > len`.
   #[must_use = "consider Buffer::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Self {
-    let len = self.remaining();
-    assert!(at <= len, "split_off out of bounds: {} > {}", at, len);
-
-    // Copy tail [at..len] into new buffer
-    let tail_len = len - at;
-    let tail = unsafe {
-      let mut new_buf = Self::new();
-      if tail_len > 0 {
-        let src = self.as_slice().as_ptr().add(at);
-        copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, tail_len);
-        new_buf.len = InlineSize::from_u8(tail_len as u8);
-      }
-      new_buf
-    };
-
-    // Truncate self to [0..at]
-    self.truncate(at);
-
-    tail
+    self
+      .try_split_off(at)
+      .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.remaining()))
   }
 
   /// Splits the buffer into two at the given index.
@@ -520,10 +519,74 @@ impl Buffer {
   /// Panics if `at > len`.
   #[must_use = "consider Buffer::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Self {
-    let len = self.remaining();
-    assert!(at <= len, "split_to out of bounds: {} > {}", at, len);
+    self
+      .try_split_to(at)
+      .unwrap_or_else(|_| panic!("split_to out of bounds: {} > {}", at, self.remaining()))
+  }
 
-    // Copy head [0..at] into new buffer
+  /// Tries to split the buffer into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[0, at)`, and the returned `Buffer`
+  /// contains elements `[at, len)`.
+  ///
+  /// Returns `Err(OutOfBounds)` if `at > remaining()`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut a = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let b = a.try_split_off(5).unwrap();
+  /// assert_eq!(a.as_slice(), b"hello");
+  /// assert_eq!(b.as_slice(), b" world");
+  /// ```
+  #[must_use = "consider Buffer::truncate if you don't need the other half"]
+  pub const fn try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
+    let len = self.remaining();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
+    }
+
+    let tail_len = len - at;
+    let tail = unsafe {
+      let mut new_buf = Self::new();
+      if tail_len > 0 {
+        let src = self.as_slice().as_ptr().add(at);
+        copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, tail_len);
+        new_buf.len = InlineSize::from_u8(tail_len as u8);
+      }
+      new_buf
+    };
+
+    self.truncate(at);
+    Ok(tail)
+  }
+
+  /// Tries to split the buffer into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[at, len)`, and the returned `Buffer`
+  /// contains elements `[0, at)`.
+  ///
+  /// Returns `Err(OutOfBounds)` if `at > remaining()`.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut a = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let b = a.try_split_to(5).unwrap();
+  /// assert_eq!(b.as_slice(), b"hello");
+  /// assert_eq!(a.as_slice(), b" world");
+  /// ```
+  #[must_use = "consider Buffer::advance if you don't need the other half"]
+  pub const fn try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
+    let len = self.remaining();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
+    }
+
     let head = unsafe {
       let mut new_buf = Self::new();
       if at > 0 {
@@ -534,10 +597,163 @@ impl Buffer {
       new_buf
     };
 
-    // Advance self to skip [0..at]
-    self.advance(at);
+    self.cur = unsafe { InlineSize::from_u8(self.cur.to_u8() + at as u8) };
+    Ok(head)
+  }
 
-    head
+  /// Creates a new buffer containing a copy of the specified range.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let buf = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let slice = buf.slice(0..5);
+  /// assert_eq!(slice.as_slice(), b"hello");
+  /// ```
+  ///
+  /// ## Panics
+  ///
+  /// Panics if the range is out of bounds.
+  pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+    self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// Tries to create a new buffer containing a copy of the specified range.
+  ///
+  /// Returns `Err(OutOfBounds)` if the range is out of bounds or the slice is too large.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let buf = Buffer::try_from(&b"hello world"[..]).unwrap();
+  /// let slice = buf.try_slice(0..5).unwrap();
+  /// assert_eq!(slice.as_slice(), b"hello");
+  /// ```
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
+    let len = self.len();
+
+    let begin = match range.start_bound() {
+      Bound::Included(&n) => n,
+      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
+      Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
+      Bound::Excluded(&n) => n,
+      Bound::Unbounded => len,
+    };
+
+    if begin > len || end > len {
+      return Err(RangeOutOfBounds::new(begin, end, len));
+    }
+
+    if begin == end {
+      return Ok(Self::new());
+    }
+
+    Ok(unsafe {
+      let ptr = self.as_slice().as_ptr();
+      let slice = from_raw_parts(ptr.add(begin), end - begin);
+      Self::copy_from_slice(slice)
+    })
+  }
+
+  /// Resizes the buffer to the specified length, filling with zeros if expanding.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
+  /// buf.resize(8);
+  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  ///
+  /// buf.resize(3);
+  /// assert_eq!(buf.as_slice(), b"hel");
+  /// ```
+  ///
+  /// ## Panics
+  ///
+  /// Panics if the new length exceeds capacity.
+  pub fn resize(&mut self, new_len: usize) {
+    let current_len = self.remaining();
+
+    if new_len == current_len {
+      return;
+    }
+
+    if new_len < current_len {
+      self.truncate(new_len);
+      return;
+    }
+
+    // Expanding
+    let additional = new_len - current_len;
+    assert!(
+      self.remaining_mut() >= additional,
+      "resize exceeds capacity: {} + {} > {}",
+      current_len,
+      additional,
+      self.capacity()
+    );
+
+    // Fill with zeros
+    unsafe {
+      let ptr = self.buf.as_mut_ptr() as *mut u8;
+      let start = self.len.to_usize();
+      core::ptr::write_bytes(ptr.add(start), 0, additional);
+      self.len = InlineSize::from_u8(new_len as u8);
+    }
+  }
+
+  /// Tries to resize the buffer to the specified length, filling with zeros if expanding.
+  ///
+  /// Returns `Err(OutOfBounds)` if the new length exceeds capacity.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
+  /// assert!(buf.try_resize(8).is_ok());
+  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  ///
+  /// assert!(buf.try_resize(3).is_ok());
+  /// assert_eq!(buf.as_slice(), b"hel");
+  /// ```
+  pub const fn try_resize(&mut self, new_len: usize) -> Result<(), OutOfBounds> {
+    let current_len = self.remaining();
+
+    if new_len == current_len {
+      return Ok(());
+    }
+
+    if new_len < current_len {
+      self.truncate(new_len);
+      return Ok(());
+    }
+
+    // Expanding
+    let additional = new_len - current_len;
+    if self.remaining_mut() < additional {
+      return Err(OutOfBounds::new(new_len, self.capacity()));
+    }
+
+    // Fill with zeros
+    unsafe {
+      let ptr = self.buf.as_mut_ptr() as *mut u8;
+      let start = self.len.to_usize();
+      core::ptr::write_bytes(ptr.add(start), 0, additional);
+      self.len = InlineSize::from_u8(new_len as u8);
+    }
+    Ok(())
   }
 
   /// Clears the buffer, removing all data. Existing capacity is preserved.
@@ -907,69 +1123,6 @@ const _: () = {
     }
   }
 };
-
-/// Error type for the `try_get_` methods of [`Buffer`].
-/// Indicates that there were not enough remaining
-/// bytes in the buffer while attempting
-/// to get a value from a [`Buffer`] with one
-/// of the `try_get_` methods.
-#[derive(Debug, PartialEq, Eq)]
-#[cfg(not(any(feature = "std", feature = "alloc")))]
-pub struct TryGetError {
-  /// The number of bytes necessary to get the value
-  pub requested: usize,
-
-  /// The number of bytes available in the buffer
-  pub available: usize,
-}
-
-#[cfg(not(any(feature = "std", feature = "alloc")))]
-const _: () = {
-  impl core::fmt::Display for TryGetError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-      write!(
-        f,
-        "Not enough bytes remaining in buffer to read value (requested {} but only {} available)",
-        self.requested, self.available
-      )
-    }
-  }
-
-  impl core::error::Error for TryGetError {}
-};
-
-/// Error type for the `try_put_` methods of [`Buffer`].
-/// Indicates that there were not enough remaining
-/// capacity in the buffer while attempting
-/// to put a value to a [`Buffer`] with one
-/// of the `try_put_` methods.
-#[derive(Debug, PartialEq, Eq)]
-pub struct TryPutError {
-  /// The number of bytes necessary to put the value
-  pub requested: usize,
-
-  /// The number of bytes available in the buffer
-  pub available: usize,
-}
-
-impl core::fmt::Display for TryPutError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-    write!(
-      f,
-      "Not enough bytes remaining in buffer to write value (requested {} but only {} available)",
-      self.requested, self.available
-    )
-  }
-}
-
-impl core::error::Error for TryPutError {}
-
-#[cfg(feature = "std")]
-impl From<TryPutError> for std::io::Error {
-  fn from(value: TryPutError) -> Self {
-    std::io::Error::other(value)
-  }
-}
 
 /// Panic with a nice error message.
 #[cold]

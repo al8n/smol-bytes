@@ -84,6 +84,10 @@ pub use ::bytes::{Buf, BufMut};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use ::bytes::buf;
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes::strategy::{
   compact,
   shared::{self, Bytes},
@@ -97,14 +101,25 @@ pub(crate) use bytes::strategy;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes_mut::BytesMut;
 
-pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
+pub use buffer::{Buffer, INLINE_CAP};
+pub use error::*;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
-
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes_mut;
 
-mod buffer;
+#[cfg(feature = "pyo3")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
+mod python;
 
+mod buffer;
 mod macros;
+
+/// Error types for byte buffer operations.
+pub mod error;
+
+#[cfg(all(feature = "pyo3", feature = "std"))]
+pub use std::hash::DefaultHasher;
+#[cfg(all(feature = "pyo3", not(feature = "std")))]
+pub type DefaultHasher = ::core::hash::BuildHasherDefault<::core::hash::SipHasher>;

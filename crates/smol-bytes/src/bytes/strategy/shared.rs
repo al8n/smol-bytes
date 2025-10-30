@@ -163,7 +163,7 @@ use crate::{
 };
 use bytes::Buf;
 use core::mem;
-use core::ops::{Bound, RangeBounds};
+use core::ops::RangeBounds;
 
 /// A strategy that preserves heap allocations for fast, zero-copy conversions with [`bytes::Bytes`].
 ///
@@ -275,39 +275,9 @@ impl RawBytes<Shared> {
 
 impl Strategy for RawBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-    let len = self.len();
-
-    let begin = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    assert!(
-      begin <= len,
-      "range start out of bounds: {:?} <= {:?}",
-      begin,
-      len,
-    );
-    assert!(
-      end <= len,
-      "range end out of bounds: {:?} <= {:?}",
-      end,
-      len,
-    );
-
     match &self.repr {
-      Repr::Inline(storage) => {
-        // SAFETY: bounds checked above, and we are slicing within inline storage.
-        Self::inline(unsafe { Buffer::copy_from_slice(&storage[begin..end]) })
-      }
-      Repr::Heap(bytes) => Self::heap(bytes.slice(begin..end)),
+      Repr::Inline(storage) => Self::inline(storage.slice(range)),
+      Repr::Heap(bytes) => Self::heap(bytes.slice(range)),
     }
   }
 

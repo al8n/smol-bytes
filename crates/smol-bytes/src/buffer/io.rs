@@ -117,7 +117,7 @@ macro_rules! try_get_and_get {
         ///
         /// The current position is advanced by the size of the type.
         ///
-        /// # Errors
+        /// ## Errors
         ///
         /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
         #[inline]
@@ -150,7 +150,7 @@ macro_rules! try_put_and_put {
         ///
         /// The current length is advanced by the size of the type.
         ///
-        /// # Errors
+        /// ## Errors
         ///
         /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
         #[inline]
@@ -275,7 +275,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -313,7 +313,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -342,7 +342,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -371,7 +371,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -400,7 +400,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -429,7 +429,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -458,7 +458,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]
@@ -497,7 +497,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -528,7 +528,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -559,7 +559,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -592,7 +592,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -621,7 +621,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -652,7 +652,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
@@ -737,7 +737,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -764,7 +764,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -819,7 +819,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -874,7 +874,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -909,7 +909,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -940,7 +940,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -971,7 +971,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
@@ -1005,7 +1005,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1031,7 +1031,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1057,7 +1057,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1083,7 +1083,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1109,7 +1109,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1135,7 +1135,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Errors
+  /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   #[inline]

@@ -65,6 +65,7 @@ mod serde;
 /// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::Bytes`](crate::shared::Bytes)
 /// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::Bytes`](crate::compact::Bytes)
 #[derive(Clone)]
+#[cfg_attr(feature = "pyo3", pyo3::prelude::pyclass)]
 pub struct BytesMut(Repr);
 
 impl Default for BytesMut {
@@ -1041,19 +1042,6 @@ unsafe impl BufMut for BytesMut {
       self.advance_mut(cnt);
     }
   }
-
-  // crate::macros::forward_buf_mut! { 0 {
-  //   i16,
-  //   i32,
-  //   i64,
-  //   i128,
-  //   u16,
-  //   u32,
-  //   u64,
-  //   u128,
-  //   f32,
-  //   f64,
-  // }}
 }
 
 #[derive(Clone)]
