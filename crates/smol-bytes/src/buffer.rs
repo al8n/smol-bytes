@@ -137,7 +137,7 @@ impl InlineSize {
 
 /// A fixed-size buffer for inline storage.
 ///
-/// This type can inline at most [`INLINE_CAP`] bytes.
+/// This type can hold at most `62` bytes on stack without heap allocation.
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
 pub struct Buffer {

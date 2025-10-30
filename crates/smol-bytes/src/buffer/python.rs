@@ -1,7 +1,7 @@
 use crate::python::PyGetError;
 use pyo3::{
   basic::CompareOp,
-  exceptions::PyBufferError,
+  exceptions::{PyBufferError, PyUnicodeDecodeError},
   prelude::{Bound, *},
   types::{PyBytes, PyString},
 };
@@ -154,20 +154,18 @@ impl Buffer {
     }
   }
 
-  fn __str__(&self) -> String {
-    if let Ok(s) = ::core::str::from_utf8(self.as_ref()) {
-      s.to_string()
-    } else {
-      format!("<Buffer len={}>", self.len())
-    }
+  fn __str__(&self) -> PyResult<&str> {
+    <&str>::try_from(self).map_err(|e| {
+      PyUnicodeDecodeError::new_err(format!(
+        "invalid utf-8 sequence at byte {}: {}",
+        e.valid_up_to(),
+        e
+      ))
+    })
   }
 
   fn __repr__(&self) -> String {
-    if let Ok(s) = ::core::str::from_utf8(self.as_ref()) {
-      format!("Buffer(b\"{}\")", s)
-    } else {
-      format!("Buffer(<{} bytes>)", self.len())
-    }
+    format!("{:?}", self)
   }
 
   fn __len__(&self) -> usize {
@@ -405,7 +403,7 @@ impl Buffer {
     ::core::str::from_utf8(self.as_ref())
       .map(|s| PyString::new(py, s))
       .map_err(|e| {
-        pyo3::exceptions::PyUnicodeDecodeError::new_err(format!(
+        PyUnicodeDecodeError::new_err(format!(
           "invalid utf-8 sequence at byte {}: {}",
           e.valid_up_to(),
           e
@@ -967,7 +965,7 @@ impl Buffer {
   ///     IndexError: If `at` is greater than the buffer length.
   ///
   /// Example:
-  ///     >>> buf = Buffer(b"hello world")
+  ///     >>> buf = Buffer.from_bytes(b"hello world")
   ///     >>> head = buf.split_to(5)
   ///     >>> bytes(head)
   ///     b'hello'
@@ -993,7 +991,7 @@ impl Buffer {
   ///     IndexError: If `at` is greater than the buffer length.
   ///
   /// Example:
-  ///     >>> buf = Buffer(b"hello world")
+  ///     >>> buf = Buffer.from_bytes(b"hello world")
   ///     >>> tail = buf.split_off(6)
   ///     >>> bytes(buf)
   ///     b'hello '
@@ -1019,7 +1017,7 @@ impl Buffer {
   ///     IndexError: If the range is invalid.
   ///
   /// Example:
-  ///     >>> buf = Buffer(b"hello world")
+  ///     >>> buf = Buffer.from_bytes(b"hello world")
   ///     >>> slice = buf.slice(0, 5)
   ///     >>> bytes(slice)
   ///     b'hello'

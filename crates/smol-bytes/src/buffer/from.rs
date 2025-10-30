@@ -1,5 +1,22 @@
 use super::*;
 
+impl<'a> TryFrom<&'a Buffer> for &'a str {
+  type Error = core::str::Utf8Error;
+
+  fn try_from(value: &'a Buffer) -> Result<Self, Self::Error> {
+    core::str::from_utf8(value.as_slice())
+  }
+}
+
+impl TryFrom<Buffer> for String {
+  type Error = core::str::Utf8Error;
+
+  fn try_from(value: Buffer) -> Result<Self, Self::Error> {
+    let s = core::str::from_utf8(value.as_slice())?;
+    Ok(s.to_string())
+  }
+}
+
 macro_rules! from_array {
   ($($size:literal),+$(,)?) => {
     $(
