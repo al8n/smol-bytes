@@ -8,9 +8,9 @@ use core::{
 mod cmp;
 mod fmt;
 mod from;
+mod io;
 mod iter;
 mod ops;
-mod io;
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -109,7 +109,7 @@ impl core::ops::Sub for InlineSize {
 impl InlineSize {
   const MAX: u8 = InlineSize::_V62 as u8;
 
-  /// # Safety
+  /// ## Safety
   ///
   /// `value` must be less than or equal to [`INLINE_CAP`].
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -169,7 +169,7 @@ impl Buffer {
 
   /// Creates a new `Buffer` with the specified length, filled with zeroes.
   ///
-  /// # Safety
+  /// ## Safety
   /// - `len` must be less than or equal to [`INLINE_CAP`].
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub(crate) const unsafe fn zeroed(len: usize) -> Self {
@@ -185,7 +185,7 @@ impl Buffer {
 
   /// Creates a new `Buffer` from the given array and length.
   ///
-  /// # Safety
+  /// ## Safety
   /// - `len` must be less than or equal to [`INLINE_CAP`].
   #[cfg_attr(not(tarpaulin), inline(always))]
   #[allow(unused)]
@@ -201,7 +201,7 @@ impl Buffer {
 
   /// Creates a new `Buffer` by copying from the given slice.
   ///
-  /// # Safety
+  /// ## Safety
   /// - the length of `src` must be less than or equal to [`INLINE_CAP`].
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const unsafe fn copy_from_slice(src: &[u8]) -> Self {
@@ -352,7 +352,7 @@ impl Buffer {
   /// The next call to [`spare_capacity_mut`](Self::spare_capacity_mut) will return a slice starting `cnt` bytes
   /// further into the underlying buffer.
   ///
-  /// # Safety
+  /// ## Safety
   ///
   /// The caller must ensure that the next `cnt` bytes of `chunk` are
   /// initialized.
@@ -755,7 +755,8 @@ impl Buffer {
   /// `self`.
   #[inline]
   pub fn put_u8(&mut self, val: u8) {
-    self.try_put_u8(val)
+    self
+      .try_put_u8(val)
       .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 

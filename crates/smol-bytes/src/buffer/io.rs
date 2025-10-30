@@ -3,7 +3,7 @@
 //! These methods allow Buffer to be used in no_std/no_alloc environments while providing
 //! the same API as the bytes crate.
 
-use super::{Buffer, InlineSize, TryGetError, TryPutError, panic_advance, panic_does_not_fit};
+use super::{panic_advance, panic_does_not_fit, Buffer, InlineSize, TryGetError, TryPutError};
 
 // https://en.wikipedia.org/wiki/Sign_extension
 const fn sign_extend(val: u64, nbytes: usize) -> i64 {
@@ -14,7 +14,7 @@ const fn sign_extend(val: u64, nbytes: usize) -> i64 {
 macro_rules! impl_try_get {
   ($this:ident, $typ:tt::$conv:tt) => {{
     const SIZE: usize = core::mem::size_of::<$typ>();
-    
+
     let remaining = $this.remaining();
 
     if remaining < SIZE {
@@ -33,67 +33,67 @@ macro_rules! impl_try_get {
     }
   }};
   (le($this:ident, $typ:tt, $len_to_read:expr)) => {{
-      const SIZE: usize = core::mem::size_of::<$typ>();
+    const SIZE: usize = core::mem::size_of::<$typ>();
 
-      let remaining = $this.remaining();
-      if remaining < $len_to_read {
-        return Err(TryGetError {
-          requested: $len_to_read,
-          available: remaining,
-        });
-      }
+    let remaining = $this.remaining();
+    if remaining < $len_to_read {
+      return Err(TryGetError {
+        requested: $len_to_read,
+        available: remaining,
+      });
+    }
 
-      if $len_to_read > SIZE {
-        panic_does_not_fit(SIZE, $len_to_read);
-      }
+    if $len_to_read > SIZE {
+      panic_does_not_fit(SIZE, $len_to_read);
+    }
 
-      let mut buf = [0u8; SIZE];
+    let mut buf = [0u8; SIZE];
 
-      unsafe {
-        // SAFETY: checked above that there is enough remaining data
-        // For LE: copy to the START of the buffer [data..., 0, 0, 0]
-        core::ptr::copy_nonoverlapping(
-          $this.buf.as_ptr().add($this.cur.to_usize()).cast::<u8>(),
-          buf.as_mut_ptr(),
-          $len_to_read,
-        );
-        let val = $typ::from_le_bytes(buf);
+    unsafe {
+      // SAFETY: checked above that there is enough remaining data
+      // For LE: copy to the START of the buffer [data..., 0, 0, 0]
+      core::ptr::copy_nonoverlapping(
+        $this.buf.as_ptr().add($this.cur.to_usize()).cast::<u8>(),
+        buf.as_mut_ptr(),
+        $len_to_read,
+      );
+      let val = $typ::from_le_bytes(buf);
 
-        $this.cur = InlineSize::from_u8($this.cur.to_u8() + $len_to_read as u8);
-        Ok(val)
-      }
+      $this.cur = InlineSize::from_u8($this.cur.to_u8() + $len_to_read as u8);
+      Ok(val)
+    }
   }};
   (be($this:ident, $typ:tt, $len_to_read:expr)) => {{
-      const SIZE: usize = core::mem::size_of::<$typ>();
+    const SIZE: usize = core::mem::size_of::<$typ>();
 
-      let remaining = $this.remaining();
-      if remaining < $len_to_read {
-        return Err(TryGetError {
-          requested: $len_to_read,
-          available: remaining,
-        });
-      }
+    let remaining = $this.remaining();
+    if remaining < $len_to_read {
+      return Err(TryGetError {
+        requested: $len_to_read,
+        available: remaining,
+      });
+    }
 
-      if $len_to_read > SIZE {
-        panic_does_not_fit(SIZE, $len_to_read);
-      }
+    if $len_to_read > SIZE {
+      panic_does_not_fit(SIZE, $len_to_read);
+    }
 
-      let slice_at = SIZE - $len_to_read;
-      let mut buf = [0u8; SIZE];
+    let slice_at = SIZE - $len_to_read;
+    let mut buf = [0u8; SIZE];
 
-      unsafe {
-        // SAFETY: checked above that there is enough remaining data
-        // For BE: copy to the END of the buffer [0, 0, 0, ..., data...]
-        core::ptr::copy_nonoverlapping(
-          $this.buf.as_ptr().add($this.cur.to_usize()).cast::<u8>(),
-          buf.as_mut_ptr().add(slice_at),
-          $len_to_read,
-        );
-        let val = $typ::from_be_bytes(buf);
+    unsafe {
+      // SAFETY: checked above that there is enough remaining data
+      // For BE: copy to the END of the buffer [0, 0, 0, ..., data...]
+      core::ptr::copy_nonoverlapping(
+        $this.buf.as_ptr().add($this.cur.to_usize()).cast::<u8>(),
+        buf.as_mut_ptr().add(slice_at),
+        $len_to_read,
+      );
+      let val = $typ::from_be_bytes(buf);
 
-        $this.cur = InlineSize::from_u8($this.cur.to_u8() + $len_to_read as u8);
-        Ok(val)
-      }
+      $this.cur = InlineSize::from_u8($this.cur.to_u8() + $len_to_read as u8);
+      Ok(val)
+    }
   }};
 }
 
@@ -478,7 +478,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn get_uint(&mut self, nbytes: usize) -> u64 {
-    self.try_get_uint(nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_get_uint(nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in big-endian byte order.
@@ -507,7 +509,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn get_uint_le(&mut self, nbytes: usize) -> u64 {
-    self.try_get_uint_le(nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_get_uint_le(nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in little-endian byte order.
@@ -536,7 +540,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn get_uint_ne(&mut self, nbytes: usize) -> u64 {
-    self.try_get_uint_ne(nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_get_uint_ne(nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in native-endian byte order.
@@ -627,7 +633,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn get_int_ne(&mut self, nbytes: usize) -> i64 {
-    self.try_get_int_ne(nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_get_int_ne(nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to get a signed n-byte integer from `self` in native-endian byte order.
@@ -710,7 +718,9 @@ impl Buffer {
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
   pub fn put_i8(&mut self, n: i8) {
-    self.try_put_i8(n).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_put_i8(n)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to write a signed 8 bit integer to `self`.
@@ -735,7 +745,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_uint(&mut self, n: u64, nbytes: usize) {
-    self.try_put_uint(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested));
+    self
+      .try_put_uint(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in big-endian byte order.
@@ -788,7 +800,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_uint_le(&mut self, n: u64, nbytes: usize) {
-    self.try_put_uint_le(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_put_uint_le(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in little-endian byte order.
@@ -841,7 +855,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_uint_ne(&mut self, n: u64, nbytes: usize) {
-    self.try_put_uint_ne(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    self
+      .try_put_uint_ne(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in native-endian byte order.
@@ -874,7 +890,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_int(&mut self, n: i64, nbytes: usize) {
-    self.try_put_int(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested));
+    self
+      .try_put_int(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
   }
 
   /// Tries to write a signed n-byte integer to `self` in big-endian byte order.
@@ -903,7 +921,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_int_le(&mut self, n: i64, nbytes: usize) {
-    self.try_put_int_le(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested));
+    self
+      .try_put_int_le(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
   }
 
   /// Tries to write a signed n-byte integer to `self` in little-endian byte order.
@@ -932,7 +952,9 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn put_int_ne(&mut self, n: i64, nbytes: usize) {
-    self.try_put_int_ne(n, nbytes).unwrap_or_else(|e| panic_advance(e.available, e.requested));
+    self
+      .try_put_int_ne(n, nbytes)
+      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
   }
 
   /// Tries to write a signed n-byte integer to `self` in native-endian byte order.
@@ -1198,28 +1220,37 @@ mod tests {
 
   #[test]
   fn test_get_u128() {
-    let mut buf = Buffer::try_from(&[
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-      0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
-    ][..]).unwrap();
+    let mut buf = Buffer::try_from(
+      &[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10,
+      ][..],
+    )
+    .unwrap();
     assert_eq!(buf.get_u128(), 0x0102030405060708090A0B0C0D0E0F10);
   }
 
   #[test]
   fn test_get_u128_le() {
-    let mut buf = Buffer::try_from(&[
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-      0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
-    ][..]).unwrap();
+    let mut buf = Buffer::try_from(
+      &[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10,
+      ][..],
+    )
+    .unwrap();
     assert_eq!(buf.get_u128_le(), 0x100F0E0D0C0B0A090807060504030201);
   }
 
   #[test]
   fn test_get_i128() {
-    let mut buf = Buffer::try_from(&[
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-    ][..]).unwrap();
+    let mut buf = Buffer::try_from(
+      &[
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF,
+      ][..],
+    )
+    .unwrap();
     assert_eq!(buf.get_i128(), -1);
   }
 
@@ -1363,30 +1394,39 @@ mod tests {
   fn test_put_u128() {
     let mut buf = Buffer::new();
     buf.put_u128(0x0102030405060708090A0B0C0D0E0F10);
-    assert_eq!(&buf[..], &[
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-      0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
-    ]);
+    assert_eq!(
+      &buf[..],
+      &[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10
+      ]
+    );
   }
 
   #[test]
   fn test_put_u128_le() {
     let mut buf = Buffer::new();
     buf.put_u128_le(0x0102030405060708090A0B0C0D0E0F10);
-    assert_eq!(&buf[..], &[
-      0x10, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09,
-      0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01
-    ]);
+    assert_eq!(
+      &buf[..],
+      &[
+        0x10, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02,
+        0x01
+      ]
+    );
   }
 
   #[test]
   fn test_put_i128() {
     let mut buf = Buffer::new();
     buf.put_i128(-1);
-    assert_eq!(&buf[..], &[
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-    ]);
+    assert_eq!(
+      &buf[..],
+      &[
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF
+      ]
+    );
   }
 
   #[test]

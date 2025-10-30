@@ -981,6 +981,14 @@ impl Buf for BytesMut {
       Repr::Heap(b) => b.advance(cnt),
     }
   }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
+    match self.split_to(len) {
+      Ok(a) => a.freeze_shared().into(),
+      Err(b) => ::bytes::Bytes::copy_from_slice(b.as_slice()),
+    }
+  }
 }
 
 unsafe impl BufMut for BytesMut {
