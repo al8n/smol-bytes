@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{string::String, vec::Vec};
 
+use bytes::BufMut;
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
@@ -17,7 +18,22 @@ where
     type Value = BytesMut;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-      formatter.write_str("a mutable bytes")
+      formatter.write_str("byte array")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+      A: serde_core::de::SeqAccess<'a>,
+    {
+      let mut values = match seq.size_hint() {
+        Some(hint) => BytesMut::with_capacity(hint),
+        None => BytesMut::new(),
+      };
+
+      while let Some(value) = seq.next_element()? {
+        values.put_u8(value);
+      }
+      Ok(values)
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -63,7 +79,7 @@ where
     }
   }
 
-  deserializer.deserialize_str(BytesMutVisitor)
+  deserializer.deserialize_byte_buf(BytesMutVisitor)
 }
 
 impl serde::Serialize for BytesMut {
@@ -71,7 +87,7 @@ impl serde::Serialize for BytesMut {
   where
     S: serde::Serializer,
   {
-    self.as_slice().serialize(serializer)
+    serializer.serialize_bytes(self.as_slice())
   }
 }
 

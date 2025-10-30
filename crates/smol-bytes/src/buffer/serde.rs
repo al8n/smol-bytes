@@ -5,6 +5,8 @@ use std::{string::String, vec::Vec};
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
+use crate::INLINE_CAP;
+
 use super::Buffer;
 
 // https://github.com/serde-rs/serde/blob/629802f2abfd1a54a6072992888fea7ca5bc209f/serde/src/private/de.rs#L56-L125
@@ -18,7 +20,7 @@ where
     type Value = Buffer;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-      formatter.write_str("a buffer")
+      formatter.write_str("byte array")
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -33,6 +35,23 @@ where
       E: Error,
     {
       Buffer::try_from(v).map_err(E::custom)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+      A: serde_core::de::SeqAccess<'a>,
+    {
+      match seq.size_hint() {
+        Some(hint) if hint > INLINE_CAP => Err(serde::de::Error::custom("too many bytes")),
+        _ => {
+          let mut this = Buffer::new();
+          while let Some(byte) = seq.next_element::<u8>()? {
+            this.try_put_u8(byte).map_err(serde::de::Error::custom)?;
+          }
+
+          Ok(this)
+        }
+      }
     }
 
     #[cfg(any(feature = "std", feature = "alloc"))]
@@ -66,7 +85,7 @@ where
     }
   }
 
-  deserializer.deserialize_str(BufferVisitor)
+  deserializer.deserialize_byte_buf(BufferVisitor)
 }
 
 impl serde::Serialize for Buffer {
@@ -74,7 +93,7 @@ impl serde::Serialize for Buffer {
   where
     S: serde::Serializer,
   {
-    self.as_slice().serialize(serializer)
+    serializer.serialize_bytes(self.as_slice())
   }
 }
 

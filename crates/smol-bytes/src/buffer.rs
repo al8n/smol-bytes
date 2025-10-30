@@ -220,8 +220,33 @@ impl Buffer {
     }
   }
 
+  /// Returns the number of bytes between the current position and the end of
+  /// the buffer.
+  ///
+  /// This value is equal to the length of the slice returned
+  /// by [`as_slice()`](Self::as_slice).
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::try_from(*b"hello world").unwrap();
+  ///
+  /// assert_eq!(buf.remaining(), 11);
+  ///
+  /// buf.get_u8();
+  ///
+  /// assert_eq!(buf.remaining(), 10);
+  /// ```
+  ///
+  /// # Implementer notes
+  ///
+  /// Implementations of `remaining` should ensure that the return value does
+  /// not change unless a call is made to `advance` or any other function that
+  /// is documented to change the `Buf`'s current position.
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) const fn remaining(&self) -> usize {
+  pub const fn remaining(&self) -> usize {
     self.len.to_usize() - self.cur as usize
   }
 

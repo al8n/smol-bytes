@@ -213,7 +213,7 @@ impl Buffer {
   ///
   /// let mut buf = Buffer::try_from(&b"\x08 hello"[..]).unwrap();
   /// assert_eq!(8, buf.get_u8());
-  /// assert_eq!(5, buf.remaining());
+  /// assert_eq!(6, buf.remaining());
   /// ```
   ///
   /// ## Panics
@@ -231,7 +231,17 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Errors
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Buffer;
+  ///
+  /// let mut buf = Buffer::try_from(&b"\x08 hello"[..]).unwrap();
+  /// assert_eq!(8, buf.try_get_u8().unwrap());
+  /// assert_eq!(6, buf.remaining());
+  /// ```
+  ///
+  /// ## Errors
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   #[inline]

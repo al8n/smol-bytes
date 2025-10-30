@@ -1,10 +1,11 @@
 use core::fmt;
 use std::{string::String, vec::Vec};
 
+use bytes::BufMut;
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
-use crate::strategy::Strategy;
+use crate::{strategy::Strategy, BytesMut};
 
 use super::RawBytes;
 
@@ -23,7 +24,22 @@ where
     type Value = RawBytes<S>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-      formatter.write_str("a bytes")
+      formatter.write_str("byte array")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+      A: serde_core::de::SeqAccess<'a>,
+    {
+      let mut values = match seq.size_hint() {
+        Some(hint) => BytesMut::with_capacity(hint),
+        None => BytesMut::new(),
+      };
+
+      while let Some(value) = seq.next_element()? {
+        values.put_u8(value);
+      }
+      Ok(values.freeze())
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -69,7 +85,7 @@ where
     }
   }
 
-  deserializer.deserialize_str(RawBytesVisitor(core::marker::PhantomData))
+  deserializer.deserialize_byte_buf(RawBytesVisitor(core::marker::PhantomData))
 }
 
 impl<St> serde::Serialize for RawBytes<St>
@@ -80,7 +96,7 @@ where
   where
     S: serde::Serializer,
   {
-    self.as_slice().serialize(serializer)
+    serializer.serialize_bytes(self.as_slice())
   }
 }
 
