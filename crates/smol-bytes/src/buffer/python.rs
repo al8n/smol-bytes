@@ -1,4 +1,4 @@
-use crate::python::PyGetError;
+use crate::python::{PyBufExt, PyBufMutExt, PyGetError};
 use pyo3::{
   basic::CompareOp,
   exceptions::{PyBufferError, PyUnicodeDecodeError},
@@ -63,7 +63,7 @@ impl Buffer {
   }
 
   fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-    PyBytes::new(py, self.as_slice())
+    self.py_bytes(py)
   }
 
   fn __bool__(&self) -> bool {
@@ -169,211 +169,19 @@ impl Buffer {
   }
 
   fn __len__(&self) -> usize {
-    self.len()
+    self.py_len()
   }
 
   fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
-    // Check if item is a single byte (int)
-    if let Ok(byte) = item.extract::<u8>() {
-      return Ok(self.as_slice().contains(&byte));
-    }
-
-    // Check if item is bytes-like
-    if let Ok(bytes) = item.extract::<Vec<u8>>() {
-      if bytes.is_empty() {
-        return Ok(true);
-      }
-      // Simple substring search
-      let haystack = self.as_slice();
-      if bytes.len() > haystack.len() {
-        return Ok(false);
-      }
-      Ok(haystack.windows(bytes.len()).any(|w| w == bytes.as_slice()))
-    } else if let Ok(s) = item.extract::<String>() {
-      let bytes = s.as_bytes();
-      if bytes.is_empty() {
-        return Ok(true);
-      }
-      let haystack = self.as_slice();
-      if bytes.len() > haystack.len() {
-        return Ok(false);
-      }
-      Ok(haystack.windows(bytes.len()).any(|w| w == bytes))
-    } else {
-      Err(pyo3::exceptions::PyTypeError::new_err(
-        "argument should be an integer or bytes-like object",
-      ))
-    }
+    self.py_contains(item)
   }
 
   fn __getitem__(&self, index: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-    let py = index.py();
-
-    // Handle integer index
-    if let Ok(i) = index.extract::<isize>() {
-      let len = self.remaining() as isize;
-      let idx = if i < 0 { len + i } else { i };
-
-      if idx < 0 || idx >= len {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-          "buffer index out of range: {} (len={})",
-          i, len
-        )));
-      }
-
-      return Ok(
-        self.as_slice()[idx as usize]
-          .into_pyobject(py)?
-          .into_any()
-          .unbind(),
-      );
-    }
-
-    // Handle slice
-    if let Ok(slice) = index.cast::<pyo3::types::PySlice>() {
-      let len = self.remaining();
-      let indices = slice.indices(len as isize)?;
-
-      let start = indices.start.max(0) as usize;
-      let stop = indices.stop.max(0).min(len as isize) as usize;
-      let step = indices.step;
-
-      if step == 1 {
-        // Simple slice
-        if start <= stop && stop <= len {
-          return Ok(PyBytes::new(py, &self.as_slice()[start..stop]).into());
-        }
-        return Err(pyo3::exceptions::PyIndexError::new_err(
-          "slice out of range",
-        ));
-      } else if step > 1 {
-        // Stepped slice
-        let mut result = Vec::new();
-        let mut i = start;
-        while i < stop && i < len {
-          result.push(self.as_slice()[i]);
-          i += step as usize;
-        }
-        return Ok(PyBytes::new(py, &result).into());
-      } else if step < 0 {
-        // Negative step (reverse)
-        let mut result = Vec::new();
-        let mut i = start.min(len - 1);
-        loop {
-          result.push(self.as_slice()[i]);
-          if i == 0 || i < stop {
-            break;
-          }
-          i = i.saturating_sub((-step) as usize);
-        }
-        return Ok(PyBytes::new(py, &result).into());
-      }
-
-      return Err(pyo3::exceptions::PyValueError::new_err(
-        "slice step cannot be zero",
-      ));
-    }
-
-    Err(pyo3::exceptions::PyTypeError::new_err(
-      "buffer indices must be integers or slices",
-    ))
+    self.py_getitem(index)
   }
 
   fn __setitem__(&mut self, index: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-    // Handle integer index
-    if let Ok(i) = index.extract::<isize>() {
-      let len = self.remaining() as isize;
-      let idx = if i < 0 { len + i } else { i };
-
-      if idx < 0 || idx >= len {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-          "buffer index out of range: {} (len={})",
-          i, len
-        )));
-      }
-
-      let byte = value
-        .extract::<u8>()
-        .map_err(|_| pyo3::exceptions::PyTypeError::new_err("an integer is required"))?;
-
-      self.as_mut()[idx as usize] = byte;
-      return Ok(());
-    }
-
-    // Handle slice assignment
-    if let Ok(slice) = index.cast::<pyo3::types::PySlice>() {
-      let len = self.remaining();
-      let indices = slice.indices(len as isize)?;
-
-      let start = indices.start.max(0) as usize;
-      let stop = indices.stop.max(0).min(len as isize) as usize;
-      let step = indices.step;
-
-      // Extract the bytes to assign
-      let bytes = if let Ok(b) = value.extract::<Vec<u8>>() {
-        b
-      } else if let Ok(s) = value.extract::<String>() {
-        s.into_bytes()
-      } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
-          "can only assign bytes-like objects",
-        ));
-      };
-
-      if step == 1 {
-        // Simple slice assignment
-        let slice_len = stop - start;
-        if bytes.len() != slice_len {
-          return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "attempt to assign bytes of size {} to slice of size {}",
-            bytes.len(),
-            slice_len
-          )));
-        }
-        self.as_mut()[start..stop].copy_from_slice(&bytes);
-        return Ok(());
-      } else if step != 0 {
-        // Extended slice assignment
-        let mut positions = Vec::new();
-        let mut i = start;
-        if step > 0 {
-          while i < stop && i < len {
-            positions.push(i);
-            i += step as usize;
-          }
-        } else {
-          let mut i = start.min(len - 1);
-          loop {
-            positions.push(i);
-            if i == 0 || i < stop {
-              break;
-            }
-            i = i.saturating_sub((-step) as usize);
-          }
-        }
-
-        if bytes.len() != positions.len() {
-          return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "attempt to assign bytes of size {} to extended slice of size {}",
-            bytes.len(),
-            positions.len()
-          )));
-        }
-
-        for (pos, &byte) in positions.iter().zip(bytes.iter()) {
-          self.as_mut()[*pos] = byte;
-        }
-        return Ok(());
-      }
-
-      return Err(pyo3::exceptions::PyValueError::new_err(
-        "slice step cannot be zero",
-      ));
-    }
-
-    Err(pyo3::exceptions::PyTypeError::new_err(
-      "buffer indices must be integers or slices",
-    ))
+    self.py_setitem(index, value)
   }
 
   /// Return the buffer contents as Python bytes.
@@ -385,7 +193,7 @@ impl Buffer {
   ///     bytes: The buffer contents as a bytes object.
   #[pyo3(name = "as_bytes")]
   fn __python_as_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-    PyBytes::new(py, self.as_slice())
+    self.py_bytes(py)
   }
 
   /// Convert the buffer contents to a UTF-8 string.
@@ -400,15 +208,7 @@ impl Buffer {
   ///     UnicodeDecodeError: If the buffer contains invalid UTF-8.
   #[pyo3(name = "to_string")]
   fn __python_to_string<'py>(&self, py: Python<'py>) -> ::pyo3::PyResult<Bound<'py, PyString>> {
-    ::core::str::from_utf8(self.as_ref())
-      .map(|s| PyString::new(py, s))
-      .map_err(|e| {
-        PyUnicodeDecodeError::new_err(format!(
-          "invalid utf-8 sequence at byte {}: {}",
-          e.valid_up_to(),
-          e
-        ))
-      })
+    self.py_to_string(py)
   }
 
   /// Read an unsigned 8-bit integer from the buffer.
@@ -755,7 +555,7 @@ impl Buffer {
   ///     int: Number of bytes available for reading.
   #[pyo3(name = "remaining")]
   fn __python_remaining(&self) -> usize {
-    self.remaining()
+    self.py_remaining()
   }
 
   /// Returns the number of bytes that can be written to the buffer.
@@ -776,15 +576,7 @@ impl Buffer {
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
   fn __python_advance(&mut self, cnt: usize) -> ::pyo3::PyResult<()> {
-    let available = self.remaining();
-    if cnt > available {
-      return Err(pyo3::exceptions::PyBufferError::new_err(format!(
-        "cannot advance {} bytes, only {} bytes available",
-        cnt, available
-      )));
-    }
-    self.advance(cnt);
-    Ok(())
+    self.py_advance(cnt)
   }
 
   // ==================== Put methods ====================
@@ -973,7 +765,7 @@ impl Buffer {
   ///     b' world'
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> ::pyo3::PyResult<Buffer> {
-    self.try_split_to(at).map_err(Into::into)
+    self.py_split_to(at)
   }
 
   /// Split the buffer at the given position, returning the tail.
@@ -999,7 +791,7 @@ impl Buffer {
   ///     b'world'
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> ::pyo3::PyResult<Buffer> {
-    self.try_split_off(at).map_err(Into::into)
+    self.py_split_off(at)
   }
 
   /// Get a slice of the buffer as a new Buffer.
@@ -1023,6 +815,6 @@ impl Buffer {
   ///     b'hello'
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> ::pyo3::PyResult<Buffer> {
-    self.try_slice(start..end).map_err(Into::into)
+    self.py_slice(start, end)
   }
 }

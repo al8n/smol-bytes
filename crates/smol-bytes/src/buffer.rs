@@ -368,15 +368,26 @@ impl Buffer {
   /// This function panics if `cnt > self.remaining()`.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn advance(&mut self, requested: usize) {
+    if let Err(err) = self.try_advance(requested) {
+      panic_advance(err.available, err.requested)
+    }
+  }
+
+  /// Tries to advance the internal cursor of the `Buffer`.
+  ///
+  /// Returns `Err(OutOfBounds)` if `requested` exceeds the remaining length.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn try_advance(&mut self, requested: usize) -> Result<(), OutOfBounds> {
     if requested == 0 {
-      return;
+      return Ok(());
     }
 
     let available = (self.len - self.cur).to_usize();
     if available < requested {
-      panic_advance(available, requested)
+      return Err(OutOfBounds::new(requested, available));
     }
     self.cur = unsafe { InlineSize::from_u8(self.cur.to_u8() + requested as u8) };
+    Ok(())
   }
 
   /// Advance the internal write cursor of the `Buffer`

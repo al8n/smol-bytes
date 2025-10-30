@@ -1,7 +1,7 @@
 use core::{
   hash::{Hash, Hasher},
   marker::PhantomData,
-  ops::RangeBounds,
+  ops::{Bound, RangeBounds},
 };
 
 use bytes::{Buf, Bytes};
@@ -10,7 +10,7 @@ use std::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use crate::{
   buffer::{Buffer, INLINE_CAP},
-  BytesMut,
+  BytesMut, OutOfBounds, RangeOutOfBounds,
 };
 
 use super::strategy::Strategy;
@@ -129,6 +129,35 @@ where
     Strategy::slice(self, range)
   }
 
+  /// Tries to create a slice of self for the provided range.
+  ///
+  /// Returns `Err(RangeOutOfBounds)` if the range is invalid.
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
+    let len = self.len();
+
+    let begin = match range.start_bound() {
+      Bound::Included(&n) => n,
+      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
+      Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
+      Bound::Excluded(&n) => n,
+      Bound::Unbounded => len,
+    };
+
+    if begin > len || end > len || begin > end {
+      return Err(RangeOutOfBounds::new(begin, end, len));
+    }
+
+    if begin == end {
+      return Ok(Self::new());
+    }
+
+    Ok(self.slice(begin..end))
+  }
+
   /// Splits the bytes into two at the given index.
   ///
   /// Afterwards `self` contains elements `[0, at)`, and the returned `Bytes`
@@ -159,6 +188,18 @@ where
     Strategy::split_off(self, at)
   }
 
+  /// Tries to split the bytes into two at the given index, returning the tail.
+  ///
+  /// Returns `Err(OutOfBounds)` if `at > len`.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
+    let len = self.len();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
+    }
+    Ok(self.split_off(at))
+  }
+
   /// Splits the bytes into two at the given index.
   ///
   /// Afterwards `self` contains elements `[at, len)`, and the returned
@@ -185,6 +226,18 @@ where
   #[must_use = "consider RawBytes::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Self {
     Strategy::split_to(self, at)
+  }
+
+  /// Tries to split the bytes into two at the given index, returning the head.
+  ///
+  /// Returns `Err(OutOfBounds)` if `at > len`.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
+    let len = self.len();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
+    }
+    Ok(self.split_to(at))
   }
 
   /// Truncates this `Bytes` to the specified length.
@@ -221,6 +274,17 @@ where
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn clear(&mut self) {
     Strategy::clear(self)
+  }
+
+  /// Attempts to advance the buffer by `cnt` bytes, returning an error if out of bounds.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
+    let len = self.len();
+    if cnt > len {
+      return Err(OutOfBounds::new(cnt, len));
+    }
+    Buf::advance(self, cnt);
+    Ok(())
   }
 }
 
