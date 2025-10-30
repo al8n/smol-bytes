@@ -240,6 +240,9 @@ use bytes::Buf;
 use core::mem;
 use core::ops::{Bound, RangeBounds};
 
+#[cfg(feature = "pyo3")]
+mod python;
+
 /// A strategy that aggressively inlines data to minimize heap allocations and memory usage.
 ///
 /// # Overview
