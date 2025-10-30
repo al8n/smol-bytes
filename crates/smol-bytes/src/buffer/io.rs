@@ -206,7 +206,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;
@@ -281,7 +281,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;
@@ -463,7 +463,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;
@@ -695,7 +695,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;

@@ -262,7 +262,7 @@ use core::ops::{Bound, RangeBounds};
 /// - **Smart optimization**: Operations like `advance()`, `truncate()`, and `split_to/off()`
 ///   can trigger heap→inline conversion
 ///
-/// # Example
+/// ## Example
 ///
 /// ```rust
 /// use smol_bytes::compact::Bytes;
@@ -501,7 +501,7 @@ impl Strategy for RawBytes<Compact> {
 ///
 /// For applications that frequently convert to/from `Bytes`, consider [`shared::Bytes`](super::shared::Bytes) instead.
 ///
-/// # Example
+/// ## Example
 ///
 /// ```rust
 /// use smol_bytes::compact::Bytes;

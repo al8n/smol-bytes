@@ -174,7 +174,7 @@ When adding benchmarks:
 /// This is a `const` function that stores data inline if it fits (≤62 bytes).
 /// For lexers/parsers, use this with `const` keyword literals.
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```rust
 /// use smol_bytes::shared::Bytes;

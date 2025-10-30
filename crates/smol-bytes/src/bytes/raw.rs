@@ -101,7 +101,7 @@ where
   ///
   /// This operation is `O(1)`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Bytes;
@@ -139,7 +139,7 @@ where
   /// This is an `O(1)` operation that just increases the reference count and
   /// sets a few indices.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Bytes;
@@ -167,7 +167,7 @@ where
   /// This is an `O(1)` operation that just increases the reference count and
   /// sets a few indices.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Bytes;
@@ -453,7 +453,7 @@ where
   /// This will also always fail if the buffer was constructed via either
   /// [from_owner](Bytes::from_owner) or [from_static](Bytes::from_static).
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{Bytes, BytesMut};

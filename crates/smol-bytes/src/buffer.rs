@@ -260,7 +260,7 @@ impl Buffer {
   /// This value is equal to the length of the slice returned
   /// by `chunk_mut()`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{Buffer, BufMut};
@@ -283,7 +283,7 @@ impl Buffer {
   /// modifying the data, so it is up to the caller to ensure that the data
   /// has been initialized.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;
@@ -314,7 +314,7 @@ impl Buffer {
   /// The next call to `as_slice()` will return a slice starting `cnt` bytes
   /// further into the underlying buffer.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{Buffer, INLINE_CAP};
@@ -357,7 +357,7 @@ impl Buffer {
   /// The caller must ensure that the next `cnt` bytes of `chunk` are
   /// initialized.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::Buffer;

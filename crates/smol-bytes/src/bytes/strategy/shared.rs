@@ -185,7 +185,7 @@ use core::ops::{Bound, RangeBounds};
 /// - **Heap → Heap**: Large data stays on heap, **even if it shrinks** below inline capacity
 /// - **Conversions**: Zero-cost `From`/`Into` with `Bytes` when heap-allocated
 ///
-/// # Example
+/// ## Example
 ///
 /// ```rust
 /// use smol_bytes::shared::Bytes;
@@ -425,7 +425,7 @@ impl Strategy for RawBytes<Shared> {
 ///
 /// For memory-constrained applications, consider [`compact::Bytes`](super::compact::Bytes) instead.
 ///
-/// # Example
+/// ## Example
 ///
 /// ```rust
 /// use smol_bytes::shared::Bytes;

@@ -44,7 +44,7 @@ mod serde;
 /// `Buffer` is a mutable inline-only buffer (max 62 bytes), while `BytesMut` can grow.
 /// Use [`make_heap`](Self::make_heap) to explicitly promote an inline buffer to heap storage.
 ///
-/// # Examples
+/// ## Examples
 ///
 /// ```
 /// use smol_bytes::BytesMut;
@@ -106,7 +106,7 @@ impl BytesMut {
   /// On some platforms or allocators this function may be faster than
   /// a manual implementation.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -160,7 +160,7 @@ impl BytesMut {
   /// If this `BytesMut` object does not have enough capacity, it is resized
   /// first.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -314,7 +314,7 @@ impl BytesMut {
 
   /// Attempts to unwrap the inline buffer, consuming `self`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -415,7 +415,7 @@ impl BytesMut {
   /// For inline buffers, the tail is copied into a `Buffer` and returned as `Err(Buffer)`.
   /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -465,7 +465,7 @@ impl BytesMut {
   /// For heap buffers, this is an `O(1)` operation.
   /// For inline buffers, the data is copied into a `Buffer`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{BytesMut, BufMut};
@@ -493,7 +493,7 @@ impl BytesMut {
   /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
   /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -546,7 +546,7 @@ impl BytesMut {
   /// Otherwise this method degenerates to
   /// `self.extend_from_slice(other.as_ref())`.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -589,7 +589,7 @@ impl BytesMut {
   /// referenced by the handle will no longer be mutated. Once the conversion
   /// is done, the handle can be cloned and shared across threads.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{BytesMut, BufMut};
@@ -617,7 +617,7 @@ impl BytesMut {
   /// referenced by the handle will no longer be mutated. Once the conversion
   /// is done, the handle can be cloned and shared across threads.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::{BytesMut, BufMut};
@@ -686,7 +686,7 @@ impl BytesMut {
   /// references through other `BytesMut`s or `Bytes` which point to the same underlying
   /// storage.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -738,7 +738,7 @@ impl BytesMut {
   /// modifying the data, so it is up to the caller to ensure that the data
   /// has been initialized.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -772,7 +772,7 @@ impl BytesMut {
   /// difference with each additional byte set to `value`. If `new_len` is
   /// less than `len`, the buffer is simply truncated.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// ```
   /// use smol_bytes::BytesMut;
@@ -858,7 +858,7 @@ impl BytesMut {
   /// and the original buffer is large enough to fit the requested additional
   /// capacity, then reallocations will never happen.
   ///
-  /// # Examples
+  /// ## Examples
   ///
   /// In the following example, a new buffer is allocated.
   ///
