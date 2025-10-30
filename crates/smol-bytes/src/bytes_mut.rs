@@ -291,7 +291,7 @@ impl BytesMut {
 
   /// Unwraps the inline buffer, consuming `self`.
   ///
-  /// # Panics
+  /// ## Panics
   /// - Panics if the buffer is heap allocated.
   ///
   /// ## Examples
@@ -335,7 +335,7 @@ impl BytesMut {
 
   /// Unwraps the heap buffer, consuming `self`.
   ///
-  /// # Panics
+  /// ## Panics
   /// - Panics if the buffer is inline.
   ///
   /// ## Examples
@@ -445,7 +445,7 @@ impl BytesMut {
   /// assert_eq!(&b[..], b"!world");
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
@@ -523,7 +523,7 @@ impl BytesMut {
   /// assert_eq!(&b[..], b"jello");
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::advance if you don't need the other half"]
@@ -870,7 +870,7 @@ impl BytesMut {
   /// assert!(buf.capacity() >= 69);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if the new capacity overflows `usize`.
   #[inline]

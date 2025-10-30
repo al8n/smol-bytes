@@ -105,7 +105,7 @@ macro_rules! try_get_and_get {
         ///
         /// The current position is advanced by the size of the type.
         ///
-        /// # Panics
+        /// ## Panics
         ///
         /// This function panics if there is not enough remaining data in `self`.
         #[inline]
@@ -137,7 +137,7 @@ macro_rules! try_put_and_put {
         ///
         /// The current length is advanced by the size of the type.
         ///
-        /// # Panics
+        /// ## Panics
         ///
         /// This function panics if there is not enough remaining capacity in `self`.
         #[inline]
@@ -216,7 +216,7 @@ impl Buffer {
   /// assert_eq!(5, buf.remaining());
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is no more remaining data in `self`.
   #[inline]
@@ -253,7 +253,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 1.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is no more remaining data in `self`.
   #[inline]
@@ -290,7 +290,7 @@ impl Buffer {
   /// assert_eq!(12.5, buf.get_f32());
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -319,7 +319,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -348,7 +348,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -377,7 +377,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -406,7 +406,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -435,7 +435,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`.
   #[inline]
@@ -472,7 +472,7 @@ impl Buffer {
   /// assert_eq!(0x010203, buf.get_uint(3));
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -489,7 +489,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -501,7 +501,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -518,7 +518,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -530,7 +530,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -547,7 +547,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -563,7 +563,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -580,7 +580,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -592,7 +592,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -609,7 +609,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -621,7 +621,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining data in `self`,
   /// or if `nbytes` is greater than 8.
@@ -638,7 +638,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -705,7 +705,7 @@ impl Buffer {
   /// assert_eq!(buf[0], 251);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -729,7 +729,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -746,7 +746,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -782,7 +782,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -799,7 +799,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -835,7 +835,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -852,7 +852,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -868,7 +868,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -885,7 +885,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -897,7 +897,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -914,7 +914,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -926,7 +926,7 @@ impl Buffer {
   ///
   /// The current position is advanced by `nbytes`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`,
   /// or if `nbytes` is greater than 8.
@@ -943,7 +943,7 @@ impl Buffer {
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
@@ -960,7 +960,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -986,7 +986,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1012,7 +1012,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 4.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1038,7 +1038,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1064,7 +1064,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]
@@ -1090,7 +1090,7 @@ impl Buffer {
   ///
   /// The current position is advanced by 8.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in `self`.
   #[inline]

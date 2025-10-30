@@ -59,7 +59,7 @@ where
 
   /// Creates an inline `Bytes` without allocating.
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if `bytes.len() > INLINE_CAP`.
   ///
@@ -120,7 +120,7 @@ where
   /// assert_eq!(&c[..], &[1, 1, 1]);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Requires that `begin <= end` and `end <= self.len()`, otherwise slicing
   /// will panic.
@@ -151,7 +151,7 @@ where
   /// assert_eq!(&b[..], b" world");
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if `at > len`.
   #[must_use = "consider RawBytes::truncate if you don't need the other half"]
@@ -179,7 +179,7 @@ where
   /// assert_eq!(&b[..], b"hello");
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// Panics if `at > len`.
   #[must_use = "consider RawBytes::advance if you don't need the other half"]
@@ -357,7 +357,7 @@ where
 
   /// Unwraps the inline buffer, consuming `self`.
   ///
-  /// # Panics
+  /// ## Panics
   /// - Panics if the buffer is heap allocated.
   ///
   /// ## Examples
@@ -401,7 +401,7 @@ where
 
   /// Unwraps the heap buffer, consuming `self`.
   ///
-  /// # Panics
+  /// ## Panics
   /// - Panics if the buffer is inline.
   ///
   /// ## Examples

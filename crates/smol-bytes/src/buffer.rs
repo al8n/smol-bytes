@@ -331,7 +331,7 @@ impl Buffer {
   /// assert_eq!(buf.capacity(), INLINE_CAP - 6);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if `cnt > self.remaining()`.
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -382,7 +382,7 @@ impl Buffer {
   /// assert_eq!(buf, "hello".as_bytes());
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panic if `requested > self.remaining_mut()`.
   pub unsafe fn advance_mut(&mut self, requested: usize) {
@@ -674,7 +674,7 @@ impl Buffer {
   /// assert_eq!("aaaa", &dst);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in
   /// `self`.
@@ -704,7 +704,7 @@ impl Buffer {
   /// assert_eq!("aaaa".as_bytes(), &dst);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in
   /// `self`.
@@ -749,7 +749,7 @@ impl Buffer {
   /// assert_eq!("a", &dst);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in
   /// `self`.
@@ -778,7 +778,7 @@ impl Buffer {
   /// assert_eq!("a".as_bytes(), &dst);
   /// ```
   ///
-  /// # Panics
+  /// ## Panics
   ///
   /// This function panics if there is not enough remaining capacity in
   /// `self`.
