@@ -82,8 +82,6 @@ extern crate std;
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use ::bytes::{Buf, BufMut};
 
-pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
-
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes::strategy::{
@@ -99,6 +97,8 @@ pub(crate) use bytes::strategy;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes_mut::BytesMut;
 
+pub use buffer::{Buffer, TryGetError, TryPutError, INLINE_CAP};
+
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
 
@@ -106,3 +106,5 @@ mod bytes;
 mod bytes_mut;
 
 mod buffer;
+
+mod macros;

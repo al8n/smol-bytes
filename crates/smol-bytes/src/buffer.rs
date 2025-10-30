@@ -803,6 +803,8 @@ impl Buffer {
 const _: () = {
   use bytes::{buf::UninitSlice, Buf, BufMut};
 
+  use crate::macros::{forward_buf, forward_buf_mut};
+
   impl Buf for Buffer {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn remaining(&self) -> usize {
@@ -817,6 +819,19 @@ const _: () = {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn advance(&mut self, cnt: usize) {
       Self::advance(self, cnt);
+    }
+
+    forward_buf! {
+      i16,
+      i32,
+      i64,
+      i128,
+      u16,
+      u32,
+      u64,
+      u128,
+      f32,
+      f64,
     }
   }
 
@@ -851,14 +866,17 @@ const _: () = {
       Self::put_bytes(self, val, requested);
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
-    fn put_u8(&mut self, val: u8) {
-      Self::put_u8(self, val);
-    }
-
-    #[cfg_attr(not(tarpaulin), inline(always))]
-    fn put_i8(&mut self, val: i8) {
-      Self::put_u8(self, val as u8);
+    forward_buf_mut! {
+      i16,
+      i32,
+      i64,
+      i128,
+      u16,
+      u32,
+      u64,
+      u128,
+      f32,
+      f64,
     }
   }
 };

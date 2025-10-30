@@ -989,6 +989,19 @@ impl Buf for BytesMut {
       Err(b) => ::bytes::Bytes::copy_from_slice(b.as_slice()),
     }
   }
+
+  crate::macros::forward_buf! { 0 {
+    i16,
+    i32,
+    i64,
+    i128,
+    u16,
+    u32,
+    u64,
+    u128,
+    f32,
+    f64,
+  }}
 }
 
 unsafe impl BufMut for BytesMut {
@@ -1028,6 +1041,19 @@ unsafe impl BufMut for BytesMut {
       self.advance_mut(cnt);
     }
   }
+
+  crate::macros::forward_buf_mut! { 0 {
+    i16,
+    i32,
+    i64,
+    i128,
+    u16,
+    u32,
+    u64,
+    u128,
+    f32,
+    f64,
+  }}
 }
 
 #[derive(Clone)]

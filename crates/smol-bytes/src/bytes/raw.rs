@@ -535,6 +535,19 @@ where
   fn copy_to_bytes(&mut self, len: usize) -> Bytes {
     Strategy::copy_to_bytes(self, len)
   }
+
+  crate::macros::forward_buf! { repr {
+    i16,
+    i32,
+    i64,
+    i128,
+    u16,
+    u32,
+    u64,
+    u128,
+    f32,
+    f64,
+  }}
 }
 
 #[derive(Clone, Debug)]
