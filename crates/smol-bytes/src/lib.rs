@@ -101,8 +101,18 @@ pub(crate) use bytes::strategy;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes_mut::BytesMut;
 
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use utf8_bytes::Utf8Bytes;
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use utf8_bytes_mut::Utf8BytesMut;
+
 pub use buffer::{Buffer, INLINE_CAP};
+pub use utf8_buffer::Utf8Buffer;
 pub use error::*;
+pub use utf8_buf::{Utf8Buf, Utf8BufMut};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
@@ -114,6 +124,15 @@ mod bytes_mut;
 mod python;
 
 mod buffer;
+
+mod utf8_buf;
+mod utf8_buffer;
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod utf8_bytes;
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod utf8_bytes_mut;
+
 mod macros;
 
 /// Error types for byte buffer operations.

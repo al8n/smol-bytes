@@ -141,7 +141,7 @@ impl Buffer {
     self.py_len()
   }
 
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
     self.py_contains(item)
   }
 

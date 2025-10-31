@@ -149,7 +149,7 @@ impl BytesMut {
   }
 
   /// Check membership of a byte or bytes-like object.
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
     self.py_contains(item)
   }
 

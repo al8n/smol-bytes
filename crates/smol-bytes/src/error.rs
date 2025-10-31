@@ -205,3 +205,43 @@ impl From<RangeOutOfBounds> for std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, value)
   }
 }
+
+/// Error type for UTF-8 operations that indicates an invalid character boundary
+/// or out of bounds access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Utf8Error {
+  /// The index does not lie on a UTF-8 character boundary.
+  InvalidCharBoundary {
+    /// The index that was not on a character boundary
+    at: usize,
+  },
+  /// The index or range is out of bounds.
+  OutOfBounds {
+    /// The requested index
+    at: usize,
+    /// The length of the buffer
+    len: usize,
+  },
+}
+
+impl core::fmt::Display for Utf8Error {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::InvalidCharBoundary { at } => {
+        write!(f, "index {} does not lie on a UTF-8 character boundary", at)
+      }
+      Self::OutOfBounds { at, len } => {
+        write!(f, "index {} out of bounds: length is {}", at, len)
+      }
+    }
+  }
+}
+
+impl core::error::Error for Utf8Error {}
+
+#[cfg(feature = "std")]
+impl From<Utf8Error> for std::io::Error {
+  fn from(value: Utf8Error) -> Self {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, value)
+  }
+}

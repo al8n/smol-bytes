@@ -244,37 +244,41 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
       })
   }
 
-  fn py_contains(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
+  fn py_contains(&self, item: &Bound<'_, PyAny>) -> bool {
     let haystack = self.as_ref();
 
     if let Ok(byte) = item.extract::<u8>() {
-      return Ok(haystack.contains(&byte));
+      return haystack.contains(&byte);
     }
 
-    if let Ok(bytes) = item.extract::<std::vec::Vec<u8>>() {
+    if let Ok(byte) = item.extract::<char>() {
+      return haystack.contains(&byte);
+    }
+
+    if let Ok(bytes) = item.cast::<PyBytes>() {
+      let bytes: &[u8] = bytes.as_ref();
       if bytes.is_empty() {
-        return Ok(true);
+        return true;
+      }
+
+      if bytes.len() > haystack.len() {
+        return false;
+      }
+      return haystack.windows(bytes.len()).any(|w| w.eq(bytes));
+    }
+
+    if let Ok(s) = item.extract::<PyString>() {
+      let bytes: &str = s.as_ref();
+      if bytes.is_empty() {
+        return true;
       }
       if bytes.len() > haystack.len() {
-        return Ok(false);
+        return false;
       }
-      return Ok(haystack.windows(bytes.len()).any(|w| w == bytes.as_slice()));
+      return haystack.windows(bytes.len()).any(|w| w.eq(bytes));
     }
 
-    if let Ok(s) = item.extract::<std::string::String>() {
-      let bytes = s.as_bytes();
-      if bytes.is_empty() {
-        return Ok(true);
-      }
-      if bytes.len() > haystack.len() {
-        return Ok(false);
-      }
-      return Ok(haystack.windows(bytes.len()).any(|w| w == bytes));
-    }
-
-    Err(PyTypeError::new_err(
-      "argument should be an integer or bytes-like object",
-    ))
+    false
   }
 
   fn py_getitem(&self, index: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
