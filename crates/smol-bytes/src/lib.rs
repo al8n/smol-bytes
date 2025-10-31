@@ -101,18 +101,18 @@ pub(crate) use bytes::strategy;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes_mut::BytesMut;
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use utf8_bytes::Utf8Bytes;
+// #[cfg(any(feature = "std", feature = "alloc"))]
+// #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+// pub use utf8_bytes::Utf8Bytes;
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-pub use utf8_bytes_mut::Utf8BytesMut;
+// #[cfg(any(feature = "std", feature = "alloc"))]
+// #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+// pub use utf8_bytes_mut::Utf8BytesMut;
 
 pub use buffer::{Buffer, INLINE_CAP};
-pub use utf8_buffer::Utf8Buffer;
+// pub use utf8_buffer::Utf8Buffer;
 pub use error::*;
-pub use utf8_buf::{Utf8Buf, Utf8BufMut};
+// pub use utf8_buf::{Utf8Buf, Utf8BufMut};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
@@ -125,13 +125,13 @@ mod python;
 
 mod buffer;
 
-mod utf8_buf;
-mod utf8_buffer;
+// mod utf8_buf;
+// mod utf8_buffer;
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-mod utf8_bytes;
-#[cfg(any(feature = "std", feature = "alloc"))]
-mod utf8_bytes_mut;
+// #[cfg(any(feature = "std", feature = "alloc"))]
+// mod utf8_bytes;
+// #[cfg(any(feature = "std", feature = "alloc"))]
+// mod utf8_bytes_mut;
 
 mod macros;
 
