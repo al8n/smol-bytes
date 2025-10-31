@@ -5,7 +5,7 @@ use bytes::BufMut;
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
-use crate::{strategy::Strategy, BytesMut};
+use crate::{strategy::ImmutableStorage, BytesMut};
 
 use super::RawBytes;
 
@@ -13,13 +13,13 @@ use super::RawBytes;
 fn smol_bytes<'de: 'a, 'a, D, S>(deserializer: D) -> Result<RawBytes<S>, D::Error>
 where
   D: Deserializer<'de>,
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   struct RawBytesVisitor<S>(core::marker::PhantomData<S>);
 
   impl<'a, S> Visitor<'a> for RawBytesVisitor<S>
   where
-    RawBytes<S>: Strategy,
+    RawBytes<S>: ImmutableStorage,
   {
     type Value = RawBytes<S>;
 
@@ -90,7 +90,7 @@ where
 
 impl<St> serde::Serialize for RawBytes<St>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
@@ -102,7 +102,7 @@ where
 
 impl<'de, S> serde::Deserialize<'de> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where

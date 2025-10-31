@@ -2,7 +2,7 @@ use super::*;
 
 impl<S> core::fmt::Debug for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -15,7 +15,7 @@ where
 
 impl<S> core::fmt::LowerHex for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -28,7 +28,7 @@ where
 
 impl<S> core::fmt::UpperHex for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

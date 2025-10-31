@@ -692,7 +692,7 @@ impl BytesMut {
   #[inline]
   pub(crate) fn freeze<S>(self) -> RawBytes<S>
   where
-    RawBytes<S>: crate::strategy::Strategy,
+    RawBytes<S>: crate::strategy::ImmutableStorage,
   {
     match self.0 {
       Repr::Inline(storage) => RawBytes::inline(storage),

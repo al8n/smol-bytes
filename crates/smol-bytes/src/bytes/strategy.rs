@@ -16,7 +16,7 @@
 //! | **Best for** | Bytes interop, speed | Memory-constrained apps |
 //! | **Default?** | ✅ Recommended | ⚠️ Special cases |
 //!
-//! # When to Use Which Strategy
+//! # When to Use Which ImmutableStorage
 //!
 //! ## Use `shared::Bytes` (Default) when:
 //!
@@ -52,7 +52,7 @@
 //!
 //! # Examples
 //!
-//! ## Shared Strategy Example
+//! ## Shared ImmutableStorage Example
 //!
 //! ```rust
 //! use smol_bytes::shared::Bytes;
@@ -69,7 +69,7 @@
 //! let bytes: bytes::Bytes = large.into();
 //! ```
 //!
-//! ## Compact Strategy Example
+//! ## Compact ImmutableStorage Example
 //!
 //! ```rust
 //! use smol_bytes::{compact::Bytes, Buf};
@@ -85,7 +85,7 @@
 //!
 //! # Performance Characteristics
 //!
-//! ## Shared Strategy
+//! ## Shared ImmutableStorage
 //!
 //! | Operation | Complexity | Allocation Behavior |
 //! |-----------|------------|---------------------|
@@ -97,7 +97,7 @@
 //!
 //! *O(62) when result needs to be inline (copies up to 62 bytes)
 //!
-//! ## Compact Strategy
+//! ## Compact ImmutableStorage
 //!
 //! | Operation | Complexity | Allocation Behavior |
 //! |-----------|------------|---------------------|
@@ -118,7 +118,7 @@
 //! Both strategies store data in the same [`RawBytes<S>`](crate::smol_bytes::raw::RawBytes)
 //! type, with only the behavior differing based on the strategy parameter.
 
-pub(crate) use sealed::Strategy;
+pub(crate) use sealed::ImmutableStorage;
 
 /// The **Compact** strategy: Aggressively inlines data to minimize memory usage.
 ///
@@ -140,7 +140,7 @@ mod sealed {
   use crate::error::*;
   use core::ops::RangeBounds;
 
-  pub trait Strategy {
+  pub trait ImmutableStorage {
     fn slice(&self, range: impl RangeBounds<usize>) -> Self;
 
     fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds>

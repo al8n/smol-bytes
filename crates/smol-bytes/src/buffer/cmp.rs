@@ -181,7 +181,7 @@ bail!(
 const _: () = {
   use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 
-  use crate::{bytes::RawBytes, strategy::Strategy};
+  use crate::{bytes::RawBytes, strategy::ImmutableStorage};
 
   bail!(
     ::bytes::Bytes => as_ref([u8]),
@@ -199,7 +199,7 @@ const _: () = {
   // --- RawBytes comparisons ----
   impl<S> PartialEq<RawBytes<S>> for Buffer
   where
-    RawBytes<S>: Strategy,
+    RawBytes<S>: ImmutableStorage,
   {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -209,7 +209,7 @@ const _: () = {
 
   impl<S> PartialEq<Buffer> for RawBytes<S>
   where
-    RawBytes<S>: Strategy,
+    RawBytes<S>: ImmutableStorage,
   {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn eq(&self, other: &Buffer) -> bool {
@@ -219,7 +219,7 @@ const _: () = {
 
   impl<S> PartialOrd<RawBytes<S>> for Buffer
   where
-    RawBytes<S>: Strategy,
+    RawBytes<S>: ImmutableStorage,
   {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
@@ -229,7 +229,7 @@ const _: () = {
 
   impl<S> PartialOrd<Buffer> for RawBytes<S>
   where
-    RawBytes<S>: Strategy,
+    RawBytes<S>: ImmutableStorage,
   {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn partial_cmp(&self, other: &Buffer) -> Option<Ordering> {

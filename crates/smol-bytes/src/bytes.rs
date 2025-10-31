@@ -16,9 +16,9 @@
 //! let cloned = token.clone(); // Just a memcpy!
 //! ```
 //!
-//! # Choosing a Strategy
+//! # Choosing a ImmutableStorage
 //!
-//! ## `Shared` Strategy (Recommended)
+//! ## `Shared` ImmutableStorage (Recommended)
 //!
 //! **Best for**: Lexers, parsers, protocol handlers
 //!
@@ -38,7 +38,7 @@
 //! let token_copy = keyword.clone(); // Inline: just memcpy
 //! ```
 //!
-//! ## `Compact` Strategy (For memory efficiency)
+//! ## `Compact` ImmutableStorage (For memory efficiency)
 //!
 //! **Best for**: Memory-constrained environments, embedded systems
 //!
@@ -57,5 +57,5 @@ mod raw;
 
 pub(crate) use raw::{RawBytes, Repr};
 
-/// Strategy implementations and type aliases.
+/// ImmutableStorage implementations and type aliases.
 pub mod strategy;

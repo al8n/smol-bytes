@@ -1,4 +1,4 @@
-use crate::strategy::Strategy;
+use crate::strategy::ImmutableStorage;
 
 use super::*;
 
@@ -43,7 +43,7 @@ impl Extend<bytes::Bytes> for BytesMut {
 
 impl<S> Extend<RawBytes<S>> for BytesMut
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn extend<T: IntoIterator<Item = RawBytes<S>>>(&mut self, iter: T) {

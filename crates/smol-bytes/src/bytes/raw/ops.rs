@@ -2,7 +2,7 @@ use super::*;
 
 impl<S> core::ops::Deref for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   type Target = [u8];
 
@@ -14,7 +14,7 @@ where
 
 impl<S> core::borrow::Borrow<[u8]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn borrow(&self) -> &[u8] {
@@ -24,7 +24,7 @@ where
 
 impl<S> AsRef<[u8]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn as_ref(&self) -> &[u8] {

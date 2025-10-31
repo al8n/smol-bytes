@@ -1,4 +1,4 @@
-use crate::strategy::Strategy;
+use crate::strategy::ImmutableStorage;
 
 use core::cmp::Ordering;
 use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
@@ -150,7 +150,7 @@ impl<const N: usize> PartialOrd<BytesMut> for [u8; N] {
 
 impl<S> PartialEq<RawBytes<S>> for BytesMut
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -160,7 +160,7 @@ where
 
 impl<S> PartialEq<BytesMut> for RawBytes<S>
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &BytesMut) -> bool {
@@ -170,7 +170,7 @@ where
 
 impl<S> PartialOrd<RawBytes<S>> for BytesMut
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
@@ -180,7 +180,7 @@ where
 
 impl<S> PartialOrd<BytesMut> for RawBytes<S>
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &BytesMut) -> Option<Ordering> {

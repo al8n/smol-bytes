@@ -1,12 +1,12 @@
 use quickcheck::Arbitrary;
 
-use super::{RawBytes, Strategy};
+use super::{RawBytes, ImmutableStorage};
 
 use std::{boxed::Box, vec::Vec};
 
 impl<S> Arbitrary for RawBytes<S>
 where
-  RawBytes<S>: Strategy + Clone,
+  RawBytes<S>: ImmutableStorage + Clone,
   S: 'static,
 {
   fn arbitrary(g: &mut quickcheck::Gen) -> Self {

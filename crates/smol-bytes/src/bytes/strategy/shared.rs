@@ -156,7 +156,7 @@
 //! assert!(clone1.is_heap());
 //! ```
 
-use super::Strategy;
+use super::ImmutableStorage;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
   bytes::raw::{RawBytes, Repr},
@@ -274,7 +274,7 @@ impl RawBytes<Shared> {
   }
 }
 
-impl Strategy for RawBytes<Shared> {
+impl ImmutableStorage for RawBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
     self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
   }

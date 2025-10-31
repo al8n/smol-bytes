@@ -185,7 +185,7 @@
 //! assert!(data.is_heap());    // Still too large for inline
 //! ```
 //!
-//! # Trade-offs vs Shared Strategy
+//! # Trade-offs vs Shared ImmutableStorage
 //!
 //! ## Advantages
 //!
@@ -231,7 +231,7 @@
 //! **Rule of thumb**: If you convert to `Bytes` more than once per buffer lifetime,
 //! use `Shared`. If memory is more important than conversion speed, use `Compact`.
 
-use super::Strategy;
+use super::ImmutableStorage;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
   bytes::raw::{RawBytes, Repr},
@@ -300,7 +300,7 @@ impl From<bytes::Bytes> for RawBytes<Compact> {
   }
 }
 
-impl Strategy for RawBytes<Compact> {
+impl ImmutableStorage for RawBytes<Compact> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
     self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
   }

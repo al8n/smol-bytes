@@ -13,7 +13,7 @@ use crate::{
   BytesMut, OutOfBounds, RangeOutOfBounds,
 };
 
-use super::strategy::Strategy;
+use super::strategy::ImmutableStorage;
 
 mod cmp;
 mod fmt;
@@ -40,7 +40,7 @@ pub struct RawBytes<S> {
 
 impl<S> RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   /// Creates a new empty Bytes.
   ///
@@ -126,14 +126,14 @@ where
   /// will panic.
   #[inline]
   pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-    Strategy::slice(self, range)
+    ImmutableStorage::slice(self, range)
   }
 
   /// Tries to create a slice of self for the provided range.
   ///
   /// Returns `Err(RangeOutOfBounds)` if the range is invalid.
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
-    Strategy::try_slice(self, range)
+    ImmutableStorage::try_slice(self, range)
   }
 
   /// Splits the bytes into two at the given index.
@@ -163,7 +163,7 @@ where
   /// Panics if `at > len`.
   #[must_use = "consider RawBytes::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Self {
-    Strategy::split_off(self, at)
+    ImmutableStorage::split_off(self, at)
   }
 
   /// Tries to split the bytes into two at the given index, returning the tail.
@@ -203,7 +203,7 @@ where
   /// Panics if `at > len`.
   #[must_use = "consider RawBytes::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Self {
-    Strategy::split_to(self, at)
+    ImmutableStorage::split_to(self, at)
   }
 
   /// Tries to split the bytes into two at the given index, returning the head.
@@ -235,7 +235,7 @@ where
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn truncate(&mut self, new_len: usize) {
-    Strategy::truncate(self, new_len);
+    ImmutableStorage::truncate(self, new_len);
   }
 
   /// Clears the contents of this `Bytes`.
@@ -251,7 +251,7 @@ where
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn clear(&mut self) {
-    Strategy::clear(self)
+    ImmutableStorage::clear(self)
   }
 
   /// Attempts to advance the buffer by `cnt` bytes, returning an error if out of bounds.
@@ -261,14 +261,14 @@ where
     if cnt > len {
       return Err(OutOfBounds::new(cnt, len));
     }
-    Strategy::advance(self, cnt);
+    ImmutableStorage::advance(self, cnt);
     Ok(())
   }
 }
 
 impl<S> RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   const fn new_in(repr: Repr) -> Self {
@@ -546,7 +546,7 @@ where
 
 impl<S> Default for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
@@ -556,7 +556,7 @@ where
 
 impl<S> Buf for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn remaining(&self) -> usize {
@@ -570,12 +570,12 @@ where
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn advance(&mut self, cnt: usize) {
-    Strategy::advance(self, cnt);
+    ImmutableStorage::advance(self, cnt);
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> Bytes {
-    Strategy::copy_to_bytes(self, len)
+    ImmutableStorage::copy_to_bytes(self, len)
   }
 
   crate::macros::forward_buf! { repr {

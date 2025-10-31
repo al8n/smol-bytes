@@ -1,4 +1,4 @@
-use crate::strategy::Strategy;
+use crate::strategy::ImmutableStorage;
 
 use std::{boxed::Box, rc::Rc, sync::Arc, vec::Vec};
 
@@ -65,7 +65,7 @@ impl From<bytes::BytesMut> for BytesMut {
 
 impl<S> From<RawBytes<S>> for BytesMut
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[inline]
   fn from(v: RawBytes<S>) -> Self {

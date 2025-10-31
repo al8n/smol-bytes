@@ -143,7 +143,7 @@ impl PyBufCommon for Buffer {
 #[cfg(any(feature = "std", feature = "alloc"))]
 impl<S> PyBufCommon for RawBytes<S>
 where
-  RawBytes<S>: bytes::strategy::Strategy,
+  RawBytes<S>: bytes::strategy::ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {

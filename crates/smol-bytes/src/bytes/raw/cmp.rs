@@ -8,7 +8,7 @@ macro_rules! bail {
     $(
       impl<S> ::core::cmp::PartialEq<$ty> for RawBytes<S>
       where
-        Self: Strategy,
+        Self: ImmutableStorage,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
         fn eq(&self, other: &$ty) -> ::core::primitive::bool {
@@ -18,7 +18,7 @@ macro_rules! bail {
 
       impl<S> ::core::cmp::PartialEq<RawBytes<S>> for $ty
       where
-        RawBytes<S>: Strategy,
+        RawBytes<S>: ImmutableStorage,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
         fn eq(&self, other: &RawBytes<S>) -> ::core::primitive::bool {
@@ -28,7 +28,7 @@ macro_rules! bail {
 
       impl<S> ::core::cmp::PartialOrd<$ty> for RawBytes<S>
       where
-        Self: Strategy,
+        Self: ImmutableStorage,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
         fn partial_cmp(&self, other: &$ty) -> ::core::option::Option<::core::cmp::Ordering> {
@@ -38,7 +38,7 @@ macro_rules! bail {
 
       impl<S> ::core::cmp::PartialOrd<RawBytes<S>> for $ty
       where
-        RawBytes<S>: Strategy,
+        RawBytes<S>: ImmutableStorage,
       {
         #[cfg_attr(not(tarpaulin), inline(always))]
         fn partial_cmp(&self, other: &RawBytes<S>) -> ::core::option::Option<::core::cmp::Ordering> {
@@ -51,7 +51,7 @@ macro_rules! bail {
 
 impl<S> Hash for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
@@ -61,7 +61,7 @@ where
 
 impl<'a, T: ?Sized, S> PartialEq<&'a T> for RawBytes<S>
 where
-  Self: PartialEq<T> + Strategy,
+  Self: PartialEq<T> + ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &&'a T) -> bool {
@@ -71,7 +71,7 @@ where
 
 impl<'a, T: ?Sized, S> PartialOrd<&'a T> for RawBytes<S>
 where
-  Self: PartialOrd<T> + Strategy,
+  Self: PartialOrd<T> + ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &&'a T) -> Option<Ordering> {
@@ -81,7 +81,7 @@ where
 
 impl<S> PartialEq for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn eq(&self, other: &Self) -> bool {
@@ -89,11 +89,11 @@ where
   }
 }
 
-impl<S> Eq for RawBytes<S> where Self: Strategy {}
+impl<S> Eq for RawBytes<S> where Self: ImmutableStorage {}
 
 impl<S> PartialOrd for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -103,7 +103,7 @@ where
 
 impl<S> Ord for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn cmp(&self, other: &Self) -> Ordering {
@@ -114,7 +114,7 @@ where
 // ---- [u8] comparisons ----
 impl<S> PartialEq<[u8]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &[u8]) -> bool {
@@ -124,7 +124,7 @@ where
 
 impl<S> PartialEq<RawBytes<S>> for [u8]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -134,7 +134,7 @@ where
 
 impl<S> PartialOrd<[u8]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &[u8]) -> Option<Ordering> {
@@ -144,7 +144,7 @@ where
 
 impl<S> PartialOrd<RawBytes<S>> for [u8]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
@@ -154,7 +154,7 @@ where
 
 impl<S, const N: usize> PartialEq<[u8; N]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &[u8; N]) -> bool {
@@ -164,7 +164,7 @@ where
 
 impl<S, const N: usize> PartialEq<RawBytes<S>> for [u8; N]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -174,7 +174,7 @@ where
 
 impl<S, const N: usize> PartialOrd<[u8; N]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &[u8; N]) -> Option<Ordering> {
@@ -184,7 +184,7 @@ where
 
 impl<S, const N: usize> PartialOrd<RawBytes<S>> for [u8; N]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
@@ -195,7 +195,7 @@ where
 // ---- &[u8] comparisons ----
 impl<S> PartialEq<RawBytes<S>> for &[u8]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -205,7 +205,7 @@ where
 
 impl<S> PartialOrd<RawBytes<S>> for &[u8]
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
@@ -216,7 +216,7 @@ where
 // ---- &str comparisons ----
 impl<S> PartialEq<RawBytes<S>> for &str
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
@@ -226,7 +226,7 @@ where
 
 impl<S> PartialOrd<RawBytes<S>> for &str
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {

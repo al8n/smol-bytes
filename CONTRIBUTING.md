@@ -26,7 +26,7 @@ The core optimization is storing small data inline on the stack:
 - **Metadata**: 1 byte for length, 1 byte for cursor position
 - **Total**: 64 bytes struct size
 
-### Two Strategy Patterns
+### Two ImmutableStorage Patterns
 
 #### `shared::Bytes`
 - **Goal**: Fast `bytes::Bytes` interop

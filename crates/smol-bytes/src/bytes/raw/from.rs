@@ -2,7 +2,7 @@ use super::*;
 
 impl<S, const N: usize> From<[u8; N]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(array: [u8; N]) -> Self {
@@ -12,7 +12,7 @@ where
 
 impl<S, const N: usize> From<&[u8; N]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(array: &[u8; N]) -> Self {
@@ -27,7 +27,7 @@ where
 
 impl<S> From<&[u8]> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(slice: &[u8]) -> Self {
@@ -37,7 +37,7 @@ where
 
 impl<S> From<&str> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(v: &str) -> Self {
@@ -47,7 +47,7 @@ where
 
 impl<S> From<Box<[u8]>> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(slice: Box<[u8]>) -> Self {
@@ -57,7 +57,7 @@ where
 
 impl<S> From<Vec<u8>> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(vec: Vec<u8>) -> Self {
@@ -67,7 +67,7 @@ where
 
 impl<S> From<String> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(s: String) -> Self {
@@ -77,7 +77,7 @@ where
 
 impl<S> From<Arc<[u8]>> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(arc: Arc<[u8]>) -> Self {
@@ -87,7 +87,7 @@ where
 
 impl<'a, S> From<Cow<'a, [u8]>> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(cow: Cow<'a, [u8]>) -> Self {
@@ -100,7 +100,7 @@ where
 
 impl<S> From<Buffer> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(value: Buffer) -> Self {
@@ -110,7 +110,7 @@ where
 
 impl<S> From<RawBytes<S>> for Vec<u8>
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[inline]
   fn from(bytes: RawBytes<S>) -> Self {
@@ -120,7 +120,7 @@ where
 
 impl<S> From<RawBytes<S>> for Arc<[u8]>
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[inline]
   fn from(bytes: RawBytes<S>) -> Self {
@@ -130,7 +130,7 @@ where
 
 impl<S> From<RawBytes<S>> for Bytes
 where
-  RawBytes<S>: Strategy,
+  RawBytes<S>: ImmutableStorage,
 {
   #[inline]
   fn from(bytes: RawBytes<S>) -> Self {
@@ -140,7 +140,7 @@ where
 
 impl<S> From<BytesMut> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(v: BytesMut) -> Self {
@@ -150,7 +150,7 @@ where
 
 impl<S> From<::bytes::BytesMut> for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   #[inline]
   fn from(v: ::bytes::BytesMut) -> Self {

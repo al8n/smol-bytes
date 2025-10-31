@@ -1,12 +1,12 @@
 use crate::buffer::Buffer;
 
-use super::{RawBytes, Strategy, INLINE_CAP};
+use super::{RawBytes, ImmutableStorage, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};
 
 impl<S> BorshSerialize for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   fn serialize<W: Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
     self.as_slice().serialize(writer)
@@ -15,7 +15,7 @@ where
 
 impl<S> BorshDeserialize for RawBytes<S>
 where
-  Self: Strategy,
+  Self: ImmutableStorage,
 {
   fn deserialize_reader<R: Read>(reader: &mut R) -> borsh::io::Result<Self> {
     let len = u32::deserialize_reader(reader)? as usize;
