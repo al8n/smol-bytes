@@ -956,11 +956,6 @@ impl Buffer {
   ///
   /// assert_eq!("aaaa".as_bytes(), &dst);
   /// ```
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if there is not enough remaining capacity in
-  /// `self`.
   #[inline]
   pub const fn try_put_bytes(&mut self, val: u8, cnt: usize) -> Result<(), TryPutError> {
     if cnt == 0 {
@@ -1038,18 +1033,17 @@ impl Buffer {
   /// `self`.
   #[inline]
   pub const fn try_put_u8(&mut self, val: u8) -> Result<(), TryPutError> {
-    // let available = self.remaining_mut();
-    // if available < 1 {
-    //   return Err(TryPutError {
-    //     requested: 1,
-    //     available,
-    //   });
-    // }
+    let available = self.remaining_mut();
+    if available < 1 {
+      return Err(TryPutError {
+        requested: 1,
+        available,
+      });
+    }
 
-    // self.buf[self.len.to_usize()].write(val);
-    // self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + 1) };
-    // Ok(())
-    Self::try_put_bytes(self, val, 1)
+    self.buf[self.len.to_usize()].write(val);
+    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + 1) };
+    Ok(())
   }
 }
 

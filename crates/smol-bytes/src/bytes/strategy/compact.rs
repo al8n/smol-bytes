@@ -235,6 +235,7 @@ use super::Strategy;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
   bytes::raw::{RawBytes, Repr},
+  error::*,
 };
 use bytes::Buf;
 use core::mem;
@@ -301,44 +302,48 @@ impl From<bytes::Bytes> for RawBytes<Compact> {
 
 impl Strategy for RawBytes<Compact> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-    let len = self.len();
+    self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
+  }
 
-    let begin = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    let Some(slen) = end.checked_sub(begin) else {
-      panic!(
-        "range start must not be greater than end: {:?} <= {:?}",
-        begin, end,
-      );
-    };
-
-    assert!(
-      end <= len,
-      "range end out of bounds: {:?} <= {:?}",
-      end,
-      len,
-    );
-
-    if slen <= INLINE_CAP {
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      return Self::inline(unsafe { Buffer::copy_from_slice(&self.as_slice()[begin..end]) });
-    }
-
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, crate::RangeOutOfBounds>
+  where
+    Self: Sized,
+  {
     match &self.repr {
-      Repr::Inline(_) => {
-        unreachable!("slice length exceeds inline capacity");
+      Repr::Inline(storage) => storage.try_slice(range).map(Self::inline),
+      Repr::Heap(bytes) => {
+        let len = bytes.len();
+
+        let begin = match range.start_bound() {
+          Bound::Included(&n) => n,
+          Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+          Bound::Included(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Excluded(&n) => n,
+          Bound::Unbounded => len,
+        };
+
+        if begin > len || end > len || begin > end {
+          return Err(RangeOutOfBounds::new(begin, end, len));
+        }
+
+        let slen = end - begin;
+        if slen == 0 {
+          return Ok(Self::new());
+        }
+
+        if slen <= INLINE_CAP {
+          // SAFETY: bounds checked above, and we are slicing within inline capacity.
+          return Ok(Self::inline(unsafe {
+            Buffer::copy_from_slice(&self.as_slice()[begin..end])
+          }));
+        }
+
+        Ok(Self::heap(bytes.slice(begin..end)))
       }
-      Repr::Heap(bytes) => Self::heap(bytes.slice(begin..end)),
     }
   }
 

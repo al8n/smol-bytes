@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{buffer::Buffer, bytes::RawBytes, INLINE_CAP};
+use crate::{buffer::Buffer, bytes::RawBytes, OutOfBounds, INLINE_CAP};
 
 mod cmp;
 mod fmt;
@@ -19,6 +19,9 @@ mod borsh;
 mod quickcheck;
 #[cfg(feature = "serde")]
 mod serde;
+
+#[cfg(feature = "pyo3")]
+mod python;
 
 /// A mutable byte buffer with inline storage optimization.
 ///
@@ -451,10 +454,25 @@ impl BytesMut {
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Result<Self, Buffer> {
-    match &mut self.0 {
-      Repr::Inline(b) => Err(b.split_off(at)),
-      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_off(at)))),
+    self
+      .try_split_off(at)
+      .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.len()))
+  }
+
+  /// Attempts to split the buffer at `at`.
+  ///
+  /// Returns [`OutOfBounds`] instead of panicking when `at > len`.
+  pub fn try_split_off(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+    let len = self.len();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
     }
+
+    let result = match &mut self.0 {
+      Repr::Inline(b) => Err(b.try_split_off(at).expect("validated bounds")),
+      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_off(at)))),
+    };
+    Ok(result)
   }
 
   /// Removes the bytes from the current view, returning them in a new buffer.
@@ -480,7 +498,9 @@ impl BytesMut {
   #[must_use = "consider BytesMut::clear if you don't need the other half"]
   pub fn split(&mut self) -> Result<Self, Buffer> {
     let len = self.len();
-    self.split_to(len)
+    self
+      .try_split_to(len)
+      .unwrap_or_else(|_| panic!("split out of bounds: {}", len))
   }
 
   /// Splits the buffer into two at the given index.
@@ -529,9 +549,44 @@ impl BytesMut {
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::advance if you don't need the other half"]
   pub fn split_to(&mut self, at: usize) -> Result<Self, Buffer> {
-    match &mut self.0 {
-      Repr::Inline(b) => Err(b.split_to(at)),
+    self
+      .try_split_to(at)
+      .unwrap_or_else(|_| panic!("split_to out of bounds: {} > {}", at, self.len()))
+  }
+
+  /// Attempts to split at `at`, returning [`OutOfBounds`] on failure instead of panicking.
+  pub fn try_split_to(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+    let len = self.len();
+    if at > len {
+      return Err(OutOfBounds::new(at, len));
+    }
+
+    let result = match &mut self.0 {
+      Repr::Inline(b) => Err(b.try_split_to(at).expect("validated bounds")),
       Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_to(at)))),
+    };
+    Ok(result)
+  }
+
+  /// Attempts to split off all remaining bytes.
+  pub fn try_split(&mut self) -> Result<Result<Self, Buffer>, OutOfBounds> {
+    let len = self.len();
+    self.try_split_to(len)
+  }
+
+  /// Attempts to advance the readable cursor by `cnt` bytes.
+  pub fn try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
+    let len = self.len();
+    if cnt > len {
+      return Err(OutOfBounds::new(cnt, len));
+    }
+
+    match &mut self.0 {
+      Repr::Inline(buffer) => buffer.try_advance(cnt),
+      Repr::Heap(bytes) => {
+        Buf::advance(bytes, cnt);
+        Ok(())
+      }
     }
   }
 

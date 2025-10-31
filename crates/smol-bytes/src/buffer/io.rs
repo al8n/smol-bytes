@@ -3,6 +3,8 @@
 //! These methods allow Buffer to be used in no_std/no_alloc environments while providing
 //! the same API as the bytes crate.
 
+use crate::TryPutIntegerError;
+
 use super::{panic_advance, panic_does_not_fit, Buffer, InlineSize, TryGetError, TryPutError};
 
 // https://en.wikipedia.org/wiki/Sign_extension
@@ -757,7 +759,7 @@ impl Buffer {
   pub fn put_uint(&mut self, n: u64, nbytes: usize) {
     self
       .try_put_uint(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
+      .unwrap_or_else(|e| panic!("{e}"));
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in big-endian byte order.
@@ -767,21 +769,18 @@ impl Buffer {
   /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_uint(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_uint(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if nbytes > 8 {
-      panic!("nbytes must be <= 8");
+      return Err(TryPutIntegerError::InvalidLength { requested: nbytes });
     }
+
     let available = self.remaining_mut();
     if available < nbytes {
-      return Err(TryPutError {
+      return Err(TryPutIntegerError::NotEnoughSpace(TryPutError {
         requested: nbytes,
         available,
-      });
+      }));
     }
 
     let bytes = n.to_be_bytes();
@@ -812,7 +811,7 @@ impl Buffer {
   pub fn put_uint_le(&mut self, n: u64, nbytes: usize) {
     self
       .try_put_uint_le(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in little-endian byte order.
@@ -822,21 +821,18 @@ impl Buffer {
   /// ## Errors
   ///
   /// Returns `Err(TryPutError)` if there is not enough remaining capacity in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_uint_le(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_uint_le(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if nbytes > 8 {
-      panic!("nbytes must be <= 8");
+      return Err(TryPutIntegerError::InvalidLength { requested: nbytes });
     }
+
     let available = self.remaining_mut();
     if available < nbytes {
-      return Err(TryPutError {
+      return Err(TryPutIntegerError::NotEnoughSpace(TryPutError {
         requested: nbytes,
         available,
-      });
+      }));
     }
 
     let bytes = n.to_le_bytes();
@@ -867,7 +863,7 @@ impl Buffer {
   pub fn put_uint_ne(&mut self, n: u64, nbytes: usize) {
     self
       .try_put_uint_ne(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Tries to write an unsigned n-byte integer to `self` in native-endian byte order.
@@ -882,7 +878,7 @@ impl Buffer {
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_uint_ne(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_uint_ne(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if cfg!(target_endian = "big") {
       self.try_put_uint(n, nbytes)
     } else {
@@ -902,7 +898,7 @@ impl Buffer {
   pub fn put_int(&mut self, n: i64, nbytes: usize) {
     self
       .try_put_int(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
+      .unwrap_or_else(|e| panic!("{e}"));
   }
 
   /// Tries to write a signed n-byte integer to `self` in big-endian byte order.
@@ -917,7 +913,7 @@ impl Buffer {
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_int(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_int(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     self.try_put_uint(n as u64, nbytes)
   }
 
@@ -933,7 +929,7 @@ impl Buffer {
   pub fn put_int_le(&mut self, n: i64, nbytes: usize) {
     self
       .try_put_int_le(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
+      .unwrap_or_else(|e| panic!("{e}"));
   }
 
   /// Tries to write a signed n-byte integer to `self` in little-endian byte order.
@@ -948,7 +944,7 @@ impl Buffer {
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_int_le(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_int_le(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     self.try_put_uint_le(n as u64, nbytes)
   }
 
@@ -964,7 +960,7 @@ impl Buffer {
   pub fn put_int_ne(&mut self, n: i64, nbytes: usize) {
     self
       .try_put_int_ne(n, nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested));
+      .unwrap_or_else(|e| panic!("{e}"));
   }
 
   /// Tries to write a signed n-byte integer to `self` in native-endian byte order.
@@ -979,7 +975,7 @@ impl Buffer {
   ///
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
-  pub const fn try_put_int_ne(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutError> {
+  pub const fn try_put_int_ne(&mut self, n: i64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if cfg!(target_endian = "big") {
       self.try_put_int(n, nbytes)
     } else {

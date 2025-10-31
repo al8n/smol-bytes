@@ -137,10 +137,15 @@ pub mod compact;
 pub mod shared;
 
 mod sealed {
+  use crate::error::*;
   use core::ops::RangeBounds;
 
   pub trait Strategy {
     fn slice(&self, range: impl RangeBounds<usize>) -> Self;
+
+    fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds>
+    where
+      Self: Sized;
 
     fn split_to(&mut self, to: usize) -> Self;
 

@@ -160,10 +160,11 @@ use super::Strategy;
 use crate::{
   buffer::{Buffer, INLINE_CAP},
   bytes::raw::{RawBytes, Repr},
+  error::*,
 };
 use bytes::Buf;
-use core::mem;
 use core::ops::RangeBounds;
+use core::{mem, ops::Bound};
 
 /// A strategy that preserves heap allocations for fast, zero-copy conversions with [`bytes::Bytes`].
 ///
@@ -275,9 +276,40 @@ impl RawBytes<Shared> {
 
 impl Strategy for RawBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+    self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, crate::RangeOutOfBounds>
+  where
+    Self: Sized,
+  {
     match &self.repr {
-      Repr::Inline(storage) => Self::inline(storage.slice(range)),
-      Repr::Heap(bytes) => Self::heap(bytes.slice(range)),
+      Repr::Inline(storage) => storage.try_slice(range).map(Self::inline),
+      Repr::Heap(bytes) => {
+        let len = bytes.len();
+
+        let begin = match range.start_bound() {
+          Bound::Included(&n) => n,
+          Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+          Bound::Included(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Excluded(&n) => n,
+          Bound::Unbounded => len,
+        };
+
+        if begin > len || end > len || begin > end {
+          return Err(RangeOutOfBounds::new(begin, end, len));
+        }
+
+        if begin == end {
+          return Ok(Self::new());
+        }
+
+        Ok(Self::heap(bytes.slice(begin..end)))
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 use core::{
   hash::{Hash, Hasher},
   marker::PhantomData,
-  ops::{Bound, RangeBounds},
+  ops::RangeBounds,
 };
 
 use bytes::{Buf, Bytes};
@@ -133,29 +133,7 @@ where
   ///
   /// Returns `Err(RangeOutOfBounds)` if the range is invalid.
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
-    let len = self.len();
-
-    let begin = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    if begin > len || end > len || begin > end {
-      return Err(RangeOutOfBounds::new(begin, end, len));
-    }
-
-    if begin == end {
-      return Ok(Self::new());
-    }
-
-    Ok(self.slice(begin..end))
+    Strategy::try_slice(self, range)
   }
 
   /// Splits the bytes into two at the given index.
@@ -283,7 +261,7 @@ where
     if cnt > len {
       return Err(OutOfBounds::new(cnt, len));
     }
-    Buf::advance(self, cnt);
+    Strategy::advance(self, cnt);
     Ok(())
   }
 }

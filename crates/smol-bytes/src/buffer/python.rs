@@ -1,4 +1,4 @@
-use crate::python::{PyBufExt, PyBufMutExt, PyGetError};
+use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt};
 use pyo3::{
   basic::CompareOp,
   exceptions::{PyBufferError, PyUnicodeDecodeError},
@@ -86,72 +86,7 @@ impl Buffer {
   }
 
   fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
-    use core::cmp::Ordering;
-
-    // For Buffer vs Buffer, use Ord::cmp
-    if let Ok(buffer) = other.extract::<PyRef<'_, Self>>() {
-      let ordering = self.cmp(&*buffer);
-      return Ok(match op {
-        CompareOp::Lt => ordering == Ordering::Less,
-        CompareOp::Le => ordering != Ordering::Greater,
-        CompareOp::Eq => ordering == Ordering::Equal,
-        CompareOp::Ne => ordering != Ordering::Equal,
-        CompareOp::Gt => ordering == Ordering::Greater,
-        CompareOp::Ge => ordering != Ordering::Less,
-      });
-    }
-
-    // Helper macro for PartialOrd comparisons
-    macro_rules! compare {
-      ($other_val:expr) => {{
-        if let Some(ordering) = self.partial_cmp($other_val) {
-          return Ok(match op {
-            CompareOp::Lt => ordering == Ordering::Less,
-            CompareOp::Le => ordering != Ordering::Greater,
-            CompareOp::Eq => ordering == Ordering::Equal,
-            CompareOp::Ne => ordering != Ordering::Equal,
-            CompareOp::Gt => ordering == Ordering::Greater,
-            CompareOp::Ge => ordering != Ordering::Less,
-          });
-        }
-      }};
-    }
-
-    // Try bytes (PyBytes)
-    if let Ok(py_bytes) = other.cast::<PyBytes>() {
-      let bytes_slice: &[u8] = py_bytes.as_bytes();
-      compare!(bytes_slice);
-    }
-
-    // Try str (PyString)
-    if let Ok(py_str) = other.cast::<PyString>() {
-      if let Ok(s) = py_str.to_cow() {
-        let str_ref: &str = s.as_ref();
-        compare!(str_ref);
-      }
-    }
-
-    // Try String
-    #[cfg(any(feature = "std", feature = "alloc"))]
-    if let Ok(s) = other.extract::<std::string::String>() {
-      compare!(&s);
-    }
-
-    // Try Vec<u8>
-    #[cfg(any(feature = "std", feature = "alloc"))]
-    if let Ok(byte_vec) = other.extract::<std::vec::Vec<u8>>() {
-      compare!(&byte_vec);
-    }
-
-    // Not comparable - for equality return false, for ordering raise TypeError
-    match op {
-      CompareOp::Eq => Ok(false),
-      CompareOp::Ne => Ok(true),
-      _ => Err(pyo3::exceptions::PyTypeError::new_err(format!(
-        "'<' not supported between instances of 'Buffer' and '{}'",
-        other.get_type().name()?
-      ))),
-    }
+    self.py_richcmp(other, op)
   }
 
   fn __str__(&self) -> PyResult<&str> {
@@ -219,7 +154,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u8")]
   fn __python_get_u8(&mut self) -> ::pyo3::PyResult<u8> {
-    self.try_get_u8().map_err(|e| PyGetError::from(e).into())
+    self.py_get_u8()
   }
 
   /// Read a signed 8-bit integer from the buffer.
@@ -230,7 +165,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i8")]
   fn __python_get_i8(&mut self) -> ::pyo3::PyResult<i8> {
-    self.try_get_i8().map_err(|e| PyGetError::from(e).into())
+    self.py_get_i8()
   }
 
   // ==================== 16-bit methods ====================
@@ -243,7 +178,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u16")]
   fn __python_get_u16(&mut self) -> ::pyo3::PyResult<u16> {
-    self.try_get_u16().map_err(|e| PyGetError::from(e).into())
+    self.py_get_u16()
   }
 
   /// Read an unsigned 16-bit integer in little-endian byte order.
@@ -254,9 +189,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u16_le")]
   fn __python_get_u16_le(&mut self) -> ::pyo3::PyResult<u16> {
-    self
-      .try_get_u16_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_u16_le()
   }
 
   /// Read a signed 16-bit integer in big-endian byte order.
@@ -267,7 +200,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i16")]
   fn __python_get_i16(&mut self) -> ::pyo3::PyResult<i16> {
-    self.try_get_i16().map_err(|e| PyGetError::from(e).into())
+    self.py_get_i16()
   }
 
   /// Read a signed 16-bit integer in little-endian byte order.
@@ -278,9 +211,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i16_le")]
   fn __python_get_i16_le(&mut self) -> ::pyo3::PyResult<i16> {
-    self
-      .try_get_i16_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_i16_le()
   }
 
   // ==================== 32-bit methods ====================
@@ -293,7 +224,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u32")]
   fn __python_get_u32(&mut self) -> ::pyo3::PyResult<u32> {
-    self.try_get_u32().map_err(|e| PyGetError::from(e).into())
+    self.py_get_u32()
   }
 
   /// Read an unsigned 32-bit integer in little-endian byte order.
@@ -304,9 +235,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u32_le")]
   fn __python_get_u32_le(&mut self) -> ::pyo3::PyResult<u32> {
-    self
-      .try_get_u32_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_u32_le()
   }
 
   /// Read a signed 32-bit integer in big-endian byte order.
@@ -317,7 +246,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i32")]
   fn __python_get_i32(&mut self) -> ::pyo3::PyResult<i32> {
-    self.try_get_i32().map_err(|e| PyGetError::from(e).into())
+    self.py_get_i32()
   }
 
   /// Read a signed 32-bit integer in little-endian byte order.
@@ -328,9 +257,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i32_le")]
   fn __python_get_i32_le(&mut self) -> ::pyo3::PyResult<i32> {
-    self
-      .try_get_i32_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_i32_le()
   }
 
   /// Read a 32-bit floating point number in big-endian byte order.
@@ -341,7 +268,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_f32")]
   fn __python_get_f32(&mut self) -> ::pyo3::PyResult<f32> {
-    self.try_get_f32().map_err(|e| PyGetError::from(e).into())
+    self.py_get_f32()
   }
 
   /// Read a 32-bit floating point number in little-endian byte order.
@@ -352,9 +279,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_f32_le")]
   fn __python_get_f32_le(&mut self) -> ::pyo3::PyResult<f32> {
-    self
-      .try_get_f32_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_f32_le()
   }
 
   // ==================== 64-bit methods ====================
@@ -367,7 +292,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u64")]
   fn __python_get_u64(&mut self) -> ::pyo3::PyResult<u64> {
-    self.try_get_u64().map_err(|e| PyGetError::from(e).into())
+    self.py_get_u64()
   }
 
   /// Read an unsigned 64-bit integer in little-endian byte order.
@@ -378,9 +303,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u64_le")]
   fn __python_get_u64_le(&mut self) -> ::pyo3::PyResult<u64> {
-    self
-      .try_get_u64_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_u64_le()
   }
 
   /// Read a signed 64-bit integer in big-endian byte order.
@@ -391,7 +314,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i64")]
   fn __python_get_i64(&mut self) -> ::pyo3::PyResult<i64> {
-    self.try_get_i64().map_err(|e| PyGetError::from(e).into())
+    self.py_get_i64()
   }
 
   /// Read a signed 64-bit integer in little-endian byte order.
@@ -402,9 +325,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i64_le")]
   fn __python_get_i64_le(&mut self) -> ::pyo3::PyResult<i64> {
-    self
-      .try_get_i64_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_i64_le()
   }
 
   /// Read a 64-bit floating point number in big-endian byte order.
@@ -415,7 +336,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_f64")]
   fn __python_get_f64(&mut self) -> ::pyo3::PyResult<f64> {
-    self.try_get_f64().map_err(|e| PyGetError::from(e).into())
+    self.py_get_f64()
   }
 
   /// Read a 64-bit floating point number in little-endian byte order.
@@ -426,9 +347,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_f64_le")]
   fn __python_get_f64_le(&mut self) -> ::pyo3::PyResult<f64> {
-    self
-      .try_get_f64_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_f64_le()
   }
 
   // ==================== 128-bit methods ====================
@@ -441,7 +360,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u128")]
   fn __python_get_u128(&mut self) -> ::pyo3::PyResult<u128> {
-    self.try_get_u128().map_err(|e| PyGetError::from(e).into())
+    self.py_get_u128()
   }
 
   /// Read an unsigned 128-bit integer in little-endian byte order.
@@ -452,9 +371,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_u128_le")]
   fn __python_get_u128_le(&mut self) -> ::pyo3::PyResult<u128> {
-    self
-      .try_get_u128_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_u128_le()
   }
 
   /// Read a signed 128-bit integer in big-endian byte order.
@@ -465,7 +382,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i128")]
   fn __python_get_i128(&mut self) -> ::pyo3::PyResult<i128> {
-    self.try_get_i128().map_err(|e| PyGetError::from(e).into())
+    self.py_get_i128()
   }
 
   /// Read a signed 128-bit integer in little-endian byte order.
@@ -476,9 +393,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_i128_le")]
   fn __python_get_i128_le(&mut self) -> ::pyo3::PyResult<i128> {
-    self
-      .try_get_i128_le()
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_i128_le()
   }
 
   // ==================== Variable-length methods ====================
@@ -494,9 +409,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint")]
   fn __python_get_uint(&mut self, nbytes: usize) -> ::pyo3::PyResult<u64> {
-    self
-      .try_get_uint(nbytes)
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_uint(nbytes)
   }
 
   /// Read an unsigned n-byte integer in little-endian byte order.
@@ -510,9 +423,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint_le")]
   fn __python_get_uint_le(&mut self, nbytes: usize) -> ::pyo3::PyResult<u64> {
-    self
-      .try_get_uint_le(nbytes)
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_uint_le(nbytes)
   }
 
   /// Read a signed n-byte integer in big-endian byte order.
@@ -526,9 +437,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int")]
   fn __python_get_int(&mut self, nbytes: usize) -> ::pyo3::PyResult<i64> {
-    self
-      .try_get_int(nbytes)
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_int(nbytes)
   }
 
   /// Read a signed n-byte integer in little-endian byte order.
@@ -542,9 +451,7 @@ impl Buffer {
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: usize) -> ::pyo3::PyResult<i64> {
-    self
-      .try_get_int_le(nbytes)
-      .map_err(|e| PyGetError::from(e).into())
+    self.py_get_int_le(nbytes)
   }
 
   // ==================== Buffer control methods ====================
@@ -580,6 +487,42 @@ impl Buffer {
   }
 
   // ==================== Put methods ====================
+  /// Write a bytes-like object to the buffer.
+  ///
+  /// Args:
+  ///    data: The bytes-like object to write.
+  ///
+  /// Raises:
+  ///   BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_slice")]
+  fn __python_put_slice(&mut self, data: &Bound<'_, PyBytes>) -> ::pyo3::PyResult<()> {
+    self.try_put_slice(data.as_ref()).map_err(Into::into)
+  }
+
+  /// Write a byte value to the buffer multiple times.
+  ///
+  /// Args:
+  ///    val: The byte value to write.
+  ///    cnt: Number of times to write the byte.
+  ///
+  /// Raises:
+  ///    BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_bytes")]
+  fn __python_put_bytes(&mut self, val: u8, cnt: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_bytes(val, cnt).map_err(Into::into)
+  }
+
+  /// Write an unsigned 8-bit integer to the buffer.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u8")]
+  fn __python_put_u8(&mut self, value: u8) -> ::pyo3::PyResult<()> {
+    self.try_put_u8(value).map_err(Into::into)
+  }
 
   /// Write a signed 8-bit integer to the buffer.
   ///
@@ -593,56 +536,144 @@ impl Buffer {
     self.try_put_i8(val).map_err(Into::into)
   }
 
-  /// Write an unsigned n-byte integer in big-endian byte order.
+  /// Write an unsigned 16-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  ///    val: The value to write.
   ///
   /// Raises:
-  ///     BufferError: If there is not enough space in the buffer.
-  #[pyo3(name = "put_uint")]
-  fn __python_put_uint(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_uint(val, nbytes).map_err(Into::into)
+  ///    BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u16")]
+  fn __python_put_u16(&mut self, value: u16) -> PyResult<()> {
+    self.try_put_u16(value).map_err(Into::into)
   }
 
-  /// Write an unsigned n-byte integer in little-endian byte order.
+  /// Write an unsigned 16-bit integer in little-endian order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
-  #[pyo3(name = "put_uint_le")]
-  fn __python_put_uint_le(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_uint_le(val, nbytes).map_err(Into::into)
+  #[pyo3(name = "put_u16_le")]
+  fn __python_put_u16_le(&mut self, value: u16) -> PyResult<()> {
+    self.try_put_u16_le(value).map_err(Into::into)
   }
 
-  /// Write a signed n-byte integer in big-endian byte order.
+  /// Write a signed 16-bit integer in big-endian order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
-  ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
-  #[pyo3(name = "put_int")]
-  fn __python_put_int(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_int(val, nbytes).map_err(Into::into)
+  #[pyo3(name = "put_i16")]
+  fn __python_put_i16(&mut self, value: i16) -> PyResult<()> {
+    self.try_put_i16(value).map_err(Into::into)
   }
 
-  /// Write a signed n-byte integer in little-endian byte order.
+  /// Write a signed 16-bit integer in little-endian order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i16_le")]
+  fn __python_put_i16_le(&mut self, value: i16) -> PyResult<()> {
+    self.try_put_i16_le(value).map_err(Into::into)
+  }
+
+  /// Write an unsigned 32-bit integer in big-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u32")]
+  fn __python_put_u32(&mut self, value: u32) -> PyResult<()> {
+    self.try_put_u32(value).map_err(Into::into)
+  }
+
+  /// Write an unsigned 32-bit integer in little-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
-  #[pyo3(name = "put_int_le")]
-  fn __python_put_int_le(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_int_le(val, nbytes).map_err(Into::into)
+  #[pyo3(name = "put_u32_le")]
+  fn __python_put_u32_le(&mut self, value: u32) -> PyResult<()> {
+    self.try_put_u32_le(value).map_err(Into::into)
+  }
+
+  /// Write a signed 32-bit integer in big-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i32")]
+  fn __python_put_i32(&mut self, value: i32) -> PyResult<()> {
+    self.try_put_i32(value).map_err(Into::into)
+  }
+
+  /// Write a signed 32-bit integer in little-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i32_le")]
+  fn __python_put_i32_le(&mut self, value: i32) -> PyResult<()> {
+    self.try_put_i32_le(value).map_err(Into::into)
+  }
+
+  /// Write a 64-bit floating point number in big-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u64")]
+  fn __python_put_u64(&mut self, value: u64) -> PyResult<()> {
+    self.try_put_u64(value).map_err(Into::into)
+  }
+
+  /// Write a 64-bit floating point number in little-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u64_le")]
+  fn __python_put_u64_le(&mut self, value: u64) -> PyResult<()> {
+    self.try_put_u64_le(value).map_err(Into::into)
+  }
+
+  /// Write a signed 64-bit integer in big-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i64")]
+  fn __python_put_i64(&mut self, value: i64) -> PyResult<()> {
+    self.try_put_i64(value).map_err(Into::into)
+  }
+
+  /// Write a signed 64-bit integer in little-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i64_le")]
+  fn __python_put_i64_le(&mut self, value: i64) -> PyResult<()> {
+    self.try_put_i64_le(value).map_err(Into::into)
   }
 
   /// Write a 32-bit floating point number in big-endian byte order.
@@ -691,6 +722,110 @@ impl Buffer {
   #[pyo3(name = "put_f64_le")]
   fn __python_put_f64_le(&mut self, val: f64) -> ::pyo3::PyResult<()> {
     self.try_put_f64_le(val).map_err(Into::into)
+  }
+
+  /// Write an unsigned 128-bit integer in big-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u128")]
+  fn __python_put_u128(&mut self, value: u128) -> PyResult<()> {
+    self.try_put_u128(value).map_err(Into::into)
+  }
+
+  /// Write an unsigned 128-bit integer in little-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_u128_le")]
+  fn __python_put_u128_le(&mut self, value: u128) -> PyResult<()> {
+    self.try_put_u128_le(value).map_err(Into::into)
+  }
+
+  /// Write a signed 128-bit integer in big-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i128")]
+  fn __python_put_i128(&mut self, value: i128) -> PyResult<()> {
+    self.try_put_i128(value).map_err(Into::into)
+  }
+
+  /// Write a signed 128-bit integer in little-endian order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  #[pyo3(name = "put_i128_le")]
+  fn __python_put_i128_le(&mut self, value: i128) -> PyResult<()> {
+    self.try_put_i128_le(value).map_err(Into::into)
+  }
+
+  /// Write an unsigned n-byte integer in big-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///     nbytes: Number of bytes to write (<= 8).
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  ///     ValueError: If nbytes is not <= 8.
+  #[pyo3(name = "put_uint")]
+  fn __python_put_uint(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_uint(val, nbytes).map_err(Into::into)
+  }
+
+  /// Write an unsigned n-byte integer in little-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///     nbytes: Number of bytes to write (<= 8).
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  ///     ValueError: If nbytes is not <= 8.
+  #[pyo3(name = "put_uint_le")]
+  fn __python_put_uint_le(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_uint_le(val, nbytes).map_err(Into::into)
+  }
+
+  /// Write a signed n-byte integer in big-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///     nbytes: Number of bytes to write (<= 8).
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  ///     ValueError: If nbytes is not <= 8.
+  #[pyo3(name = "put_int")]
+  fn __python_put_int(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_int(val, nbytes).map_err(Into::into)
+  }
+
+  /// Write a signed n-byte integer in little-endian byte order.
+  ///
+  /// Args:
+  ///     val: The value to write.
+  ///     nbytes: Number of bytes to write (<= 8).
+  ///
+  /// Raises:
+  ///     BufferError: If there is not enough space in the buffer.
+  ///     ValueError: If nbytes is not <= 8.
+  #[pyo3(name = "put_int_le")]
+  fn __python_put_int_le(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_int_le(val, nbytes).map_err(Into::into)
   }
 
   // ==================== Buffer management methods ====================
