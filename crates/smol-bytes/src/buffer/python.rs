@@ -40,6 +40,23 @@ impl Buffer {
     Self::new()
   }
 
+  /// Create a new buffer by copying from a bytes-like object.
+  ///
+  /// Creates a fixed-size inline buffer (max 62 bytes) containing a copy of the data.
+  ///
+  /// Args:
+  ///     data: A bytes-like object (bytes, bytearray, etc.) to copy from.
+  ///
+  /// Returns:
+  ///     Buffer: A new buffer containing a copy of the data.
+  ///
+  /// Raises:
+  ///     BufferError: If the data exceeds the 62-byte inline capacity.
+  ///
+  /// Example:
+  ///     >>> buf = Buffer.from_bytes(b"Hello")
+  ///     >>> bytes(buf)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
   fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
@@ -51,6 +68,23 @@ impl Buffer {
     })
   }
 
+  /// Create a new buffer from a UTF-8 string.
+  ///
+  /// Encodes the string as UTF-8 bytes and creates a fixed-size inline buffer containing them.
+  ///
+  /// Args:
+  ///     s: A string to encode as UTF-8.
+  ///
+  /// Returns:
+  ///     Buffer: A new buffer containing the UTF-8 encoded string.
+  ///
+  /// Raises:
+  ///     BufferError: If the encoded string exceeds the 62-byte inline capacity.
+  ///
+  /// Example:
+  ///     >>> buf = Buffer.from_str("Hello")
+  ///     >>> bytes(buf)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
   fn __python_from_str(py_str: &str) -> PyResult<Self> {

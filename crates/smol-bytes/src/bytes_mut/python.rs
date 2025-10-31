@@ -3,7 +3,7 @@ use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt};
 use bytes::BufMut;
 use pyo3::{
   basic::CompareOp,
-  exceptions::{PyTypeError, PyUnicodeDecodeError},
+  exceptions::PyUnicodeDecodeError,
   prelude::{Bound, *},
   types::{PyAny, PyBytes, PyString},
 };
@@ -37,18 +37,6 @@ impl Iter {
   }
 }
 
-impl BytesMut {
-  fn convert_bytes_arg(arg: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
-    if let Ok(bytes) = arg.extract::<Vec<u8>>() {
-      Ok(bytes)
-    } else if let Ok(s) = arg.extract::<String>() {
-      Ok(s.into_bytes())
-    } else {
-      Err(PyTypeError::new_err("expected a bytes-like object or str"))
-    }
-  }
-}
-
 #[pymethods]
 impl BytesMut {
   #[new]
@@ -60,39 +48,85 @@ impl BytesMut {
     Self::new()
   }
 
-  /// Creates a new `BytesMut` with the specified capacity.
+  /// Create a new empty buffer with pre-allocated capacity.
   ///
-  /// The returned `BytesMut` will be able to hold at least capacity bytes without reallocating.
+  /// Pre-allocates space for at least `capacity` bytes, but the buffer starts empty
+  /// (length 0). This is useful when you know how much data you'll be writing and
+  /// want to avoid multiple reallocations.
   ///
-  /// It is important to note that this function does not specify the length of the returned BytesMut, but only the capacity.
+  /// Args:
+  ///     capacity: Minimum number of bytes to pre-allocate.
+  ///
+  /// Returns:
+  ///     BytesMut: An empty buffer with the specified capacity.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.with_capacity(100)
+  ///     >>> len(buf)
+  ///     0
+  ///     >>> buf.capacity()
+  ///     100
   #[staticmethod]
   #[pyo3(name = "with_capacity")]
   fn __python_with_capacity(capacity: usize) -> Self {
     Self::with_capacity(capacity)
   }
 
-  /// Creates a new `BytesMut` containing `len` zeros.
+  /// Create a new buffer filled with zeros.
   ///
-  /// The resulting object has a length of `len` and a capacity greater
-  /// than or equal to `len`. The entire length of the object will be filled
-  /// with zeros.
+  /// Creates a buffer of the specified length, with all bytes initialized to zero.
+  /// This is more efficient than manually creating a buffer and filling it with zeros.
   ///
-  /// On some platforms or allocators this function may be faster than
-  /// a manual implementation.
+  /// Args:
+  ///     len: The number of zero bytes to allocate.
+  ///
+  /// Returns:
+  ///     BytesMut: A buffer containing `len` zero bytes.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.zeroed(5)
+  ///     >>> bytes(buf)
+  ///     b'\x00\x00\x00\x00\x00'
+  ///     >>> len(buf)
+  ///     5
   #[staticmethod]
   #[pyo3(name = "zeroed")]
   fn __python_zeroed(len: usize) -> Self {
     Self::zeroed(len)
   }
 
-  /// Create a new `BytesMut` by copying from a bytes-like object.
+  /// Create a new buffer by copying from a bytes-like object.
+  ///
+  /// Args:
+  ///     data: A bytes-like object (bytes, bytearray, etc.) to copy from.
+  ///
+  /// Returns:
+  ///     BytesMut: A new mutable buffer containing a copy of the data.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello")
+  ///     >>> bytes(buf)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
   fn __python_from_bytes(py_bytes: &[u8]) -> Self {
     Self::from(py_bytes)
   }
 
-  /// Create a new `BytesMut` by copying from a UTF-8 string.
+  /// Create a new buffer from a UTF-8 string.
+  ///
+  /// Encodes the string as UTF-8 bytes and creates a mutable buffer containing them.
+  ///
+  /// Args:
+  ///     s: A string to encode as UTF-8.
+  ///
+  /// Returns:
+  ///     BytesMut: A new buffer containing the UTF-8 encoded string.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_str("Hello")
+  ///     >>> bytes(buf)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
   fn __python_from_str(py_str: &str) -> Self {
@@ -181,13 +215,38 @@ impl BytesMut {
     self.py_to_string(py)
   }
 
-  /// Return whether the buffer currently uses inline storage.
+  /// Check if the buffer is using inline (stack) storage.
+  ///
+  /// Small buffers (≤62 bytes) are stored inline for better performance.
+  /// Larger buffers are automatically moved to the heap.
+  ///
+  /// Returns:
+  ///     bool: True if the buffer is stored inline, False if on the heap.
+  ///
+  /// Example:
+  ///     >>> small = BytesMut.from_bytes(b"small")
+  ///     >>> small.is_inline()
+  ///     True
+  ///     >>> large = BytesMut.from_bytes(b"x" * 100)
+  ///     >>> large.is_inline()
+  ///     False
   #[pyo3(name = "is_inline")]
   fn __python_is_inline(&self) -> bool {
     self.is_inline()
   }
 
-  /// Return whether the buffer currently uses heap storage.
+  /// Check if the buffer is using heap storage.
+  ///
+  /// Buffers larger than 62 bytes are stored on the heap.
+  /// This is the opposite of `is_inline()`.
+  ///
+  /// Returns:
+  ///     bool: True if the buffer is on the heap, False if inline.
+  ///
+  /// Example:
+  ///     >>> large = BytesMut.from_bytes(b"x" * 100)
+  ///     >>> large.is_heap()
+  ///     True
   #[pyo3(name = "is_heap")]
   fn __python_is_heap(&self) -> bool {
     self.is_heap()
@@ -407,27 +466,23 @@ impl BytesMut {
     self.truncate(len);
   }
 
-  /// Reserves capacity for at least `additional` more bytes to be inserted
-  /// into the given `BytesMut`.
+  /// Reserve capacity for at least `additional` more bytes.
   ///
-  /// More than `additional` bytes may be reserved in order to avoid frequent
-  /// reallocations. A call to `reserve` may result in an allocation.
+  /// Ensures the buffer can hold at least `additional` more bytes beyond its
+  /// current length without reallocating. The actual capacity reserved may be
+  /// larger to avoid frequent reallocations.
   ///
-  /// Before allocating new buffer space, the function will attempt to reclaim
-  /// space in the existing buffer. If the current handle references a view
-  /// into a larger original buffer, and all other handles referencing part
-  /// of the same original buffer have been dropped, then the current view
-  /// can be copied/shifted to the front of the buffer and the handle can take
-  /// ownership of the full buffer, provided that the full buffer is large
-  /// enough to fit the requested additional capacity.
+  /// This method may attempt to reclaim unused space from previous operations
+  /// before allocating new memory, making it efficient for reused buffers.
   ///
-  /// This optimization will only happen if shifting the data from the current
-  /// view to the front of the buffer is not too expensive in terms of the
-  /// (amortized) time required. The precise condition is subject to change;
-  /// as of now, the length of the data being shifted needs to be at least as
-  /// large as the distance that it's shifted by. If the current view is empty
-  /// and the original buffer is large enough to fit the requested additional
-  /// capacity, then reallocations will never happen.
+  /// Args:
+  ///     additional: Minimum number of additional bytes to reserve.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello")
+  ///     >>> buf.reserve(100)
+  ///     >>> buf.capacity() >= 105  # At least current len + additional
+  ///     True
   #[pyo3(name = "reserve")]
   fn __python_reserve(&mut self, additional: usize) {
     self.reserve(additional);
@@ -700,61 +755,140 @@ impl BytesMut {
     self.resize(new_len, value);
   }
 
-  /// Splits the buffer into two at the given index.
+  /// Split off and return the first `at` bytes as a new buffer.
   ///
-  /// Afterwards `self` contains elements `[at, len)`, and the returned value
-  /// contains elements `[0, at)`.
+  /// After this operation, `self` will contain the remaining bytes starting from
+  /// index `at`, and the returned buffer will contain bytes `[0:at)`.
   ///
-  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
+  /// This is similar to doing `head, self = self[:at], self[at:]` but more efficient.
+  /// For large buffers, this can be a zero-copy operation.
   ///
-  /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
-  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
+  /// Args:
+  ///     at: The split index. Must be <= len(self).
+  ///
+  /// Returns:
+  ///     BytesMut: A new buffer containing the first `at` bytes.
+  ///
+  /// Raises:
+  ///     ValueError: If `at` is greater than the buffer length.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
+  ///     >>> head = buf.split_to(7)
+  ///     >>> bytes(head)
+  ///     b'Hello, '
+  ///     >>> bytes(buf)
+  ///     b'World!'
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self.try_split_to(at).map_err(Into::into)
+    self
+      .try_split_to(at)
+      .map(|s| match s {
+        Ok(b) => b,
+        Err(buf) => BytesMut::from(buf),
+      })
+      .map_err(Into::into)
   }
 
-  /// Splits the bytes into two at the given index.
+  /// Split off and return bytes from index `at` onwards as a new buffer.
   ///
-  /// Afterwards `self` contains elements `[0, at)`, and the returned value
-  /// contains elements `[at, len)`.
+  /// After this operation, `self` will contain bytes `[0:at)`, and the returned
+  /// buffer will contain the remaining bytes from index `at` onwards.
   ///
-  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
+  /// This is similar to doing `self, tail = self[:at], self[at:]` but more efficient.
+  /// For large buffers, this can be a zero-copy operation.
   ///
-  /// For inline buffers, the tail is copied into a `Buffer` and returned as `Err(Buffer)`.
-  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
+  /// Args:
+  ///     at: The split index. Must be <= len(self).
+  ///
+  /// Returns:
+  ///     BytesMut: A new buffer containing bytes from index `at` onwards.
+  ///
+  /// Raises:
+  ///     ValueError: If `at` is greater than the buffer length.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
+  ///     >>> tail = buf.split_off(7)
+  ///     >>> bytes(buf)
+  ///     b'Hello, '
+  ///     >>> bytes(tail)
+  ///     b'World!'
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self.try_split_off(at).map_err(Into::into)
+    self
+      .try_split_off(at)
+      .map(|s| match s {
+        Ok(b) => b,
+        Err(buf) => BytesMut::from(buf),
+      })
+      .map_err(Into::into)
   }
 
-  /// Removes the bytes from the current view, returning them in a new buffer.
+  /// Take all bytes from the buffer, leaving it empty.
   ///
-  /// Afterwards, `self` will be empty, but will retain any additional
-  /// capacity that it had before the operation. This is identical to
-  /// `self.split_to(self.len())`.
+  /// Returns all bytes from the buffer in a new `BytesMut`, leaving `self` empty
+  /// but retaining its capacity for future writes. This is equivalent to calling
+  /// `split_to(len(self))`.
   ///
-  /// For heap buffers, this is an `O(1)` operation.
-  /// For inline buffers, the data is copied into a `Buffer`.
+  /// This is useful when you want to move data out of a buffer while keeping the
+  /// buffer itself around for reuse.
+  ///
+  /// Returns:
+  ///     BytesMut: A new buffer containing all bytes that were in `self`.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello!")
+  ///     >>> cap = buf.capacity()
+  ///     >>> data = buf.split()
+  ///     >>> bytes(data)
+  ///     b'Hello!'
+  ///     >>> len(buf)
+  ///     0
+  ///     >>> buf.capacity() >= cap  # Capacity is retained
+  ///     True
   #[pyo3(name = "split")]
   fn __python_split(&mut self) -> PyResult<Self> {
-    let len = self.len();
-    self.try_split(len).map_err(Into::into)
+    self
+      .try_split()
+      .map(|s| match s {
+        Ok(b) => b,
+        Err(buf) => BytesMut::from(buf),
+      })
+      .map_err(Into::into)
   }
 
-  /// Absorbs a `BytesMut` that was previously split off.
+  /// Merge another buffer back into this one.
   ///
-  /// Both `BytesMut` objects must be heap allocated for this to succeed. If one of them
-  /// is inline, the method returns `Some(other)`, leaving `self` unchanged.
+  /// Attempts to recombine a buffer that was previously split off. This is particularly
+  /// efficient when merging buffers that were recently split and haven't been modified
+  /// in ways that would cause reallocation.
   ///
-  /// If the two `BytesMut` objects were previously contiguous and not mutated
-  /// in a way that causes re-allocation i.e., if `other` was created by
-  /// calling `split_off` on this `BytesMut`, then this is an `O(1)` operation
-  /// that just decreases a reference count and sets a few indices.
-  /// Otherwise this method degenerates to
-  /// `self.extend_from_slice(other.as_ref())`.
+  /// If the two buffers were originally contiguous (e.g., `other` was created via
+  /// `split_to()` or `split_off()` on this buffer), this can be a very efficient
+  /// zero-copy operation. Otherwise, this method will copy the data from `other`
+  /// and append it to `self`.
+  ///
+  /// Args:
+  ///     other: The buffer to merge into this one.
+  ///
+  /// Returns:
+  ///     None: If the merge was successful.
+  ///     BytesMut: Returns `other` unchanged if the buffers cannot be efficiently merged
+  ///         (e.g., when using inline storage). In this case, `self` remains unchanged.
+  ///
+  /// Example:
+  ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
+  ///     >>> tail = buf.split_off(7)
+  ///     >>> bytes(buf)
+  ///     b'Hello, '
+  ///     >>> bytes(tail)
+  ///     b'World!'
+  ///     >>> result = buf.unsplit(tail)
+  ///     >>> result is None  # Merge succeeded
+  ///     True
+  ///     >>> bytes(buf)
+  ///     b'Hello, World!'
   #[pyo3(name = "unsplit")]
   fn __python_unsplit(&mut self, other: Self) -> Option<Self> {
     self.unsplit(other)

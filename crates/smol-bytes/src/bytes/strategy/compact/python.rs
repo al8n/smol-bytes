@@ -115,7 +115,18 @@ impl PyCompactBytes {
     }
   }
 
-  /// Create a new `Bytes` by copying from a bytes-like object.
+  /// Create a new immutable bytes object by copying from a bytes-like object.
+  ///
+  /// Args:
+  ///     data: A bytes-like object (bytes, bytearray, etc.) to copy from.
+  ///
+  /// Returns:
+  ///     Bytes: A new immutable bytes object containing a copy of the data.
+  ///
+  /// Example:
+  ///     >>> b = Bytes.from_bytes(b"Hello")
+  ///     >>> bytes(b)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
   fn __python_from_bytes(py_bytes: &[u8]) -> Self {
@@ -124,7 +135,20 @@ impl PyCompactBytes {
     }
   }
 
-  /// Create a new `Bytes` by copying from a UTF-8 string.
+  /// Create a new immutable bytes object from a UTF-8 string.
+  ///
+  /// Encodes the string as UTF-8 bytes and creates an immutable bytes object containing them.
+  ///
+  /// Args:
+  ///     s: A string to encode as UTF-8.
+  ///
+  /// Returns:
+  ///     Bytes: A new immutable bytes object containing the UTF-8 encoded string.
+  ///
+  /// Example:
+  ///     >>> b = Bytes.from_str("Hello")
+  ///     >>> bytes(b)
+  ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
   fn __python_from_str(py_str: &str) -> Self {
@@ -223,13 +247,38 @@ impl PyCompactBytes {
     self.py_to_string(py)
   }
 
-  /// Return whether the bytes are stored inline.
+  /// Check if the bytes are using inline (stack) storage.
+  ///
+  /// Small byte sequences (≤62 bytes) are stored inline for better performance.
+  /// Larger sequences are automatically stored on the heap.
+  ///
+  /// Returns:
+  ///     bool: True if the bytes are stored inline, False if on the heap.
+  ///
+  /// Example:
+  ///     >>> small = Bytes.from_bytes(b"small")
+  ///     >>> small.is_inline()
+  ///     True
+  ///     >>> large = Bytes.from_bytes(b"x" * 100)
+  ///     >>> large.is_inline()
+  ///     False
   #[pyo3(name = "is_inline")]
   fn __python_is_inline(&self) -> bool {
     self.inner.is_inline()
   }
 
-  /// Return whether the bytes reside on the heap.
+  /// Check if the bytes are using heap storage.
+  ///
+  /// Byte sequences larger than 62 bytes are stored on the heap.
+  /// This is the opposite of `is_inline()`.
+  ///
+  /// Returns:
+  ///     bool: True if the bytes are on the heap, False if inline.
+  ///
+  /// Example:
+  ///     >>> large = Bytes.from_bytes(b"x" * 100)
+  ///     >>> large.is_heap()
+  ///     True
   #[pyo3(name = "is_heap")]
   fn __python_is_heap(&self) -> bool {
     self.inner.is_heap()
