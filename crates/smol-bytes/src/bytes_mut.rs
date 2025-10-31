@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{buffer::Buffer, bytes::RawBytes, OutOfBounds, INLINE_CAP};
+use crate::{buffer::Buffer, bytes::RawBytes, InvalidIntegerLength, OutOfBounds, INLINE_CAP};
 
 mod cmp;
 mod fmt;
@@ -462,6 +462,8 @@ impl BytesMut {
   /// Attempts to split the buffer at `at`.
   ///
   /// Returns [`OutOfBounds`] instead of panicking when `at > len`.
+  ///
+  /// See also [`split_off`](Self::split_off).
   pub fn try_split_off(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
     let len = self.len();
     if at > len {
@@ -555,6 +557,8 @@ impl BytesMut {
   }
 
   /// Attempts to split at `at`, returning [`OutOfBounds`] on failure instead of panicking.
+  ///
+  /// See also [`split_to`](Self::split_to).
   pub fn try_split_to(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
     let len = self.len();
     if at > len {
@@ -569,6 +573,8 @@ impl BytesMut {
   }
 
   /// Attempts to split off all remaining bytes.
+  ///
+  /// See also [`split`](Self::split).
   pub fn try_split(&mut self) -> Result<Result<Self, Buffer>, OutOfBounds> {
     let len = self.len();
     self.try_split_to(len)
@@ -588,6 +594,61 @@ impl BytesMut {
         Ok(())
       }
     }
+  }
+
+  /// Attempts to write an unsigned n-byte integer in big-endian byte order.
+  pub fn try_put_uint(&mut self, n: u64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+
+    self.put_uint(n, nbytes);
+    Ok(())
+  }
+
+  /// Attempts to write an unsigned n-byte integer in little-endian byte order.
+  pub fn try_put_uint_le(&mut self, n: u64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+    self.put_uint_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Attempts to write a signed n-byte integer in big-endian byte order.
+  pub fn try_put_int(&mut self, n: i64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+    self.put_int(n, nbytes);
+    Ok(())
+  }
+
+  /// Attempts to write a signed n-byte integer in little-endian byte order.
+  pub fn try_put_int_le(&mut self, n: i64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+    self.put_int_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Attempts to write an unsigned n-byte integer in native-endian byte order
+  pub fn try_put_uint_ne(&mut self, n: u64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+    self.put_uint_ne(n, nbytes);
+    Ok(())
+  }
+
+  /// Attempts to write a signed n-byte integer in native-endian byte order
+  pub fn try_put_int_ne(&mut self, n: i64, nbytes: usize) -> Result<(), InvalidIntegerLength> {
+    if nbytes > 8 {
+      return Err(InvalidIntegerLength(nbytes));
+    }
+    self.put_int_ne(n, nbytes);
+    Ok(())
   }
 
   /// Absorbs a `BytesMut` that was previously split off.

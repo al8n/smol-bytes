@@ -3,7 +3,7 @@
 //! These methods allow Buffer to be used in no_std/no_alloc environments while providing
 //! the same API as the bytes crate.
 
-use crate::TryPutIntegerError;
+use crate::{InvalidIntegerLength, TryPutIntegerError};
 
 use super::{panic_advance, panic_does_not_fit, Buffer, InlineSize, TryGetError, TryPutError};
 
@@ -772,7 +772,9 @@ impl Buffer {
   #[inline]
   pub const fn try_put_uint(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if nbytes > 8 {
-      return Err(TryPutIntegerError::InvalidLength { requested: nbytes });
+      return Err(TryPutIntegerError::InvalidLength(InvalidIntegerLength(
+        nbytes,
+      )));
     }
 
     let available = self.remaining_mut();
@@ -824,7 +826,9 @@ impl Buffer {
   #[inline]
   pub const fn try_put_uint_le(&mut self, n: u64, nbytes: usize) -> Result<(), TryPutIntegerError> {
     if nbytes > 8 {
-      return Err(TryPutIntegerError::InvalidLength { requested: nbytes });
+      return Err(TryPutIntegerError::InvalidLength(InvalidIntegerLength(
+        nbytes,
+      )));
     }
 
     let available = self.remaining_mut();

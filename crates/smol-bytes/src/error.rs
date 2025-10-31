@@ -64,6 +64,37 @@ impl From<TryPutError> for std::io::Error {
   }
 }
 
+/// Error type indicating an invalid integer length was specified.
+/// This is used when attempting to read or write
+/// an integer with an invalid number of bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InvalidIntegerLength(pub usize);
+
+impl core::fmt::Display for InvalidIntegerLength {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    write!(
+      f,
+      "invalid integer length: {} (must be less or equal to 8)",
+      self.0
+    )
+  }
+}
+
+impl core::error::Error for InvalidIntegerLength {}
+
+#[cfg(feature = "std")]
+impl From<InvalidIntegerLength> for std::io::Error {
+  fn from(value: InvalidIntegerLength) -> Self {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, value)
+  }
+}
+
+impl From<InvalidIntegerLength> for TryPutIntegerError {
+  fn from(value: InvalidIntegerLength) -> Self {
+    TryPutIntegerError::InvalidLength(value)
+  }
+}
+
 /// Error type for the `try_put_` methods of [`Buffer`].
 /// Indicates that there were not enough remaining
 /// capacity in the buffer while attempting
@@ -74,23 +105,14 @@ pub enum TryPutIntegerError {
   /// Not enough space to write all bytes.
   NotEnoughSpace(TryPutError),
   /// Invalid number of bytes specified.
-  InvalidLength {
-    /// The number of bytes requested to be written.
-    requested: usize,
-  },
+  InvalidLength(InvalidIntegerLength),
 }
 
 impl core::fmt::Display for TryPutIntegerError {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     match self {
       Self::NotEnoughSpace(err) => write!(f, "{}", err),
-      Self::InvalidLength { requested } => {
-        write!(
-          f,
-          "number of bytes must be between less or equal to 8, got {}",
-          requested
-        )
-      }
+      Self::InvalidLength(len) => write!(f, "{}", len),
     }
   }
 }
@@ -103,7 +125,6 @@ impl From<TryPutIntegerError> for std::io::Error {
     std::io::Error::other(value)
   }
 }
-
 /// Error type indicating an index or range is out of bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutOfBounds {

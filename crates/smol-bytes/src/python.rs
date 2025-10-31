@@ -22,14 +22,17 @@ impl From<TryPutError> for PyErr {
   }
 }
 
+impl From<InvalidIntegerLength> for PyErr {
+  fn from(err: InvalidIntegerLength) -> PyErr {
+    PyValueError::new_err(err.to_string())
+  }
+}
+
 impl From<TryPutIntegerError> for PyErr {
   fn from(err: TryPutIntegerError) -> PyErr {
     match err {
       TryPutIntegerError::NotEnoughSpace(e) => e.into(),
-      TryPutIntegerError::InvalidLength { requested } => PyValueError::new_err(format!(
-        "number of bytes must be less or equal to 8, got {}",
-        requested
-      )),
+      TryPutIntegerError::InvalidLength(e) => e.into(),
     }
   }
 }

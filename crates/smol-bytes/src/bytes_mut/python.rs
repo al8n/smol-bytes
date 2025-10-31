@@ -229,7 +229,7 @@ impl BytesMut {
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
   fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
-    self.py_advance(cnt)
+    self.try_advance(cnt).map_err(Into::into)
   }
 
   // ==================== Get methods ====================
@@ -655,40 +655,40 @@ impl BytesMut {
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_uint")]
-  fn __python_put_uint(&mut self, value: u64, nbytes: usize) {
-    self.put_uint(value, nbytes);
+  fn __python_put_uint(&mut self, value: u64, nbytes: usize) -> PyResult<()> {
+    self.try_put_uint(value, nbytes).map_err(Into::into)
   }
 
   /// Write an unsigned n-byte integer in little-endian byte order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_uint_le")]
-  fn __python_put_uint_le(&mut self, value: u64, nbytes: usize) {
-    self.put_uint_le(value, nbytes);
+  fn __python_put_uint_le(&mut self, value: u64, nbytes: usize) -> PyResult<()> {
+    self.try_put_uint_le(value, nbytes).map_err(Into::into)
   }
 
   /// Write a signed n-byte integer in big-endian byte order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_int")]
-  fn __python_put_int(&mut self, value: i64, nbytes: usize) {
-    self.put_int(value, nbytes);
+  fn __python_put_int(&mut self, value: i64, nbytes: usize) -> PyResult<()> {
+    self.try_put_int(value, nbytes).map_err(Into::into)
   }
 
   /// Write a signed n-byte integer in little-endian byte order.
   ///
   /// Args:
   ///     val: The value to write.
-  ///     nbytes: Number of bytes to write (1-8).
+  ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_int_le")]
-  fn __python_put_int_le(&mut self, value: i64, nbytes: usize) {
-    self.put_int_le(value, nbytes);
+  fn __python_put_int_le(&mut self, value: i64, nbytes: usize) -> PyResult<()> {
+    self.try_put_int_le(value, nbytes).map_err(Into::into)
   }
 
   /// Resize the buffer to the specified length, filling with zeros if expanding.
@@ -700,26 +700,61 @@ impl BytesMut {
     self.resize(new_len, value);
   }
 
-  /// Split off the first `at` bytes, returning them as a new `BytesMut`.
+  /// Splits the buffer into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[at, len)`, and the returned value
+  /// contains elements `[0, at)`.
+  ///
+  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
+  /// reference count and returns `Ok(BytesMut)`.
+  ///
+  /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self.py_split_to(at)
+    self.try_split_to(at).map_err(Into::into)
   }
 
-  /// Split off the bytes after `at`, returning the tail portion.
+  /// Splits the bytes into two at the given index.
+  ///
+  /// Afterwards `self` contains elements `[0, at)`, and the returned value
+  /// contains elements `[at, len)`.
+  ///
+  /// For heap-allocated buffers, this is an `O(1)` operation that increases the
+  /// reference count and returns `Ok(BytesMut)`.
+  ///
+  /// For inline buffers, the tail is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self.py_split_off(at)
+    self.try_split_off(at).map_err(Into::into)
   }
 
-  /// Split off all remaining bytes into a new buffer.
+  /// Removes the bytes from the current view, returning them in a new buffer.
+  ///
+  /// Afterwards, `self` will be empty, but will retain any additional
+  /// capacity that it had before the operation. This is identical to
+  /// `self.split_to(self.len())`.
+  ///
+  /// For heap buffers, this is an `O(1)` operation.
+  /// For inline buffers, the data is copied into a `Buffer`.
   #[pyo3(name = "split")]
   fn __python_split(&mut self) -> PyResult<Self> {
     let len = self.len();
-    self.py_split_to(len)
+    self.try_split(len).map_err(Into::into)
   }
 
-  /// Attempt to merge `other` back into this buffer.
+  /// Absorbs a `BytesMut` that was previously split off.
+  ///
+  /// Both `BytesMut` objects must be heap allocated for this to succeed. If one of them
+  /// is inline, the method returns `Some(other)`, leaving `self` unchanged.
+  ///
+  /// If the two `BytesMut` objects were previously contiguous and not mutated
+  /// in a way that causes re-allocation i.e., if `other` was created by
+  /// calling `split_off` on this `BytesMut`, then this is an `O(1)` operation
+  /// that just decreases a reference count and sets a few indices.
+  /// Otherwise this method degenerates to
+  /// `self.extend_from_slice(other.as_ref())`.
   #[pyo3(name = "unsplit")]
   fn __python_unsplit(&mut self, other: Self) -> Option<Self> {
     self.unsplit(other)
