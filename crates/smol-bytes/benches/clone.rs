@@ -86,21 +86,29 @@ fn inline_clone_benchmarks(c: &mut Criterion) {
       });
     });
 
-    group.bench_with_input(BenchmarkId::new("smol_str::SmolStr", size), &data, |b, data| {
-      let bytes = smol_str::SmolStr::from(String::from_utf8(data.clone()).unwrap());
-      b.iter(|| {
-        let cloned = black_box(bytes.clone());
-        black_box(cloned);
-      });
-    });
+    group.bench_with_input(
+      BenchmarkId::new("smol_str::SmolStr", size),
+      &data,
+      |b, data| {
+        let bytes = smol_str::SmolStr::from(String::from_utf8(data.clone()).unwrap());
+        b.iter(|| {
+          let cloned = black_box(bytes.clone());
+          black_box(cloned);
+        });
+      },
+    );
 
-    group.bench_with_input(BenchmarkId::new("faststr::FastStr", size), &data, |b, data| {
-      let bytes = faststr::FastStr::from(String::from_utf8(data.clone()).unwrap());
-      b.iter(|| {
-        let cloned = black_box(bytes.clone());
-        black_box(cloned);
-      });
-    });
+    group.bench_with_input(
+      BenchmarkId::new("faststr::FastStr", size),
+      &data,
+      |b, data| {
+        let bytes = faststr::FastStr::from(String::from_utf8(data.clone()).unwrap());
+        b.iter(|| {
+          let cloned = black_box(bytes.clone());
+          black_box(cloned);
+        });
+      },
+    );
 
     group.bench_with_input(
       BenchmarkId::new("smol_bytes::Bytes", size),
@@ -148,21 +156,29 @@ fn heap_clone_benchmarks(c: &mut Criterion) {
       });
     });
 
-    group.bench_with_input(BenchmarkId::new("smol_str::SmolStr", size), &data, |b, data| {
-      let bytes = smol_str::SmolStr::from(String::from_utf8(data.clone()).unwrap());
-      b.iter(|| {
-        let cloned = black_box(bytes.clone());
-        black_box(cloned);
-      });
-    });
+    group.bench_with_input(
+      BenchmarkId::new("smol_str::SmolStr", size),
+      &data,
+      |b, data| {
+        let bytes = smol_str::SmolStr::from(String::from_utf8(data.clone()).unwrap());
+        b.iter(|| {
+          let cloned = black_box(bytes.clone());
+          black_box(cloned);
+        });
+      },
+    );
 
-    group.bench_with_input(BenchmarkId::new("faststr::FastStr", size), &data, |b, data| {
-      let bytes = faststr::FastStr::from(String::from_utf8(data.clone()).unwrap());
-      b.iter(|| {
-        let cloned = black_box(bytes.clone());
-        black_box(cloned);
-      });
-    });
+    group.bench_with_input(
+      BenchmarkId::new("faststr::FastStr", size),
+      &data,
+      |b, data| {
+        let bytes = faststr::FastStr::from(String::from_utf8(data.clone()).unwrap());
+        b.iter(|| {
+          let cloned = black_box(bytes.clone());
+          black_box(cloned);
+        });
+      },
+    );
 
     group.bench_with_input(
       BenchmarkId::new("smol_bytes::Bytes", size),
@@ -220,15 +236,18 @@ fn clone_after_advance_benchmarks(c: &mut Criterion) {
     });
   });
 
-  group.bench_function("smol_bytes::compact::Bytes (70 advanced, 30 remaining)", |b| {
-    b.iter(|| {
-      let mut smol = compact::Bytes::from(data.clone());
-      smol.advance(70);
-      // Converted to inline, should be slower due to memcpy
-      let cloned = black_box(smol.clone());
-      black_box(cloned);
-    });
-  });
+  group.bench_function(
+    "smol_bytes::compact::Bytes (70 advanced, 30 remaining)",
+    |b| {
+      b.iter(|| {
+        let mut smol = compact::Bytes::from(data.clone());
+        smol.advance(70);
+        // Converted to inline, should be slower due to memcpy
+        let cloned = black_box(smol.clone());
+        black_box(cloned);
+      });
+    },
+  );
 
   group.finish();
 }

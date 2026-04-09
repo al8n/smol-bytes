@@ -1,4 +1,4 @@
-use super::{RawBytes, ImmutableStorage};
+use super::{ImmutableStorage, RawBytes};
 
 impl<'a, S> arbitrary::Arbitrary<'a> for RawBytes<S>
 where

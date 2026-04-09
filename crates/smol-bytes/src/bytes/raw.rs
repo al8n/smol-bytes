@@ -31,17 +31,26 @@ mod quickcheck;
 mod serde;
 
 /// A compact, clone-efficient byte buffer.
-#[derive(Clone)]
 #[repr(transparent)]
 pub struct RawBytes<S> {
   pub(crate) repr: Repr,
   _strategy: PhantomData<S>,
 }
 
-impl<S> RawBytes<S>
-where
-  Self: ImmutableStorage,
-{
+impl<S> Clone for RawBytes<S> {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn clone(&self) -> Self {
+    match &self.repr {
+      Repr::Inline(_) => unsafe { core::ptr::read(self as *const RawBytes<S>) },
+      Repr::Heap(bytes) => Self {
+        repr: Repr::Heap(bytes.clone()),
+        _strategy: PhantomData,
+      },
+    }
+  }
+}
+
+impl<S> RawBytes<S> {
   /// Creates a new empty Bytes.
   ///
   /// ## Examples
@@ -94,6 +103,135 @@ where
     Self::heap(Bytes::from_static(bytes))
   }
 
+  /// Returns `true` if this `Bytes` is backed by a inline buffer.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let inline_buf = Bytes::from(&b"hello"[..]);
+  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
+  ///
+  /// assert!(inline_buf.is_inline());
+  /// assert!(!heap_buf.is_inline());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn is_inline(&self) -> bool {
+    matches!(self.repr, Repr::Inline(..))
+  }
+
+  /// Returns `true` if this `Bytes` is backed by a heap allocation.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let inline_buf = Bytes::from(&b"hello"[..]);
+  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity........................".as_bytes());
+  ///
+  /// assert!(!inline_buf.is_heap());
+  /// assert!(heap_buf.is_heap());
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn is_heap(&self) -> bool {
+    matches!(self.repr, Repr::Heap(..))
+  }
+
+  /// Unwraps the inline buffer, consuming `self`.
+  ///
+  /// ## Panics
+  /// - Panics if the buffer is heap allocated.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let buf = Bytes::from(&b"hello"[..]);
+  ///
+  /// let inline_buffer = buf.unwrap_inline();
+  /// assert_eq!(&inline_buffer[..], b"hello");
+  /// ```
+  #[inline]
+  pub fn unwrap_inline(self) -> Buffer {
+    match self.repr {
+      Repr::Inline(b) => b,
+      Repr::Heap(_) => panic!("called `Bytes::unwrap_inline()` on a heap allocated buffer"),
+    }
+  }
+
+  /// Attempts to unwrap the inline buffer, consuming `self`.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let inline_buf = Bytes::from("hello".as_bytes());
+  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
+  ///
+  /// assert!(inline_buf.try_unwrap_inline().is_ok());
+  /// assert!(heap_buf.try_unwrap_inline().is_err());
+  /// ```
+  #[inline]
+  pub fn try_unwrap_inline(self) -> Result<Buffer, Bytes> {
+    match self.repr {
+      Repr::Inline(b) => Ok(b),
+      Repr::Heap(b) => Err(b),
+    }
+  }
+
+  /// Unwraps the heap buffer, consuming `self`.
+  ///
+  /// ## Panics
+  /// - Panics if the buffer is inline.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let mut buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
+  ///
+  /// let heap_buffer = buf.unwrap_heap();
+  /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
+  /// ```
+  #[inline]
+  pub fn unwrap_heap(self) -> Bytes {
+    match self.repr {
+      Repr::Inline(_) => panic!("called `Bytes::unwrap_heap()` on an inline buffer"),
+      Repr::Heap(b) => b,
+    }
+  }
+
+  /// Attempts to unwrap the heap buffer, consuming `self`.
+  ///
+  /// ## Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let inline_buf = Bytes::from(&b"hello"[..]);
+  /// let mut heap_buf = Bytes::from(b"hello world and more data that exceeds inline capacity................................");
+  ///
+  /// assert!(heap_buf.try_unwrap_heap().is_ok());
+  /// assert!(inline_buf.try_unwrap_heap().is_err());
+  /// ```
+  #[inline]
+  pub fn try_unwrap_heap(self) -> Result<Bytes, Buffer> {
+    match self.repr {
+      Repr::Inline(b) => Err(b),
+      Repr::Heap(b) => Ok(b),
+    }
+  }
+}
+
+impl<S> RawBytes<S>
+where
+  Self: ImmutableStorage,
+{
   /// Returns a slice of self for the provided range.
   ///
   /// This will increment the reference count for the underlying memory and
@@ -266,10 +404,7 @@ where
   }
 }
 
-impl<S> RawBytes<S>
-where
-  Self: ImmutableStorage,
-{
+impl<S> RawBytes<S> {
   #[cfg_attr(not(tarpaulin), inline(always))]
   const fn new_in(repr: Repr) -> Self {
     Self {
@@ -361,130 +496,6 @@ where
     self.repr.as_slice()
   }
 
-  /// Returns `true` if this `Bytes` is backed by a inline buffer.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let inline_buf = Bytes::from(&b"hello"[..]);
-  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
-  ///
-  /// assert!(inline_buf.is_inline());
-  /// assert!(!heap_buf.is_inline());
-  /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn is_inline(&self) -> bool {
-    matches!(self.repr, Repr::Inline(..))
-  }
-
-  /// Returns `true` if this `Bytes` is backed by a heap allocation.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let inline_buf = Bytes::from(&b"hello"[..]);
-  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity........................".as_bytes());
-  ///
-  /// assert!(!inline_buf.is_heap());
-  /// assert!(heap_buf.is_heap());
-  /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn is_heap(&self) -> bool {
-    matches!(self.repr, Repr::Heap(..))
-  }
-
-  /// Unwraps the inline buffer, consuming `self`.
-  ///
-  /// ## Panics
-  /// - Panics if the buffer is heap allocated.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let buf = Bytes::from(&b"hello"[..]);
-  ///
-  /// let inline_buffer = buf.unwrap_inline();
-  /// assert_eq!(&inline_buffer[..], b"hello");
-  /// ```
-  #[inline]
-  pub fn unwrap_inline(self) -> Buffer {
-    match self.repr {
-      Repr::Inline(b) => b,
-      Repr::Heap(_) => panic!("called `Bytes::unwrap_inline()` on a heap allocated buffer"),
-    }
-  }
-
-  /// Attempts to unwrap the inline buffer, consuming `self`.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let inline_buf = Bytes::from("hello".as_bytes());
-  /// let heap_buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
-  ///
-  /// assert!(inline_buf.try_unwrap_inline().is_ok());
-  /// assert!(heap_buf.try_unwrap_inline().is_err());
-  /// ```
-  #[inline]
-  pub fn try_unwrap_inline(self) -> Result<Buffer, Bytes> {
-    match self.repr {
-      Repr::Inline(b) => Ok(b),
-      Repr::Heap(b) => Err(b),
-    }
-  }
-
-  /// Unwraps the heap buffer, consuming `self`.
-  ///
-  /// ## Panics
-  /// - Panics if the buffer is inline.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let mut buf = Bytes::from("hello world and more data that exceeds inline capacity................................".as_bytes());
-  ///
-  /// let heap_buffer = buf.unwrap_heap();
-  /// assert_eq!(&heap_buffer[..], b"hello world and more data that exceeds inline capacity................................");
-  /// ```
-  #[inline]
-  pub fn unwrap_heap(self) -> Bytes {
-    match self.repr {
-      Repr::Inline(_) => panic!("called `Bytes::unwrap_heap()` on an inline buffer"),
-      Repr::Heap(b) => b,
-    }
-  }
-
-  /// Attempts to unwrap the heap buffer, consuming `self`.
-  ///
-  /// ## Examples
-  ///
-  /// ```
-  /// use smol_bytes::Bytes;
-  ///
-  /// let inline_buf = Bytes::from(&b"hello"[..]);
-  /// let mut heap_buf = Bytes::from(b"hello world and more data that exceeds inline capacity................................");
-  ///
-  /// assert!(heap_buf.try_unwrap_heap().is_ok());
-  /// assert!(inline_buf.try_unwrap_heap().is_err());
-  /// ```
-  #[inline]
-  pub fn try_unwrap_heap(self) -> Result<Bytes, Buffer> {
-    match self.repr {
-      Repr::Inline(b) => Err(b),
-      Repr::Heap(b) => Ok(b),
-    }
-  }
-
   /// Try to convert self into `BytesMut`.
   ///
   /// If `self` is unique for the entire original buffer, this will succeed
@@ -544,10 +555,7 @@ where
   }
 }
 
-impl<S> Default for RawBytes<S>
-where
-  Self: ImmutableStorage,
-{
+impl<S> Default for RawBytes<S> {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::new()

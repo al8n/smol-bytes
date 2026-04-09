@@ -1,6 +1,6 @@
 use quickcheck::Arbitrary;
 
-use super::{RawBytes, ImmutableStorage};
+use super::{ImmutableStorage, RawBytes};
 
 use std::{boxed::Box, vec::Vec};
 

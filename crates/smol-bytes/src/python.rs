@@ -251,7 +251,6 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
       return haystack.contains(&byte);
     }
 
-
     if let Ok(bytes) = item.cast::<PyBytes>() {
       let bytes: &[u8] = bytes.as_ref();
       if bytes.is_empty() {
@@ -273,8 +272,10 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
         if bytes.len() > haystack.len() {
           return false;
         }
-        
-        return haystack.windows(bytes.len()).any(|w| w.eq(bytes.as_bytes()));
+
+        return haystack
+          .windows(bytes.len())
+          .any(|w| w.eq(bytes.as_bytes()));
       }
     }
 
