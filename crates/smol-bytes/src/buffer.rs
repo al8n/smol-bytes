@@ -27,6 +27,9 @@ mod serde;
 #[cfg(feature = "pyo3")]
 mod python;
 
+#[cfg(feature = "wasm")]
+mod wasm;
+
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use bytes::TryGetError;
 
@@ -121,7 +124,9 @@ impl InlineSize {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub(crate) const unsafe fn from_u8(value: u8) -> Self {
     debug_assert!(value <= InlineSize::MAX);
-    transmute::<u8, InlineSize>(value)
+    // SAFETY: caller guarantees `value <= INLINE_CAP == InlineSize::MAX`,
+    // and every such value is a valid discriminant.
+    unsafe { transmute::<u8, InlineSize>(value) }
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -135,11 +140,22 @@ impl InlineSize {
   }
 }
 
-/// A fixed-size buffer for inline storage.
-///
-/// This type can hold at most `62` bytes on stack without heap allocation.
+#[doc = "A fixed-size buffer for inline storage."]
+#[doc = ""]
+#[doc = "This type can hold at most `62` bytes on stack without heap allocation."]
+#[cfg_attr(feature = "wasm", doc = "")]
+#[cfg_attr(feature = "wasm", doc = "@example")]
+#[cfg_attr(feature = "wasm", doc = "```typescript")]
+#[cfg_attr(feature = "wasm", doc = "import { Buffer } from 'smol-bytes';")]
+#[cfg_attr(
+  feature = "wasm",
+  doc = "const buf = Buffer.fromBytes(new Uint8Array([1, 2, 3]));"
+)]
+#[cfg_attr(feature = "wasm", doc = "console.log(buf.len()); // 3")]
+#[cfg_attr(feature = "wasm", doc = "```")]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
+#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass(skip_from_py_object))]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Buffer {
   // The write cursor
   len: InlineSize,
@@ -181,7 +197,11 @@ impl Buffer {
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub(crate) const unsafe fn zeroed(len: usize) -> Self {
     let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
-    core::ptr::write_bytes(storage.as_mut_ptr(), 0, len);
+    // SAFETY: caller guarantees `len <= INLINE_CAP`, so writing `len`
+    // zero bytes stays within the storage array.
+    unsafe {
+      core::ptr::write_bytes(storage.as_mut_ptr(), 0, len);
+    }
     Self {
       cur: InlineSize::_V0,
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
@@ -215,12 +235,15 @@ impl Buffer {
     let len = src.len();
     let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
 
-    // SAFETY: caller guarantees that `len` is less than or equal to `INLINE_CAP`.
-    copy_nonoverlapping(src.as_ptr(), storage.as_mut_ptr() as _, len);
+    // SAFETY: caller guarantees `len <= INLINE_CAP`, matching the size
+    // of `storage`; `src` and `storage` do not overlap.
+    unsafe {
+      copy_nonoverlapping(src.as_ptr(), storage.as_mut_ptr() as _, len);
+    }
 
     Self {
       // SAFETY: caller guarantees that `len` is less than or equal to `INLINE_CAP`.
-      len: InlineSize::from_u8(len as u8),
+      len: unsafe { InlineSize::from_u8(len as u8) },
       cur: InlineSize::_V0,
       buf: storage,
     }
@@ -1092,7 +1115,9 @@ const _: () = {
 
     #[cfg_attr(not(tarpaulin), inline(always))]
     unsafe fn advance_mut(&mut self, cnt: usize) {
-      Self::advance_mut(self, cnt);
+      // SAFETY: forwards to the inherent `Buffer::advance_mut` which has
+      // the same safety contract as the trait method.
+      unsafe { Self::advance_mut(self, cnt) };
     }
 
     #[cfg_attr(not(tarpaulin), inline(always))]

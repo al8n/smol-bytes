@@ -214,6 +214,50 @@ fn split_off_uninitialized() {
 }
 
 #[test]
+fn split_off_uninitialized_inline_promotes_to_heap() {
+  // `new()` creates an inline buffer with len=0 and INLINE_CAP capacity.
+  // Splitting at 30 exceeds written len but is within capacity — the
+  // implementation must promote to heap and partition the capacity.
+  let mut bytes = BytesMut::new();
+  assert!(bytes.is_inline());
+  let other = bytes.split_off(30).unwrap();
+
+  assert_eq!(bytes.len(), 0);
+  assert!(bytes.capacity() >= 30);
+  assert_eq!(other.len(), 0);
+  assert!(other.capacity() >= INLINE_CAP - 30);
+}
+
+#[test]
+fn split_off_at_capacity_returns_empty_tail() {
+  let mut bytes = BytesMut::with_capacity(1024);
+  let cap = bytes.capacity();
+  let other = bytes.split_off(cap).unwrap();
+  assert_eq!(bytes.capacity(), cap);
+  assert_eq!(other.capacity(), 0);
+  assert_eq!(other.len(), 0);
+}
+
+#[test]
+#[should_panic = "split_off out of bounds"]
+fn split_off_beyond_capacity_panics() {
+  let mut bytes = BytesMut::with_capacity(1024);
+  let _ = bytes.split_off(2000);
+}
+
+#[test]
+fn split_off_preserves_written_data() {
+  let mut bytes = BytesMut::with_capacity(1024);
+  bytes.extend_from_slice(b"hello");
+  let other = bytes.split_off(10).unwrap();
+  assert_eq!(bytes.len(), 5);
+  assert_eq!(bytes.as_slice(), b"hello");
+  assert_eq!(bytes.capacity(), 10);
+  assert_eq!(other.len(), 0);
+  assert_eq!(other.capacity(), 1014);
+}
+
+#[test]
 fn split_off_to_loop() {
   let s = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 

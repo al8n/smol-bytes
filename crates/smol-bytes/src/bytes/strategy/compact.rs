@@ -243,6 +243,11 @@ use core::ops::{Bound, RangeBounds};
 
 #[cfg(feature = "pyo3")]
 mod python;
+#[cfg(feature = "pyo3")]
+pub use python::PyCompactBytes;
+
+#[cfg(feature = "wasm")]
+mod wasm;
 
 /// A strategy that aggressively inlines data to minimize heap allocations and memory usage.
 ///
@@ -352,44 +357,47 @@ impl ImmutableStorage for RawBytes<Compact> {
     if at == len {
       return mem::take(self);
     }
-
     if at == 0 {
       return Self::new();
     }
+    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len);
 
-    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len,);
+    let remaining = len - at;
 
-    // first, check if output can be inline
-    let ret = if at <= INLINE_CAP {
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { Buffer::copy_from_slice(&src[..at]) })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.repr.unwrap_heap_mut().clone();
-      bytes.truncate(at);
-      Self::heap(bytes)
-    };
-
-    // second, check if self can be made inline
-    let remaining_size = len - at;
-    if remaining_size <= INLINE_CAP {
-      // check if we already are inline, if so, adjust cur, avoid copy
-      if let Repr::Inline(storage) = &mut self.repr {
-        storage.advance(at);
-        return ret;
+    match &mut self.repr {
+      Repr::Inline(storage) => {
+        Self::inline(storage.try_split_to(at).expect("already checked bounds"))
       }
+      Repr::Heap(bytes) => {
+        // Build the returned prefix.
+        let ret = if at <= INLINE_CAP {
+          // SAFETY: at <= INLINE_CAP, checked above.
+          Self::inline(unsafe { Buffer::copy_from_slice(&bytes[..at]) })
+        } else {
+          // Both halves are large — use native split (avoids clone+truncate).
+          // bytes::Bytes::split_to advances self for us, so we only need
+          // to check for compact-inline conversion below.
+          let prefix = bytes.split_to(at);
+          // If self's remainder fits inline, compact-convert it.
+          if remaining <= INLINE_CAP {
+            // SAFETY: remaining <= INLINE_CAP, checked above.
+            let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&bytes[..]) });
+            let _ = mem::replace(&mut self.repr, repr);
+          }
+          return Self::heap(prefix);
+        };
 
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&src[at..len]) });
-
-      let _ = mem::replace(&mut self.repr, repr);
-    } else {
-      // self remains heap allocated
-      self.repr.unwrap_heap_mut().advance(at);
+        // Prefix was copied into inline; now advance or compact self.
+        if remaining <= INLINE_CAP {
+          // SAFETY: remaining <= INLINE_CAP, checked above.
+          let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&bytes[at..]) });
+          let _ = mem::replace(&mut self.repr, repr);
+        } else {
+          bytes.advance(at);
+        }
+        ret
+      }
     }
-    ret
   }
 
   fn split_off(&mut self, at: usize) -> Self {
@@ -397,43 +405,46 @@ impl ImmutableStorage for RawBytes<Compact> {
     if at == len {
       return Self::new();
     }
-
     if at == 0 {
       return mem::take(self);
     }
+    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len);
 
-    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len,);
-
-    // first, check if output would be inline
     let output_size = len - at;
-    let ret = if output_size <= INLINE_CAP {
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { Buffer::copy_from_slice(&src[at..len]) })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.repr.unwrap_heap_mut().clone();
-      bytes.advance(at);
-      Self::heap(bytes)
-    };
 
-    // second, check if self can be made inline
-    if at <= INLINE_CAP {
-      // check if we already are inline, if so, adjust len
-      if let Repr::Inline(storage) = &mut self.repr {
-        storage.truncate(at);
-        return ret;
+    match &mut self.repr {
+      Repr::Inline(storage) => {
+        Self::inline(storage.try_split_off(at).expect("already checked bounds"))
       }
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&src[..at]) });
-      let _ = mem::replace(&mut self.repr, repr);
-    } else {
-      // self remains heap allocated
-      self.repr.unwrap_heap_mut().truncate(at);
-    }
+      Repr::Heap(bytes) => {
+        // Build the returned tail.
+        let ret = if output_size <= INLINE_CAP {
+          // SAFETY: output_size <= INLINE_CAP, checked above.
+          Self::inline(unsafe { Buffer::copy_from_slice(&bytes[at..]) })
+        } else {
+          // Both halves are large — use native split_off (avoids clone+advance).
+          // bytes::Bytes::split_off truncates self for us.
+          let tail = bytes.split_off(at);
+          // If self fits inline after truncation, compact-convert it.
+          if at <= INLINE_CAP {
+            // SAFETY: at <= INLINE_CAP, checked above.
+            let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&bytes[..]) });
+            let _ = mem::replace(&mut self.repr, repr);
+          }
+          return Self::heap(tail);
+        };
 
-    ret
+        // Tail was copied into inline; now truncate or compact self.
+        if at <= INLINE_CAP {
+          // SAFETY: at <= INLINE_CAP, checked above.
+          let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&bytes[..at]) });
+          let _ = mem::replace(&mut self.repr, repr);
+        } else {
+          bytes.truncate(at);
+        }
+        ret
+      }
+    }
   }
 
   fn truncate(&mut self, new_len: usize) {
@@ -523,3 +534,8 @@ impl ImmutableStorage for RawBytes<Compact> {
 /// assert!(!data.is_heap()); // Saved memory!
 /// ```
 pub type Bytes = RawBytes<Compact>;
+
+/// A compact, memory-efficient UTF-8 string type alias using the [`Compact`] strategy.
+///
+/// See [`crate::utf8_bytes::Utf8Bytes`] for the generic type documentation.
+pub type Utf8Bytes = crate::utf8_bytes::Utf8Bytes<Compact>;

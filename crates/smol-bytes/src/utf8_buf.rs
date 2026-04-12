@@ -1,6 +1,4 @@
-use core::{
-  ops::{Bound, RangeBounds},
-};
+use core::ops::{Bound, RangeBounds};
 
 use super::error::Utf8Error;
 
@@ -110,12 +108,16 @@ pub trait Utf8Buf: AsRef<str> + Sized {
 
     let start = match range.start_bound() {
       Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).ok_or(Utf8Error::OutOfBounds { at: n, len })?,
+      Bound::Excluded(&n) => n
+        .checked_add(1)
+        .ok_or(Utf8Error::OutOfBounds { at: n, len })?,
       Bound::Unbounded => 0,
     };
 
     let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).ok_or(Utf8Error::OutOfBounds { at: n, len })?,
+      Bound::Included(&n) => n
+        .checked_add(1)
+        .ok_or(Utf8Error::OutOfBounds { at: n, len })?,
       Bound::Excluded(&n) => n,
       Bound::Unbounded => len,
     };

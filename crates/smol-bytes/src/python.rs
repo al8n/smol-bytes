@@ -195,10 +195,6 @@ impl PyBufCommon for BytesMut {
 }
 
 pub trait PyBufCmp: PyClass + PartialEq + Ord + AsRef<[u8]> {
-  fn py_type_name() -> &'static str {
-    <Self as PyTypeInfo>::NAME
-  }
-
   fn py_richcmp(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
     if let Ok(other_self) = other.extract::<PyRef<'_, Self>>() {
       let ordering = self.cmp(&*other_self);
@@ -212,11 +208,15 @@ pub trait PyBufCmp: PyClass + PartialEq + Ord + AsRef<[u8]> {
     match op {
       CompareOp::Eq => Ok(false),
       CompareOp::Ne => Ok(true),
-      _ => Err(PyTypeError::new_err(format!(
-        "'<' not supported between instances of '{}' and '{}'",
-        Self::py_type_name(),
-        other.get_type().name()?
-      ))),
+      _ => {
+        let py = other.py();
+        let self_name = <Self as PyTypeInfo>::type_object(py).name()?;
+        Err(PyTypeError::new_err(format!(
+          "'<' not supported between instances of '{}' and '{}'",
+          self_name,
+          other.get_type().name()?
+        )))
+      }
     }
   }
 }
@@ -593,7 +593,7 @@ pub trait PyBufMutExt: PyBufExt + AsMut<[u8]> + BufMut {
           )));
         }
 
-        for (pos, byte) in positions.into_iter().zip(bytes.into_iter()) {
+        for (pos, byte) in positions.into_iter().zip(bytes) {
           data[pos] = byte;
         }
         return Ok(());
@@ -609,3 +609,84 @@ pub trait PyBufMutExt: PyBufExt + AsMut<[u8]> + BufMut {
 }
 
 impl<T> PyBufMutExt for T where T: PyBufExt + AsMut<[u8]> + BufMut {}
+
+/// Register the core smol-bytes types into a Python module.
+///
+/// `module_name` is the user-facing Python import path (e.g., `"smol_bytes"`
+/// or `"my_crate"`). It is written to each class's `__module__` attribute
+/// so that `repr()` and `pickle` resolve correctly.
+///
+/// # Example — downstream crate
+///
+/// ```rust,ignore
+/// #[pyo3::prelude::pymodule]
+/// fn my_crate(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+///     smol_bytes::register_classes(m, "my_crate")?;
+///     Ok(())
+/// }
+/// ```
+pub fn register_classes(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<()> {
+  m.add_class::<crate::buffer::Buffer>()?;
+  m.getattr("Buffer")?.setattr("__module__", module_name)?;
+
+  m.add_class::<crate::bytes_mut::BytesMut>()?;
+  m.getattr("BytesMut")?.setattr("__module__", module_name)?;
+
+  m.add_class::<crate::utf8_buffer::Utf8Buffer>()?;
+  m.getattr("Utf8Buffer")?
+    .setattr("__module__", module_name)?;
+
+  m.add_class::<crate::utf8_bytes::PySharedUtf8Bytes>()?;
+  m.getattr("Utf8Bytes")?.setattr("__module__", module_name)?;
+
+  m.add_class::<crate::utf8_bytes_mut::Utf8BytesMut>()?;
+  m.getattr("Utf8BytesMut")?
+    .setattr("__module__", module_name)?;
+
+  Ok(())
+}
+
+/// Register `shared::Bytes` ([`PySharedBytes`](crate::shared::PySharedBytes))
+/// into a Python module.
+///
+/// `module_name` is the user-facing import path (e.g., `"smol_bytes.shared"`).
+pub fn register_shared(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<()> {
+  m.add_class::<crate::bytes::strategy::shared::PySharedBytes>()?;
+  m.getattr("Bytes")?.setattr("__module__", module_name)?;
+  m.add_class::<crate::utf8_bytes::PySharedUtf8Bytes>()?;
+  m.getattr("Utf8Bytes")?.setattr("__module__", module_name)?;
+  Ok(())
+}
+
+/// Register `compact::Bytes` ([`PyCompactBytes`](crate::compact::PyCompactBytes))
+/// into a Python module.
+///
+/// `module_name` is the user-facing import path (e.g., `"smol_bytes.compact"`).
+pub fn register_compact(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<()> {
+  m.add_class::<crate::bytes::strategy::compact::PyCompactBytes>()?;
+  m.getattr("Bytes")?.setattr("__module__", module_name)?;
+  m.add_class::<crate::utf8_bytes::PyCompactUtf8Bytes>()?;
+  m.getattr("Utf8Bytes")?.setattr("__module__", module_name)?;
+  Ok(())
+}
+
+#[pymodule]
+fn _smol_bytes(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+  register_classes(m, "smol_bytes")?;
+
+  let shared = PyModule::new(m.py(), "shared")?;
+  register_shared(&shared, "smol_bytes.shared")?;
+  m.add_submodule(&shared)?;
+  py.import("sys")?
+    .getattr("modules")?
+    .set_item("smol_bytes._smol_bytes.shared", &shared)?;
+
+  let compact = PyModule::new(m.py(), "compact")?;
+  register_compact(&compact, "smol_bytes.compact")?;
+  m.add_submodule(&compact)?;
+  py.import("sys")?
+    .getattr("modules")?
+    .set_item("smol_bytes._smol_bytes.compact", &compact)?;
+
+  Ok(())
+}

@@ -1,3 +1,5 @@
+use std::string::{String, ToString};
+
 use super::*;
 
 impl From<&str> for Utf8BytesMut {
@@ -22,6 +24,16 @@ impl TryFrom<BytesMut> for Utf8BytesMut {
   fn try_from(bytes: BytesMut) -> Result<Self, Self::Error> {
     core::str::from_utf8(bytes.as_ref())?;
     Ok(Self { inner: bytes })
+  }
+}
+
+impl TryFrom<&[u8]> for Utf8BytesMut {
+  type Error = core::str::Utf8Error;
+
+  /// Creates a `Utf8BytesMut` from a byte slice, validating UTF-8.
+  fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+    let s = core::str::from_utf8(bytes)?;
+    Ok(Self::from(s))
   }
 }
 

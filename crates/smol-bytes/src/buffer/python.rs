@@ -96,14 +96,17 @@ impl Buffer {
     })
   }
 
+  /// Return the buffer contents as a Python `bytes` object.
   fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
     self.py_bytes(py)
   }
 
+  /// Return `True` when the buffer contains any readable bytes.
   fn __bool__(&self) -> bool {
     !self.is_empty()
   }
 
+  /// Compute a hash of the buffer contents.
   fn __hash__(&self) -> u64 {
     use ::core::hash::{Hash, Hasher};
 
@@ -112,6 +115,7 @@ impl Buffer {
     hasher.finish()
   }
 
+  /// Iterate over the readable bytes, yielding one `int` per byte.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Iter>> {
     let iter = Iter {
       inner: slf.into_iter(),
@@ -119,10 +123,12 @@ impl Buffer {
     Py::new(slf.py(), iter)
   }
 
+  /// Perform rich comparisons (`==`, `<`, etc.) with other byte sequences.
   fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
     self.py_richcmp(other, op)
   }
 
+  /// Interpret the buffer as UTF-8, raising `UnicodeDecodeError` if invalid.
   fn __str__(&self) -> PyResult<&str> {
     <&str>::try_from(self).map_err(|e| {
       PyUnicodeDecodeError::new_err(format!(
@@ -133,22 +139,27 @@ impl Buffer {
     })
   }
 
+  /// Return a debug representation of the buffer.
   fn __repr__(&self) -> String {
     format!("{:?}", self)
   }
 
+  /// Return the number of readable bytes.
   fn __len__(&self) -> usize {
     self.py_len()
   }
 
+  /// Check membership of a byte or bytes-like object.
   fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
     self.py_contains(item)
   }
 
+  /// Support indexing and slicing of the buffer contents.
   fn __getitem__(&self, index: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     self.py_getitem(index)
   }
 
+  /// Assign to individual items or slices.
   fn __setitem__(&mut self, index: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
     self.py_setitem(index, value)
   }
@@ -985,5 +996,13 @@ impl Buffer {
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> ::pyo3::PyResult<Buffer> {
     self.py_slice(start, end)
+  }
+
+  /// Support pickling via `pickle.dumps` / `pickle.loads`.
+  fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyBytes>,))> {
+    let cls = py.get_type::<Self>();
+    let from_bytes = cls.getattr("from_bytes")?;
+    let data = PyBytes::new(py, slf.as_ref());
+    Ok((from_bytes.unbind(), (data.unbind(),)))
   }
 }

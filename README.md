@@ -161,6 +161,82 @@ match buf.split_off(5) {
 | Drop | No-op | Refcount decrement |
 | Memory | 64 bytes on stack | Pointer + heap |
 
+## Benchmarks
+
+All numbers from `cargo bench` on Apple M-series (aarch64), median of three runs.
+
+### Clone — single clone
+
+| Size | `bytes` | `smol_str` | `faststr` | `smol_bytes` | `compact` |
+|---|---|---|---|---|---|
+| 8 B (inline) | 3.9 ns | **0.9 ns** | 2.1 ns | 3.9 ns | 3.9 ns |
+| 16 B (inline) | 3.9 ns | **1.0 ns** | 2.1 ns | 3.9 ns | 3.9 ns |
+| 32 B (inline) | 3.9 ns | 3.8 ns | **3.7 ns** | 3.9 ns | 3.9 ns |
+| 62 B (inline) | 4.0 ns | 3.8 ns | **3.8 ns** | 4.0 ns | 3.9 ns |
+| 64 B (heap) | 3.9 ns | **3.8 ns** | **3.8 ns** | 5.1 ns | 5.1 ns |
+| 128 B (heap) | 4.0 ns | **3.8 ns** | **3.8 ns** | 5.2 ns | 5.2 ns |
+| 1024 B (heap) | 3.9 ns | **3.8 ns** | **3.8 ns** | 5.2 ns | 5.2 ns |
+
+- `smol_str` wins small inline clones because its struct is 24 bytes (vs 64)
+- All libraries are ~equal at 32-62 bytes inline
+- Heap clones: `smol_bytes` pays ~1.3 ns extra per clone for its 64-byte struct (vs 32-byte `bytes`)
+
+### Clone — 10 sequential clones
+
+| Size | `bytes` | `smol_str` | `faststr` | `smol_bytes` | `compact` |
+|---|---|---|---|---|---|
+| 32 B (inline) | 42 ns | 40 ns | 45 ns | **35 ns** | 37 ns |
+| 1024 B (heap) | **42 ns** | **40 ns** | 45 ns | 64 ns | 65 ns |
+
+For frequently-cloned small data (the lexer/parser use case), `smol_bytes` is the fastest — **17% faster** than `bytes` at 32 bytes inline. For large heap data, `bytes`/`smol_str` are faster.
+
+### Constructor
+
+| Operation | `bytes` | `smol_bytes` | `compact` |
+|---|---|---|---|
+| `new()` (empty) | 0.73 ns | **0.24 ns** | **0.24 ns** |
+| `from_static(8B)` | **0.73 ns** | 2.0 ns | 2.0 ns |
+| `from_static(32B)` | **0.74 ns** | 2.7 ns | 2.7 ns |
+| `from_static(62B)` | **0.74 ns** | 4.8 ns | 4.8 ns |
+
+`from_static` is slower by design: `bytes` stores a pointer, `smol_bytes` copies into the inline buffer. The payoff is that all subsequent clones become `memcpy` with no atomics.
+
+### Split
+
+| Scenario | `bytes` | `smol_bytes` | `compact` |
+|---|---|---|---|
+| heap → 2×inline | 7.0 ns | 8.8 ns | 14.1 ns |
+| heap → inline + heap | 7.0 ns | 9.1 ns | 10.9 ns |
+| heap → heap + inline | 7.0 ns | 13.0 ns | 17.4 ns |
+| heap → 2×heap | **7.0 ns** | 12.0 ns | 12.1 ns |
+
+Heap-to-heap splits are ~70% slower due to the 64-byte return value.
+When one half fits inline (≤62B), `shared` is 25-30% slower;
+`compact` has additional overhead from heap→inline conversion.
+
+### Understanding the trade-off
+
+`smol_bytes::Bytes` is a **64-byte** struct (62 bytes of inline storage + 2 bytes metadata) vs 32 bytes for `bytes`/`smol_str`. Every clone, split, and function return moves twice the data on the stack. This is the fundamental cost of inline optimization.
+
+| Library | Struct size | Inline cap | Heap clone | Inline clone |
+|---|---|---|---|---|
+| `bytes::Bytes` | 32 B | — (always heap) | Arc refcount | N/A |
+| `smol_str::SmolStr` | 24 B | 22 B | Arc refcount | memcpy |
+| `faststr::FastStr` | 24 B | 14 B | Arc refcount | memcpy |
+| `smol_bytes::Bytes` | 64 B | **62 B** | Arc refcount | memcpy |
+
+**When to use smol-bytes**: most data ≤62 bytes, cloned frequently (lexer tokens, identifiers, small protocol messages). The larger inline cap (62B vs 22B for smol_str) means more data avoids heap allocation entirely.
+
+**When to use bytes/smol_str**: data is consistently large, or the 64-byte struct cost matters for your data structures.
+
+### Running benchmarks
+
+```bash
+cargo bench                  # full suite
+cargo bench --bench clone    # clone benchmarks only
+cargo bench --bench split_to # split benchmarks only
+```
+
 ## Upcoming Features
 
 - 🐍 **Python bindings** via `pyo3`
@@ -169,21 +245,11 @@ match buf.split_off(5) {
 
 ## Use Cases
 
-✅ **Language Lexers & Parsers** - Fast token cloning for AST building
-✅ **Protocol Parsers** - Efficient small message handling
-✅ **Configuration Files** - Keys and small values
-✅ **FFI Boundaries** - Minimal allocation crossing language barriers
-✅ **Concurrent Compilation** - Cheap token cloning across threads
-
-## Benchmarks
-
-Run benchmarks with:
-
-```bash
-cargo bench
-```
-
-Inline cloning is typically 2-3x faster than heap-allocated buffers, with the added benefit of zero allocations.
+- **Language Lexers & Parsers** - Fast token cloning for AST building
+- **Protocol Parsers** - Efficient small message handling
+- **Configuration Files** - Keys and small values
+- **FFI Boundaries** - Minimal allocation crossing language barriers
+- **Concurrent Compilation** - Cheap token cloning across threads
 
 ## License
 

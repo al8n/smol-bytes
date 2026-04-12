@@ -1,0 +1,47 @@
+name: WebAssembly
+
+on:
+  push:
+    branches: [main, "*.*.x"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build wasm
+        run: wasm-pack build crates/smol-bytes --target bundler --out-dir ../../js/pkg -- --features wasm
+      - name: Install JS deps
+        run: cd js && npm install
+      - name: Build JS
+        run: cd js && npm run build:js
+      - name: Run JS tests
+        run: cd js && npm test
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: wasm-pack build crates/smol-bytes --target bundler --out-dir ../../js/pkg -- --features wasm
+      - run: cd js && npm install && npm run build:js
+      - run: cd js && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

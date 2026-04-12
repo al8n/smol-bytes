@@ -1,5 +1,3 @@
-use bytes::BufMut;
-
 use super::Buffer;
 
 impl core::fmt::Debug for Buffer {

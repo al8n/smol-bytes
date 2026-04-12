@@ -1,5 +1,10 @@
 use crate::INLINE_CAP;
 
+use std::{
+  boxed::Box,
+  string::{String, ToString},
+};
+
 use super::*;
 
 impl ::quickcheck::Arbitrary for Utf8Buffer {
@@ -23,6 +28,9 @@ impl ::quickcheck::Arbitrary for Utf8Buffer {
 
   fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
     let s = self.as_str().to_string();
-    Box::new(s.shrink().filter_map(|shrunken| Self::try_from(shrunken.as_str()).ok()))
+    Box::new(
+      s.shrink()
+        .filter_map(|shrunken| Self::try_from(shrunken.as_str()).ok()),
+    )
   }
 }

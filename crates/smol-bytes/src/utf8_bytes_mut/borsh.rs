@@ -1,3 +1,5 @@
+use std::string::String;
+
 use super::*;
 
 impl ::borsh::BorshSerialize for Utf8BytesMut {

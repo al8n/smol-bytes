@@ -43,7 +43,7 @@ impl Iter {
 /// Instances behave like immutable Python `bytes` objects backed by the same zero-copy storage as
 /// the Rust type. All `get_*` accessors from the `Buf` trait are available, along with slicing,
 /// splitting, and comparison semantics that mirror `compact::Bytes`.
-#[pyclass(name = "Bytes")]
+#[pyclass(name = "Bytes", skip_from_py_object)]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PyCompactBytes {
@@ -706,5 +706,46 @@ impl PyCompactBytes {
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
     self.inner.py_get_int_le(nbytes)
+  }
+
+  /// Support pickling via `pickle.dumps` / `pickle.loads`.
+  fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyBytes>,))> {
+    let cls = py.get_type::<Self>();
+    let from_bytes = cls.getattr("from_bytes")?;
+    let data = PyBytes::new(py, slf.as_ref());
+    Ok((from_bytes.unbind(), (data.unbind(),)))
+  }
+
+  /// Expose a read-only buffer view (enables `memoryview`).
+  unsafe fn __getbuffer__(
+    slf: PyRef<'_, Self>,
+    view: *mut pyo3::ffi::Py_buffer,
+    flags: ::std::os::raw::c_int,
+  ) -> PyResult<()> {
+    use pyo3::exceptions::PyBufferError;
+    use std::ffi::c_void;
+
+    if view.is_null() {
+      return Err(PyBufferError::new_err("view is null"));
+    }
+    if flags & pyo3::ffi::PyBUF_WRITABLE != 0 {
+      return Err(PyBufferError::new_err("buffer is read-only"));
+    }
+
+    let slice: &[u8] = slf.as_ref();
+    unsafe {
+      (*view).buf = slice.as_ptr() as *mut c_void;
+      (*view).len = slice.len() as isize;
+      (*view).itemsize = 1;
+      (*view).ndim = 1;
+      (*view).format = b"B\0".as_ptr() as *mut _;
+      (*view).shape = &mut (*view).len;
+      (*view).strides = &mut (*view).itemsize;
+      (*view).suboffsets = std::ptr::null_mut();
+      (*view).readonly = 1;
+      (*view).obj = pyo3::ffi::Py_NewRef(slf.as_ptr());
+      (*view).internal = std::ptr::null_mut();
+    }
+    Ok(())
   }
 }

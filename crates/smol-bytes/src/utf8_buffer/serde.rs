@@ -1,6 +1,9 @@
-use super::*;
-use serde::de::{Deserializer, Error, Visitor};
+#[cfg(any(feature = "std", feature = "alloc"))]
+use std::string::String;
+
 use serde_core as serde;
+
+use super::*;
 
 impl serde::Serialize for Utf8Buffer {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -16,7 +19,15 @@ impl<'de> serde::Deserialize<'de> for Utf8Buffer {
   where
     D: serde::Deserializer<'de>,
   {
-    let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
-    Self::try_from(s).map_err(serde::de::Error::custom)
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      let s = String::deserialize(deserializer)?;
+      Self::try_from_str(&s).map_err(serde::de::Error::custom)
+    }
+    #[cfg(not(any(feature = "std", feature = "alloc")))]
+    {
+      let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
+      Self::try_from_str(s).map_err(serde::de::Error::custom)
+    }
   }
 }

@@ -318,35 +318,26 @@ impl ImmutableStorage for RawBytes<Shared> {
     if at == len {
       return mem::take(self);
     }
-
     if at == 0 {
       return Self::new();
     }
-
-    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len,);
-
-    // first, check if output can be inline
-    let ret = if at <= INLINE_CAP {
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { Buffer::copy_from_slice(&src[..at]) })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.repr.unwrap_heap_mut().clone();
-      bytes.truncate(at);
-      Self::heap(bytes)
-    };
+    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len);
 
     match &mut self.repr {
       Repr::Inline(storage) => {
-        storage.advance(at);
+        Self::inline(storage.try_split_to(at).expect("already checked bounds"))
       }
       Repr::Heap(bytes) => {
-        bytes.advance(at);
+        if at <= INLINE_CAP {
+          // SAFETY: at <= INLINE_CAP, checked above.
+          let ret = Self::inline(unsafe { Buffer::copy_from_slice(&bytes[..at]) });
+          bytes.advance(at);
+          ret
+        } else {
+          Self::heap(bytes.split_to(at))
+        }
       }
     }
-
-    ret
   }
 
   fn split_off(&mut self, at: usize) -> Self {
@@ -354,38 +345,27 @@ impl ImmutableStorage for RawBytes<Shared> {
     if at == len {
       return Self::new();
     }
-
     if at == 0 {
       return mem::take(self);
     }
-
-    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len,);
-
-    // first, check if output would be inline
-    let output_size = len - at;
-    let ret = if output_size <= INLINE_CAP {
-      let src = self.as_slice();
-      // SAFETY: bounds checked above, and we are slicing within inline capacity.
-      Self::inline(unsafe { Buffer::copy_from_slice(&src[at..len]) })
-    } else {
-      // output cannot be inline, which means it must be heap allocated
-      let mut bytes = self.repr.unwrap_heap_mut().clone();
-      bytes.advance(at);
-      Self::heap(bytes)
-    };
-
-    // second, check if self can be made inline
+    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len);
 
     match &mut self.repr {
       Repr::Inline(storage) => {
-        storage.truncate(at);
+        Self::inline(storage.try_split_off(at).expect("already checked bounds"))
       }
       Repr::Heap(bytes) => {
-        bytes.truncate(at);
+        let output_size = len - at;
+        if output_size <= INLINE_CAP {
+          // SAFETY: output_size <= INLINE_CAP, checked above.
+          let ret = Self::inline(unsafe { Buffer::copy_from_slice(&bytes[at..]) });
+          bytes.truncate(at);
+          ret
+        } else {
+          Self::heap(bytes.split_off(at))
+        }
       }
     }
-
-    ret
   }
 
   fn truncate(&mut self, new_len: usize) {
@@ -414,6 +394,14 @@ impl ImmutableStorage for RawBytes<Shared> {
   }
 }
 
+#[cfg(feature = "pyo3")]
+mod python;
+#[cfg(feature = "pyo3")]
+pub use python::PySharedBytes;
+
+#[cfg(feature = "wasm")]
+mod wasm;
+
 /// A space-efficient byte buffer that shares heap allocations with [`bytes::Bytes`].
 ///
 /// This is a type alias for [`RawBytes<Shared>`](crate::smol_bytes::RawBytes) using the [`Shared`] strategy.
@@ -439,3 +427,8 @@ impl ImmutableStorage for RawBytes<Shared> {
 /// let bytes: bytes::Bytes = data.into();
 /// ```
 pub type Bytes = RawBytes<Shared>;
+
+/// A shared, immutable UTF-8 string type alias using the [`Shared`] strategy.
+///
+/// See [`crate::utf8_bytes::Utf8Bytes`] for the generic type documentation.
+pub type Utf8Bytes = crate::utf8_bytes::Utf8Bytes<Shared>;

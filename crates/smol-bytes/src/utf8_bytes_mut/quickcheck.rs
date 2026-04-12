@@ -1,3 +1,8 @@
+use std::{
+  boxed::Box,
+  string::{String, ToString},
+};
+
 use super::*;
 
 impl ::quickcheck::Arbitrary for Utf8BytesMut {

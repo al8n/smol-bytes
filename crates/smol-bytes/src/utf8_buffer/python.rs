@@ -4,9 +4,33 @@ use super::*;
 use pyo3::{
   basic::CompareOp,
   exceptions::{PyIndexError, PyTypeError, PyValueError},
-  prelude::{*, Bound},
+  prelude::{Bound, *},
   types::{PyBytes, PyString},
 };
+
+#[derive(Debug)]
+#[pyclass]
+struct Utf8CharIter {
+  chars: Vec<char>,
+  index: usize,
+}
+
+#[pymethods]
+impl Utf8CharIter {
+  fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+    slf
+  }
+
+  fn __next__(&mut self) -> Option<String> {
+    if self.index < self.chars.len() {
+      let ch = self.chars[self.index];
+      self.index += 1;
+      Some(ch.to_string())
+    } else {
+      None
+    }
+  }
+}
 
 #[pymethods]
 impl Utf8Buffer {
@@ -53,7 +77,7 @@ impl Utf8Buffer {
 
   /// Check if a substring is contained in the buffer.
   fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
-    self.as_buffer().py_contains(item)
+    self.as_inner().py_contains(item)
   }
 
   /// Support indexing and slicing.
@@ -72,10 +96,16 @@ impl Utf8Buffer {
         )));
       }
 
-      return Ok(chars[idx as usize].to_string().into_pyobject(py)?.into_any().unbind());
+      return Ok(
+        chars[idx as usize]
+          .to_string()
+          .into_pyobject(py)?
+          .into_any()
+          .unbind(),
+      );
     }
 
-    if let Ok(slice) = index.downcast::<pyo3::types::PySlice>() {
+    if let Ok(slice) = index.cast::<pyo3::types::PySlice>() {
       let s = self.as_str();
       let indices = slice.indices(s.len() as isize)?;
 
@@ -126,7 +156,8 @@ impl Utf8Buffer {
       });
     }
 
-    if let Ok(s) = other.extract::<&str>() {
+    if let Ok(s) = other.extract::<String>() {
+      let s = s.as_str();
       return Ok(match op {
         CompareOp::Lt => self.as_str() < s,
         CompareOp::Le => self.as_str() <= s,
@@ -156,7 +187,9 @@ impl Utf8Buffer {
   ///     ValueError: If there is not enough capacity.
   #[pyo3(name = "push")]
   fn __python_push(&mut self, ch: char) -> PyResult<()> {
-    self.try_push(ch).map_err(|e| PyValueError::new_err(e.to_string()))
+    self
+      .try_push(ch)
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Append a string to the buffer.
@@ -168,7 +201,9 @@ impl Utf8Buffer {
   ///     ValueError: If there is not enough capacity.
   #[pyo3(name = "push_str")]
   fn __python_push_str(&mut self, s: &str) -> PyResult<()> {
-    self.try_push_str(s).map_err(|e| PyValueError::new_err(e.to_string()))
+    self
+      .try_push_str(s)
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Clear the buffer.
@@ -189,7 +224,9 @@ impl Utf8Buffer {
   ///     ValueError: If `at` is not on a character boundary or is out of bounds.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self.try_split_to(at).map_err(|e| PyValueError::new_err(e.to_string()))
+    self
+      .try_split_to(at)
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Split the buffer at the given index, returning the tail.
@@ -204,7 +241,9 @@ impl Utf8Buffer {
   ///     ValueError: If `at` is not on a character boundary or is out of bounds.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self.try_split_off(at).map_err(|e| PyValueError::new_err(e.to_string()))
+    self
+      .try_split_off(at)
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Return a sub-slice of the buffer.
@@ -220,7 +259,9 @@ impl Utf8Buffer {
   ///     ValueError: If the range is not on character boundaries or is out of bounds.
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> PyResult<Self> {
-    self.try_slice(start..end).map_err(|e| PyValueError::new_err(e.to_string()))
+    self
+      .try_slice(start..end)
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Return the length of the buffer in bytes.
@@ -241,6 +282,17 @@ impl Utf8Buffer {
     self.capacity()
   }
 
+  /// Iterate over the characters of the buffer.
+  fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Utf8CharIter>> {
+    let chars: Vec<char> = slf.as_str().chars().collect();
+    Py::new(slf.py(), Utf8CharIter { chars, index: 0 })
+  }
+
+  /// Return the UTF-8 bytes as a Python `bytes` object.
+  fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+    PyBytes::new(py, self.as_str().as_bytes())
+  }
+
   /// Support copy.copy.
   #[pyo3(name = "__copy__")]
   fn __python_copy(&self) -> Self {
@@ -251,5 +303,575 @@ impl Utf8Buffer {
   #[pyo3(name = "__deepcopy__")]
   fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> Self {
     *self
+  }
+
+  /// Support pickling via `pickle.dumps` / `pickle.loads`.
+  fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
+    let cls = py.get_type::<Self>();
+    let from_str = cls.getattr("from_str")?;
+    Ok((from_str.unbind(), (slf.as_str().to_string(),)))
+  }
+
+  /// Return the number of bytes remaining for reading.
+  ///
+  /// Returns:
+  ///     int: Number of bytes available for reading.
+  #[pyo3(name = "remaining")]
+  fn __python_remaining(&self) -> usize {
+    use bytes::Buf;
+    self.inner.remaining()
+  }
+
+  /// Advance the read cursor by the specified number of bytes.
+  ///
+  /// Args:
+  ///     cnt: Number of bytes to advance.
+  ///
+  /// Raises:
+  ///     BufferError: If trying to advance beyond available data.
+  #[pyo3(name = "advance")]
+  fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
+    use bytes::Buf;
+    if cnt > self.inner.remaining() {
+      return Err(pyo3::exceptions::PyBufferError::new_err(format!(
+        "cannot advance past remaining: {} > {}",
+        cnt,
+        self.inner.remaining()
+      )));
+    }
+    self.inner.advance(cnt);
+    Ok(())
+  }
+
+  /// Read an unsigned 8-bit integer from the underlying bytes.
+  ///
+  /// Advances the read cursor by 1 byte.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains.
+  #[pyo3(name = "get_u8")]
+  fn __python_get_u8(&mut self) -> PyResult<u8> {
+    use bytes::Buf;
+    if self.inner.remaining() < 1 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u8",
+      ));
+    }
+    Ok(self.inner.get_u8())
+  }
+
+  /// Read a signed 8-bit integer from the underlying bytes.
+  ///
+  /// Advances the read cursor by 1 byte.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains.
+  #[pyo3(name = "get_i8")]
+  fn __python_get_i8(&mut self) -> PyResult<i8> {
+    use bytes::Buf;
+    if self.inner.remaining() < 1 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i8",
+      ));
+    }
+    Ok(self.inner.get_i8())
+  }
+
+  /// Read an unsigned 16-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 2 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain.
+  #[pyo3(name = "get_u16")]
+  fn __python_get_u16(&mut self) -> PyResult<u16> {
+    use bytes::Buf;
+    if self.inner.remaining() < 2 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u16",
+      ));
+    }
+    Ok(self.inner.get_u16())
+  }
+
+  /// Read an unsigned 16-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 2 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain.
+  #[pyo3(name = "get_u16_le")]
+  fn __python_get_u16_le(&mut self) -> PyResult<u16> {
+    use bytes::Buf;
+    if self.inner.remaining() < 2 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u16",
+      ));
+    }
+    Ok(self.inner.get_u16_le())
+  }
+
+  /// Read a signed 16-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 2 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain.
+  #[pyo3(name = "get_i16")]
+  fn __python_get_i16(&mut self) -> PyResult<i16> {
+    use bytes::Buf;
+    if self.inner.remaining() < 2 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i16",
+      ));
+    }
+    Ok(self.inner.get_i16())
+  }
+
+  /// Read a signed 16-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 2 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain.
+  #[pyo3(name = "get_i16_le")]
+  fn __python_get_i16_le(&mut self) -> PyResult<i16> {
+    use bytes::Buf;
+    if self.inner.remaining() < 2 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i16",
+      ));
+    }
+    Ok(self.inner.get_i16_le())
+  }
+
+  /// Read an unsigned 32-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_u32")]
+  fn __python_get_u32(&mut self) -> PyResult<u32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u32",
+      ));
+    }
+    Ok(self.inner.get_u32())
+  }
+
+  /// Read an unsigned 32-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_u32_le")]
+  fn __python_get_u32_le(&mut self) -> PyResult<u32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u32",
+      ));
+    }
+    Ok(self.inner.get_u32_le())
+  }
+
+  /// Read a signed 32-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_i32")]
+  fn __python_get_i32(&mut self) -> PyResult<i32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i32",
+      ));
+    }
+    Ok(self.inner.get_i32())
+  }
+
+  /// Read a signed 32-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_i32_le")]
+  fn __python_get_i32_le(&mut self) -> PyResult<i32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i32",
+      ));
+    }
+    Ok(self.inner.get_i32_le())
+  }
+
+  /// Read an unsigned 64-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_u64")]
+  fn __python_get_u64(&mut self) -> PyResult<u64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u64",
+      ));
+    }
+    Ok(self.inner.get_u64())
+  }
+
+  /// Read an unsigned 64-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_u64_le")]
+  fn __python_get_u64_le(&mut self) -> PyResult<u64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u64",
+      ));
+    }
+    Ok(self.inner.get_u64_le())
+  }
+
+  /// Read a signed 64-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_i64")]
+  fn __python_get_i64(&mut self) -> PyResult<i64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i64",
+      ));
+    }
+    Ok(self.inner.get_i64())
+  }
+
+  /// Read a signed 64-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_i64_le")]
+  fn __python_get_i64_le(&mut self) -> PyResult<i64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i64",
+      ));
+    }
+    Ok(self.inner.get_i64_le())
+  }
+
+  /// Read an unsigned 128-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 16 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain.
+  #[pyo3(name = "get_u128")]
+  fn __python_get_u128(&mut self) -> PyResult<u128> {
+    use bytes::Buf;
+    if self.inner.remaining() < 16 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u128",
+      ));
+    }
+    Ok(self.inner.get_u128())
+  }
+
+  /// Read an unsigned 128-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 16 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain.
+  #[pyo3(name = "get_u128_le")]
+  fn __python_get_u128_le(&mut self) -> PyResult<u128> {
+    use bytes::Buf;
+    if self.inner.remaining() < 16 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for u128",
+      ));
+    }
+    Ok(self.inner.get_u128_le())
+  }
+
+  /// Read a signed 128-bit integer in big-endian byte order.
+  ///
+  /// Advances the read cursor by 16 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain.
+  #[pyo3(name = "get_i128")]
+  fn __python_get_i128(&mut self) -> PyResult<i128> {
+    use bytes::Buf;
+    if self.inner.remaining() < 16 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i128",
+      ));
+    }
+    Ok(self.inner.get_i128())
+  }
+
+  /// Read a signed 128-bit integer in little-endian byte order.
+  ///
+  /// Advances the read cursor by 16 bytes.
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain.
+  #[pyo3(name = "get_i128_le")]
+  fn __python_get_i128_le(&mut self) -> PyResult<i128> {
+    use bytes::Buf;
+    if self.inner.remaining() < 16 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for i128",
+      ));
+    }
+    Ok(self.inner.get_i128_le())
+  }
+
+  /// Read a 32-bit floating point number in big-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     float: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_f32")]
+  fn __python_get_f32(&mut self) -> PyResult<f32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for f32",
+      ));
+    }
+    Ok(self.inner.get_f32())
+  }
+
+  /// Read a 32-bit floating point number in little-endian byte order.
+  ///
+  /// Advances the read cursor by 4 bytes.
+  ///
+  /// Returns:
+  ///     float: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain.
+  #[pyo3(name = "get_f32_le")]
+  fn __python_get_f32_le(&mut self) -> PyResult<f32> {
+    use bytes::Buf;
+    if self.inner.remaining() < 4 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for f32",
+      ));
+    }
+    Ok(self.inner.get_f32_le())
+  }
+
+  /// Read a 64-bit floating point number in big-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     float: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_f64")]
+  fn __python_get_f64(&mut self) -> PyResult<f64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for f64",
+      ));
+    }
+    Ok(self.inner.get_f64())
+  }
+
+  /// Read a 64-bit floating point number in little-endian byte order.
+  ///
+  /// Advances the read cursor by 8 bytes.
+  ///
+  /// Returns:
+  ///     float: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain.
+  #[pyo3(name = "get_f64_le")]
+  fn __python_get_f64_le(&mut self) -> PyResult<f64> {
+    use bytes::Buf;
+    if self.inner.remaining() < 8 {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data for f64",
+      ));
+    }
+    Ok(self.inner.get_f64_le())
+  }
+
+  /// Read an unsigned integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Advances the read cursor by `nbytes` bytes.
+  ///
+  /// Args:
+  ///     nbytes: Number of bytes to read (1-8).
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
+  #[pyo3(name = "get_uint")]
+  fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
+    use bytes::Buf;
+    if nbytes > 8 || self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data or nbytes > 8",
+      ));
+    }
+    Ok(self.inner.get_uint(nbytes))
+  }
+
+  /// Read an unsigned integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Advances the read cursor by `nbytes` bytes.
+  ///
+  /// Args:
+  ///     nbytes: Number of bytes to read (1-8).
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
+  #[pyo3(name = "get_uint_le")]
+  fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
+    use bytes::Buf;
+    if nbytes > 8 || self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data or nbytes > 8",
+      ));
+    }
+    Ok(self.inner.get_uint_le(nbytes))
+  }
+
+  /// Read a signed integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Advances the read cursor by `nbytes` bytes.
+  ///
+  /// Args:
+  ///     nbytes: Number of bytes to read (1-8).
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
+  #[pyo3(name = "get_int")]
+  fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
+    use bytes::Buf;
+    if nbytes > 8 || self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data or nbytes > 8",
+      ));
+    }
+    Ok(self.inner.get_int(nbytes))
+  }
+
+  /// Read a signed integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Advances the read cursor by `nbytes` bytes.
+  ///
+  /// Args:
+  ///     nbytes: Number of bytes to read (1-8).
+  ///
+  /// Returns:
+  ///     int: The decoded value.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
+  #[pyo3(name = "get_int_le")]
+  fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
+    use bytes::Buf;
+    if nbytes > 8 || self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err(
+        "not enough data or nbytes > 8",
+      ));
+    }
+    Ok(self.inner.get_int_le(nbytes))
   }
 }

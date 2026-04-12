@@ -245,3 +245,43 @@ impl From<Utf8Error> for std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, value)
   }
 }
+
+/// Error type for converting a raw byte slice into a fixed-capacity
+/// UTF-8 buffer. Combines UTF-8 validation and capacity errors.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FromBytesError {
+  /// The bytes are not valid UTF-8.
+  InvalidUtf8(core::str::Utf8Error),
+  /// The bytes do not fit in the buffer's capacity.
+  TooLarge(TryPutError),
+}
+
+impl core::fmt::Display for FromBytesError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::InvalidUtf8(e) => write!(f, "invalid UTF-8: {}", e),
+      Self::TooLarge(e) => write!(f, "{}", e),
+    }
+  }
+}
+
+impl core::error::Error for FromBytesError {}
+
+impl From<core::str::Utf8Error> for FromBytesError {
+  fn from(e: core::str::Utf8Error) -> Self {
+    Self::InvalidUtf8(e)
+  }
+}
+
+impl From<TryPutError> for FromBytesError {
+  fn from(e: TryPutError) -> Self {
+    Self::TooLarge(e)
+  }
+}
+
+#[cfg(feature = "std")]
+impl From<FromBytesError> for std::io::Error {
+  fn from(value: FromBytesError) -> Self {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, value)
+  }
+}

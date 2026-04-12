@@ -9,6 +9,9 @@ documentation.workspace = true
 description.workspace = true
 rust-version.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
@@ -19,6 +22,7 @@ std = ["bytes/default", "serde_core?/default"]
 serde = ["dep:serde_core"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]
+wasm = ["dep:wasm-bindgen", "dep:js-sys", "std"]
 
 [dependencies]
 bytes = { version = "1", default-features = false, optional = true }
@@ -30,8 +34,9 @@ borsh = { version = "1", optional = true, default-features = false }
 arbitrary = { version = "1", optional = true, default-features = false }
 quickcheck = { version = "1", optional = true, default-features = false }
 
-pyo3 = { version = "0.28", default-features = false, features = ["macros", "extension-module", "abi3-py37"], optional = true }
+pyo3 = { version = "0.28", default-features = false, features = ["macros", "extension-module", "abi3-py311"], optional = true }
 wasm-bindgen = { version = "0.2", default-features = false, features = ["strict-macro"], optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [dev-dependencies]
 proptest = "1"

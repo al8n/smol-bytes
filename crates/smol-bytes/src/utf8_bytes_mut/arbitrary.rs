@@ -1,3 +1,5 @@
+use std::string::String;
+
 use super::*;
 
 impl<'a> ::arbitrary::Arbitrary<'a> for Utf8BytesMut {

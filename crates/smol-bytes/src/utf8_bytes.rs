@@ -1,10 +1,10 @@
-use core::{
-  borrow::Borrow,
-  ops::RangeBounds,
-  str,
-};
+use core::{borrow::Borrow, ops::RangeBounds, str};
 
-use super::{error::*, shared::Bytes, utf8_buf::Utf8Buf};
+use super::{
+  bytes::{strategy::ImmutableStorage, RawBytes},
+  error::*,
+  utf8_buf::Utf8Buf,
+};
 
 mod cmp;
 mod fmt;
@@ -22,11 +22,18 @@ mod serde;
 
 #[cfg(feature = "pyo3")]
 mod python;
+#[cfg(feature = "pyo3")]
+pub use python::PyCompactUtf8Bytes;
+#[cfg(feature = "pyo3")]
+pub use python::PySharedUtf8Bytes;
 
-/// A UTF-8 validated wrapper around [`Bytes`] that provides a String-like interface.
+#[cfg(feature = "wasm")]
+mod wasm;
+
+/// Immutable UTF-8 string with inline/heap storage, generic over the
+/// immutable storage strategy `S`.
 ///
-/// `Utf8Bytes` guarantees that its contents are always valid UTF-8. It supports
-/// zero-copy cloning and efficient slicing while maintaining UTF-8 validity.
+/// Guarantees valid UTF-8. Supports zero-copy cloning via reference counting.
 ///
 /// # Examples
 ///
@@ -37,40 +44,58 @@ mod python;
 /// let slice = bytes.slice(0..5);
 /// assert_eq!(slice.as_str(), "hello");
 /// ```
-#[derive(Clone)]
-#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
-pub struct Utf8Bytes {
-  pub(crate) inner: Bytes,
+pub struct Utf8Bytes<S> {
+  pub(crate) inner: RawBytes<S>,
 }
 
-impl Default for Utf8Bytes {
+impl<S> Clone for Utf8Bytes<S> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self {
+      inner: self.inner.clone(),
+    }
+  }
+}
+
+impl<S> Default for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl Utf8Bytes {
+impl<S> Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   /// Creates a new, empty `Utf8Bytes`.
-  pub const fn new() -> Self {
+  pub fn new() -> Self {
     Self {
-      inner: Bytes::new(),
+      inner: RawBytes::new(),
     }
   }
 
   /// Creates a `Utf8Bytes` from a static string slice.
-  pub const fn from_static(s: &'static str) -> Self {
+  pub fn from_static(s: &'static str) -> Self {
     Self {
-      inner: Bytes::from_static(s.as_bytes()),
+      inner: RawBytes::from_static(s.as_bytes()),
     }
   }
 
-  /// Returns a reference to the inner `Bytes`.
-  pub const fn as_bytes(&self) -> &Bytes {
+  /// Returns a reference to the inner `RawBytes`.
+  ///
+  /// Note: named `as_inner` (not `as_bytes`) to avoid shadowing
+  /// [`str::as_bytes`], which is reachable via [`Deref`](core::ops::Deref)
+  /// to `str`. Use `self.as_ref::<[u8]>()` or `(*self).as_bytes()` if you
+  /// want the raw `&[u8]`.
+  pub const fn as_inner(&self) -> &RawBytes<S> {
     &self.inner
   }
 
-  /// Consumes `self` and returns the inner `Bytes`.
-  pub fn into_bytes(self) -> Bytes {
+  /// Consumes `self` and returns the inner `RawBytes`.
+  pub fn into_inner(self) -> RawBytes<S> {
     self.inner
   }
 
@@ -132,11 +157,7 @@ impl Utf8Bytes {
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
   pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-
-    Ok(Self {
-      inner: self.inner.try_split_to(at).expect("already checked bounds"),
-    })
+    <Self as Utf8Buf>::try_split_to(self, at)
   }
 
   /// Splits the bytes at the given index, returning the tail.
@@ -166,11 +187,7 @@ impl Utf8Bytes {
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
   pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-
-    Ok(Self {
-      inner: self.inner.try_split_off(at).expect("already checked bounds"),
-    })
+    <Self as Utf8Buf>::try_split_off(self, at)
   }
 
   /// Returns a slice of this buffer.
@@ -199,33 +216,41 @@ impl Utf8Bytes {
   ///
   /// Returns an error if the range is out of bounds or not on character boundaries.
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
-
-    Ok(Self {
-      inner: self.inner.try_slice(start..end).expect("already checked bounds"),
-    })
+    <Self as Utf8Buf>::try_slice(self, range)
   }
 }
 
-impl AsRef<str> for Utf8Bytes {
+impl<S> AsRef<str> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   fn as_ref(&self) -> &str {
     self.as_str()
   }
 }
 
-impl AsRef<[u8]> for Utf8Bytes {
+impl<S> AsRef<[u8]> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   fn as_ref(&self) -> &[u8] {
     self.as_str().as_bytes()
   }
 }
 
-impl Borrow<str> for Utf8Bytes {
+impl<S> Borrow<str> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   fn borrow(&self) -> &str {
     self.as_str()
   }
 }
 
-impl core::ops::Deref for Utf8Bytes {
+impl<S> core::ops::Deref for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   type Target = str;
 
   fn deref(&self) -> &Self::Target {
@@ -233,13 +258,38 @@ impl core::ops::Deref for Utf8Bytes {
   }
 }
 
-impl Utf8Buf for Utf8Bytes {
-  // Default implementations from trait are used for:
-  // - as_str() (via AsRef<str>)
-  // - len(), is_empty()
-  // - split_to(), split_off(), slice()
-  // - range_bounds_to_start_end(), validate_char_boundary()
-  //
-  // Custom implementations provided above for:
-  // - try_split_to(), try_split_off(), try_slice()
+// The trait impl holds the real bodies. Inherent methods (above) forward
+// here via explicit `<Self as Utf8Buf>::method` UFCS so there is no
+// ambiguity about which impl is called and no fragile reliance on the
+// inherent-over-trait method resolution rule.
+impl<S> Utf8Buf for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+    self.validate_char_boundary(at)?;
+    Ok(Self {
+      inner: self.inner.try_split_to(at).expect("already checked bounds"),
+    })
+  }
+
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+    self.validate_char_boundary(at)?;
+    Ok(Self {
+      inner: self
+        .inner
+        .try_split_off(at)
+        .expect("already checked bounds"),
+    })
+  }
+
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
+    let (start, end) = self.range_bounds_to_start_end(range)?;
+    Ok(Self {
+      inner: self
+        .inner
+        .try_slice(start..end)
+        .expect("already checked bounds"),
+    })
+  }
 }

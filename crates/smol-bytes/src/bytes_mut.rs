@@ -23,52 +23,74 @@ mod serde;
 #[cfg(feature = "pyo3")]
 mod python;
 
-/// A mutable byte buffer with inline storage optimization.
-///
-/// `BytesMut` is similar to [`BytesMut`] but optimized for small buffers.
-/// It stores data inline (on the stack) for buffers up to 62 bytes, avoiding heap
-/// allocations. For larger buffers, it automatically promotes to heap storage using
-/// [`BytesMut`] internally.
-///
-/// # Inline vs Heap Storage
-///
-/// - **Inline**: Buffers ≤62 bytes are stored directly in the `BytesMut` struct
-/// - **Heap**: Buffers >62 bytes are automatically promoted to heap allocation
-/// - Once promoted to heap, the buffer stays on the heap (no automatic demotion)
-///
-/// # Split Operations
-///
-/// Split operations have different behavior based on storage type:
-/// - [`split_off`](Self::split_off): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
-/// - [`split_to`](Self::split_to): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
-/// - [`split`](Self::split): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline
-/// - [`unsplit`](Self::unsplit): Only works when both buffers are heap-allocated
-///
-/// `Buffer` is a mutable inline-only buffer (max 62 bytes), while `BytesMut` can grow.
-/// Use [`make_heap`](Self::make_heap) to explicitly promote an inline buffer to heap storage.
-///
-/// ## Examples
-///
-/// ```
-/// use smol_bytes::BytesMut;
-///
-/// // Small buffer uses inline storage
-/// let mut buf = BytesMut::from(&b"hello"[..]);
-/// assert!(buf.is_inline());
-/// assert_eq!(&buf[..], b"hello");
-///
-/// // Extending beyond capacity promotes to heap
-/// buf.extend_from_slice(b" world and more data that exceeds inline capacity................................");
-/// assert!(buf.is_heap());
-/// ```
-///
-/// # Freezing
-///
-/// Convert to an immutable buffer using:
-/// - [`freeze_shared`](Self::freeze_shared): Convert to [`shared::Bytes`](crate::shared::Bytes)
-/// - [`freeze_compact`](Self::freeze_compact): Convert to [`compact::Bytes`](crate::compact::Bytes)
+#[cfg(feature = "wasm")]
+mod wasm;
+
+#[doc = "Growable mutable byte buffer with inline/heap storage."]
+#[doc = ""]
+#[doc = "Stores up to 62 bytes inline on the stack. Larger data automatically"]
+#[doc = "promotes to heap allocation. Once on heap, stays on heap."]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "# Inline vs Heap Storage")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- **Inline**: Buffers ≤62 bytes are stored directly in the `BytesMut` struct"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- **Heap**: Buffers >62 bytes are automatically promoted to heap allocation"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- Once promoted to heap, the buffer stays on the heap (no automatic demotion)"
+)]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "# Split Operations")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "Split operations have different behavior based on storage type:"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- [`split_off`](Self::split_off): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- [`split_to`](Self::split_to): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- [`split`](Self::split): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+)]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "- [`unsplit`](Self::unsplit): Only works when both buffers are heap-allocated"
+)]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "## Examples")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "```")]
+#[cfg_attr(not(feature = "wasm"), doc = "use smol_bytes::BytesMut;")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "let mut buf = BytesMut::from(&b\"hello\"[..]);"
+)]
+#[cfg_attr(not(feature = "wasm"), doc = "assert!(buf.is_inline());")]
+#[cfg_attr(not(feature = "wasm"), doc = "```")]
+#[cfg_attr(feature = "wasm", doc = "")]
+#[cfg_attr(feature = "wasm", doc = "@example")]
+#[cfg_attr(feature = "wasm", doc = "```typescript")]
+#[cfg_attr(feature = "wasm", doc = "import { BytesMut } from 'smol-bytes';")]
+#[cfg_attr(feature = "wasm", doc = "const buf = BytesMut.withCapacity(100);")]
+#[cfg_attr(feature = "wasm", doc = "buf.putSlice(new Uint8Array([1, 2, 3]));")]
+#[cfg_attr(feature = "wasm", doc = "console.log(buf.len()); // 3")]
+#[cfg_attr(feature = "wasm", doc = "```")]
 #[derive(Clone)]
-#[cfg_attr(feature = "pyo3", pyo3::prelude::pyclass)]
+#[cfg_attr(feature = "pyo3", pyo3::prelude::pyclass(from_py_object))]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct BytesMut(Repr);
 
 impl Default for BytesMut {
@@ -411,20 +433,26 @@ impl BytesMut {
   /// Splits the bytes into two at the given index.
   ///
   /// Afterwards `self` contains elements `[0, at)`, and the returned value
-  /// contains elements `[at, len)`.
+  /// contains elements `[at, capacity)`. Any reserved-but-unwritten
+  /// capacity is partitioned between the two halves — this matches the
+  /// semantics of [`bytes::BytesMut::split_off`].
   ///
   /// For heap-allocated buffers, this is an `O(1)` operation that increases the
   /// reference count and returns `Ok(BytesMut)`.
   ///
-  /// For inline buffers, the tail is copied into a `Buffer` and returned as `Err(Buffer)`.
-  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
+  /// For inline buffers where `at` lies within the written length, the
+  /// tail is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// For inline buffers where `at > len` (splitting into uninitialized
+  /// capacity), the buffer is first promoted to heap and the split returns
+  /// `Ok(BytesMut)`.
   ///
   /// ## Examples
+  ///
+  /// Splitting within written data on an inline buffer:
   ///
   /// ```
   /// use smol_bytes::BytesMut;
   ///
-  /// // Inline buffer
   /// let mut a = BytesMut::from(&b"hello world"[..]);
   /// match a.split_off(5) {
   ///     Ok(mut b) => {
@@ -438,36 +466,51 @@ impl BytesMut {
   ///     }
   /// }
   /// assert_eq!(&a[..], b"hello");
+  /// ```
   ///
-  /// // Heap buffer
-  /// let mut a = BytesMut::with_capacity(64);
-  /// a.extend_from_slice(b"hello world");
-  /// let mut b = a.split_off(5).unwrap();
-  /// a[0] = b'j';
-  /// b[0] = b'!';
-  /// assert_eq!(&a[..], b"jello");
-  /// assert_eq!(&b[..], b"!world");
+  /// Splitting into uninitialized capacity on a heap buffer:
+  ///
+  /// ```
+  /// use smol_bytes::BytesMut;
+  ///
+  /// let mut a = BytesMut::with_capacity(1024);
+  /// let b = a.split_off(128).unwrap();
+  /// assert_eq!(a.len(), 0);
+  /// assert_eq!(a.capacity(), 128);
+  /// assert_eq!(b.len(), 0);
+  /// assert_eq!(b.capacity(), 896);
   /// ```
   ///
   /// ## Panics
   ///
-  /// Panics if `at > len`.
+  /// Panics if `at > capacity`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
   pub fn split_off(&mut self, at: usize) -> Result<Self, Buffer> {
     self
       .try_split_off(at)
-      .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.len()))
+      .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.capacity()))
   }
 
   /// Attempts to split the buffer at `at`.
   ///
-  /// Returns [`OutOfBounds`] instead of panicking when `at > len`.
+  /// Returns [`OutOfBounds`] instead of panicking when `at > capacity`.
   ///
   /// See also [`split_off`](Self::split_off).
   pub fn try_split_off(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
-    let len = self.len();
-    if at > len {
-      return Err(OutOfBounds::new(at, len));
+    let cap = self.capacity();
+    if at > cap {
+      return Err(OutOfBounds::new(at, cap));
+    }
+
+    // For inline buffers where `at` exceeds the written length, the `Buffer`
+    // type has no way to represent "reserved but unwritten" capacity, so we
+    // promote to heap before splitting.
+    if let Repr::Inline(b) = &self.0 {
+      if at > b.remaining() {
+        let mut new_heap = bytes::BytesMut::with_capacity(cap);
+        new_heap.extend_from_slice(b.as_slice());
+        self.0 = Repr::Heap(new_heap);
+      }
     }
 
     let result = match &mut self.0 {
@@ -877,9 +920,13 @@ impl BytesMut {
   #[allow(clippy::missing_safety_doc)]
   #[inline]
   pub unsafe fn set_len(&mut self, len: usize) {
-    match &mut self.0 {
-      Repr::Inline(b) => b.set_len(len),
-      Repr::Heap(b) => b.set_len(len),
+    // SAFETY: forwards to the inner buffer's `set_len`; the caller's
+    // safety contract requires `len <= capacity`, same as the inner types.
+    unsafe {
+      match &mut self.0 {
+        Repr::Inline(b) => b.set_len(len),
+        Repr::Heap(b) => b.set_len(len),
+      }
     }
   }
 
@@ -1128,9 +1175,13 @@ unsafe impl BufMut for BytesMut {
   }
 
   unsafe fn advance_mut(&mut self, cnt: usize) {
-    match &mut self.0 {
-      Repr::Inline(b) => b.advance_mut(cnt),
-      Repr::Heap(b) => b.advance_mut(cnt),
+    // SAFETY: forwards to the inner buffer's `advance_mut`; the caller's
+    // safety contract applies identically to the inner representation.
+    unsafe {
+      match &mut self.0 {
+        Repr::Inline(b) => b.advance_mut(cnt),
+        Repr::Heap(b) => b.advance_mut(cnt),
+      }
     }
   }
 

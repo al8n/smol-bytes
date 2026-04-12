@@ -1,10 +1,10 @@
-use core::{
-  borrow::Borrow,
-  ops::RangeBounds,
-  str,
-};
+use core::{borrow::Borrow, ops::RangeBounds, str};
 
-use super::{buffer::Buffer, error::*, utf8_buf::{Utf8Buf, Utf8BufMut}};
+use super::{
+  buffer::Buffer,
+  error::*,
+  utf8_buf::{Utf8Buf, Utf8BufMut},
+};
 
 mod cmp;
 mod fmt;
@@ -23,26 +23,42 @@ mod serde;
 #[cfg(feature = "pyo3")]
 mod python;
 
-/// A UTF-8 validated wrapper around [`Buffer`] that provides a String-like interface.
-///
-/// `Utf8Buffer` guarantees that its contents are always valid UTF-8, making it safe
-/// to use string operations without additional validation. It provides methods for
-/// splitting on character boundaries and ensures all operations maintain UTF-8 validity.
-///
-/// # Examples
-///
-/// ```
-/// use smol_bytes::Utf8Buffer;
-///
-/// let mut buf = Utf8Buffer::new();
-/// buf.push_str("Hello");
-/// buf.push(' ');
-/// buf.push_str("world!");
-///
-/// assert_eq!(buf.as_str(), "Hello world!");
-/// ```
+#[cfg(feature = "wasm")]
+mod wasm;
+
+#[doc = "UTF-8 validated wrapper around `Buffer` with a String-like interface."]
+#[doc = ""]
+#[doc = "Guarantees valid UTF-8. Split/slice operations check char boundaries."]
+#[doc = "Fixed inline capacity of 62 bytes."]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "# Examples")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "```")]
+#[cfg_attr(not(feature = "wasm"), doc = "use smol_bytes::Utf8Buffer;")]
+#[cfg_attr(not(feature = "wasm"), doc = "")]
+#[cfg_attr(not(feature = "wasm"), doc = "let mut buf = Utf8Buffer::new();")]
+#[cfg_attr(not(feature = "wasm"), doc = "buf.push_str(\"Hello\");")]
+#[cfg_attr(not(feature = "wasm"), doc = "buf.push(' ');")]
+#[cfg_attr(not(feature = "wasm"), doc = "buf.push_str(\"world!\");")]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = "assert_eq!(buf.as_str(), \"Hello world!\");"
+)]
+#[cfg_attr(not(feature = "wasm"), doc = "```")]
+#[cfg_attr(feature = "wasm", doc = "")]
+#[cfg_attr(feature = "wasm", doc = "@example")]
+#[cfg_attr(feature = "wasm", doc = "```typescript")]
+#[cfg_attr(feature = "wasm", doc = "import { Utf8Buffer } from 'smol-bytes';")]
+#[cfg_attr(feature = "wasm", doc = "const buf = new Utf8Buffer();")]
+#[cfg_attr(feature = "wasm", doc = "buf.pushStr('hello world');")]
+#[cfg_attr(
+  feature = "wasm",
+  doc = "console.log(buf.toString()); // 'hello world'"
+)]
+#[cfg_attr(feature = "wasm", doc = "```")]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
+#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass(skip_from_py_object))]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Utf8Buffer {
   inner: Buffer,
 }
@@ -72,15 +88,46 @@ impl Utf8Buffer {
     }
   }
 
+  /// Creates a `Utf8Buffer` from a static string slice.
+  ///
+  /// Unlike [`Utf8Bytes::from_static`](crate::Utf8Bytes::from_static),
+  /// this method **copies** the bytes into the inline buffer — `Utf8Buffer`
+  /// has no heap variant. It exists as a const constructor for parity.
+  ///
+  /// # Panics
+  ///
+  /// Panics at compile time (via `const` assertion) if `s.len() > 62`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// const GREETING: Utf8Buffer = Utf8Buffer::from_static("hello");
+  /// assert_eq!(GREETING.as_str(), "hello");
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn from_static(s: &'static str) -> Self {
+    let bytes = s.as_bytes();
+    assert!(
+      bytes.len() <= crate::INLINE_CAP,
+      "string too large for Utf8Buffer inline capacity"
+    );
+    // SAFETY: length checked against INLINE_CAP above; input is already valid UTF-8.
+    Self {
+      inner: unsafe { Buffer::copy_from_slice(bytes) },
+    }
+  }
+
   /// Returns a reference to the inner `Buffer`.
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn as_buffer(&self) -> &Buffer {
+  pub const fn as_inner(&self) -> &Buffer {
     &self.inner
   }
 
   /// Consumes `self` and returns the inner `Buffer`.
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub const fn into_buffer(self) -> Buffer {
+  pub const fn into_inner(self) -> Buffer {
     self.inner
   }
 
@@ -130,7 +177,18 @@ impl Utf8Buffer {
     self.inner.is_empty()
   }
 
-  /// Returns the number of remaining bytes.
+  /// Returns the number of bytes stored in the buffer.
+  ///
+  /// This is equivalent to [`len`](Self::len).
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let buf = Utf8Buffer::from("hi");
+  /// assert_eq!(buf.remaining(), 2);
+  /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn remaining(&self) -> usize {
     self.inner.remaining()
@@ -144,9 +202,15 @@ impl Utf8Buffer {
 
   /// Appends a character to the buffer.
   ///
+  /// `Utf8Buffer` is backed by a fixed 62-byte inline [`Buffer`]; this
+  /// method panics when the character would not fit. Use [`try_push`]
+  /// for a fallible variant.
+  ///
+  /// [`try_push`]: Self::try_push
+  ///
   /// # Panics
   ///
-  /// Panics if there is not enough capacity to hold the character.
+  /// Panics if the buffer's remaining capacity is less than `ch.len_utf8()`.
   ///
   /// # Examples
   ///
@@ -155,8 +219,8 @@ impl Utf8Buffer {
   ///
   /// let mut buf = Utf8Buffer::new();
   /// buf.push('a');
-  /// buf.push('b');
-  /// assert_eq!(buf.as_str(), "ab");
+  /// buf.push('é'); // 2-byte char
+  /// assert_eq!(buf.as_str(), "aé");
   /// ```
   pub fn push(&mut self, ch: char) {
     let mut buf = [0u8; 4];
@@ -166,9 +230,15 @@ impl Utf8Buffer {
 
   /// Appends a string slice to the buffer.
   ///
+  /// `Utf8Buffer` is backed by a fixed 62-byte inline [`Buffer`]; this
+  /// method panics when the string would not fit. Use [`try_push_str`]
+  /// for a fallible variant.
+  ///
+  /// [`try_push_str`]: Self::try_push_str
+  ///
   /// # Panics
   ///
-  /// Panics if there is not enough capacity to hold the string.
+  /// Panics if the buffer's remaining capacity is less than `s.len()`.
   ///
   /// # Examples
   ///
@@ -187,7 +257,19 @@ impl Utf8Buffer {
   ///
   /// # Errors
   ///
-  /// Returns an error if there is not enough capacity.
+  /// Returns [`TryPutError`] if the buffer's remaining capacity is less
+  /// than `ch.len_utf8()`. On error the buffer is unchanged.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut buf = Utf8Buffer::from("a".repeat(60).as_str());
+  /// assert!(buf.try_push('a').is_ok());        // 61 bytes
+  /// assert!(buf.try_push('a').is_ok());        // 62 bytes
+  /// assert!(buf.try_push('a').is_err());       // full
+  /// ```
   pub fn try_push(&mut self, ch: char) -> Result<(), TryPutError> {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);
@@ -198,7 +280,18 @@ impl Utf8Buffer {
   ///
   /// # Errors
   ///
-  /// Returns an error if there is not enough capacity.
+  /// Returns [`TryPutError`] if the buffer's remaining capacity is less
+  /// than `s.len()`. On error the buffer is unchanged.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut buf = Utf8Buffer::new();
+  /// assert!(buf.try_push_str("hello").is_ok());
+  /// assert_eq!(buf.as_str(), "hello");
+  /// ```
   pub fn try_push_str(&mut self, s: &str) -> Result<(), TryPutError> {
     self.inner.try_put_slice(s.as_bytes())
   }
@@ -215,11 +308,104 @@ impl Utf8Buffer {
   /// Panics if `new_len` does not lie on a UTF-8 character boundary.
   pub fn truncate(&mut self, new_len: usize) {
     if new_len < self.len() {
-      assert!(self.as_str().is_char_boundary(new_len), "new_len must lie on a UTF-8 character boundary");
+      assert!(
+        self.as_str().is_char_boundary(new_len),
+        "new_len must lie on a UTF-8 character boundary"
+      );
     }
     self.inner.truncate(new_len);
   }
 
+  /// Splits the buffer at `at`, returning the head `[0, at)` and leaving
+  /// `self` with `[at, len)`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `at` is out of bounds or not on a UTF-8 character boundary.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut buf = Utf8Buffer::from("hello world");
+  /// let head = buf.split_to(5);
+  /// assert_eq!(head.as_str(), "hello");
+  /// assert_eq!(buf.as_str(), " world");
+  /// ```
+  pub fn split_to(&mut self, at: usize) -> Self {
+    <Self as Utf8Buf>::split_to(self, at)
+  }
+
+  /// Tries to split the buffer at `at`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`Utf8Error::InvalidCharBoundary`] if `at` is not on a
+  /// character boundary, or [`Utf8Error::OutOfBounds`] if `at > len`.
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+    <Self as Utf8Buf>::try_split_to(self, at)
+  }
+
+  /// Splits the buffer at `at`, returning the tail `[at, len)` and leaving
+  /// `self` with `[0, at)`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `at` is out of bounds or not on a UTF-8 character boundary.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut buf = Utf8Buffer::from("hello world");
+  /// let tail = buf.split_off(6);
+  /// assert_eq!(buf.as_str(), "hello ");
+  /// assert_eq!(tail.as_str(), "world");
+  /// ```
+  pub fn split_off(&mut self, at: usize) -> Self {
+    <Self as Utf8Buf>::split_off(self, at)
+  }
+
+  /// Tries to split the buffer at `at`, returning the tail.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`Utf8Error::InvalidCharBoundary`] if `at` is not on a
+  /// character boundary, or [`Utf8Error::OutOfBounds`] if `at > len`.
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+    <Self as Utf8Buf>::try_split_off(self, at)
+  }
+
+  /// Returns a copy of a sub-range of the buffer.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is out of bounds or not on UTF-8 character boundaries.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let buf = Utf8Buffer::from("hello world");
+  /// let slice = buf.slice(0..5);
+  /// assert_eq!(slice.as_str(), "hello");
+  /// ```
+  pub fn slice(&self, range: impl core::ops::RangeBounds<usize>) -> Self {
+    <Self as Utf8Buf>::slice(self, range)
+  }
+
+  /// Tries to return a copy of a sub-range of the buffer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`Utf8Error`] if the range is out of bounds or not on
+  /// character boundaries.
+  pub fn try_slice(&self, range: impl core::ops::RangeBounds<usize>) -> Result<Self, Utf8Error> {
+    <Self as Utf8Buf>::try_slice(self, range)
+  }
 }
 
 impl AsRef<str> for Utf8Buffer {
@@ -265,7 +451,10 @@ impl Utf8Buf for Utf8Buffer {
     self.validate_char_boundary(at)?;
 
     Ok(Self {
-      inner: self.inner.try_split_off(at).expect("already checked bounds"),
+      inner: self
+        .inner
+        .try_split_off(at)
+        .expect("already checked bounds"),
     })
   }
 
@@ -273,7 +462,10 @@ impl Utf8Buf for Utf8Buffer {
     let (start, end) = self.range_bounds_to_start_end(range)?;
 
     Ok(Self {
-      inner: self.inner.try_slice(start..end).expect("already checked bounds"),
+      inner: self
+        .inner
+        .try_slice(start..end)
+        .expect("already checked bounds"),
     })
   }
 }

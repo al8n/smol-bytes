@@ -901,4 +901,12 @@ impl BytesMut {
   fn __python_make_heap(&mut self) {
     self.make_heap();
   }
+
+  /// Support pickling via `pickle.dumps` / `pickle.loads`.
+  fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyBytes>,))> {
+    let cls = py.get_type::<Self>();
+    let from_bytes = cls.getattr("from_bytes")?;
+    let data = PyBytes::new(py, slf.as_ref());
+    Ok((from_bytes.unbind(), (data.unbind(),)))
+  }
 }

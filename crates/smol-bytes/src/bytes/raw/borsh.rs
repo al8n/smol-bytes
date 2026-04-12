@@ -1,5 +1,7 @@
 use crate::buffer::Buffer;
 
+use std::vec;
+
 use super::{ImmutableStorage, RawBytes, INLINE_CAP};
 use borsh::io::{Read, Write};
 use borsh::{BorshDeserialize, BorshSerialize};

@@ -1,6 +1,14 @@
+use std::{
+  boxed::Box,
+  string::{String, ToString},
+};
+
 use super::*;
 
-impl ::quickcheck::Arbitrary for Utf8Bytes {
+impl<S: 'static> ::quickcheck::Arbitrary for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
   fn arbitrary(g: &mut ::quickcheck::Gen) -> Self {
     let s = String::arbitrary(g);
     Self::from(s)

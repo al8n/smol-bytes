@@ -8,10 +8,12 @@ impl<'a> TryFrom<&'a Buffer> for &'a str {
   }
 }
 
-impl TryFrom<Buffer> for String {
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl TryFrom<Buffer> for std::string::String {
   type Error = core::str::Utf8Error;
 
   fn try_from(value: Buffer) -> Result<Self, Self::Error> {
+    use std::string::ToString;
     let s = core::str::from_utf8(value.as_slice())?;
     Ok(s.to_string())
   }

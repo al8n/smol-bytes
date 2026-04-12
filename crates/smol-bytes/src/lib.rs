@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]
+#![warn(unsafe_op_in_unsafe_fn)]
 
 //! High-performance, clone-efficient byte buffers optimized for small data.
 //!
@@ -64,6 +65,36 @@
 //! let token2 = Token::Identifier(id.clone()); // Fast inline clone
 //! ```
 //!
+//! # UTF-8 String Wrappers
+//!
+//! Three string-flavored wrappers guarantee their contents are valid
+//! UTF-8 and expose a `String`-like interface with char-boundary checked
+//! splits and slices. Pick based on the mutability and storage model you
+//! need:
+//!
+//! | Wrapper | Backing | Mutable? | Heap? | Use when |
+//! |---|---|---|---|---|
+//! | [`Utf8Buffer`] | [`Buffer`] | yes (push) | **no** — 62-byte cap | Tokens / small identifiers; push panics/errors on overflow |
+//! | [`Utf8Bytes`] | [`shared::Bytes`] | no | yes | Shared, cloneable string slices; cheap refcount clones |
+//! | [`Utf8BytesMut`] | [`BytesMut`] | yes | yes | Building up strings dynamically, splitting, unsplitting |
+//!
+//! All three implement [`Deref<Target = str>`](core::ops::Deref), so
+//! standard `&str` methods are available directly. They also implement
+//! the [`Utf8Buf`] / [`Utf8BufMut`] traits, which provide
+//! char-boundary-checked split and slice operations:
+//!
+//! ```rust
+//! use smol_bytes::{Utf8Buf, Utf8Bytes};
+//!
+//! let mut s = Utf8Bytes::from("café €uro");
+//! let head = s.split_to(5);          // "café" (2-byte 'é' is on a boundary)
+//! assert_eq!(head.as_str(), "café");
+//! assert_eq!(s.as_str(), " €uro");
+//! ```
+//!
+//! Splitting in the middle of a multi-byte character panics (or returns
+//! `Utf8Error::InvalidCharBoundary` for the `try_*` variants).
+//!
 //! # FFI-Friendly
 //!
 //! Minimal allocations make this crate ideal for FFI boundaries:
@@ -101,18 +132,18 @@ pub(crate) use bytes::strategy;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use bytes_mut::BytesMut;
 
-// #[cfg(any(feature = "std", feature = "alloc"))]
-// #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-// pub use utf8_bytes::Utf8Bytes;
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use bytes::strategy::shared::Utf8Bytes;
 
-// #[cfg(any(feature = "std", feature = "alloc"))]
-// #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-// pub use utf8_bytes_mut::Utf8BytesMut;
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use utf8_bytes_mut::Utf8BytesMut;
 
 pub use buffer::{Buffer, INLINE_CAP};
-// pub use utf8_buffer::Utf8Buffer;
 pub use error::*;
-// pub use utf8_buf::{Utf8Buf, Utf8BufMut};
+pub use utf8_buf::{Utf8Buf, Utf8BufMut};
+pub use utf8_buffer::Utf8Buffer;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
@@ -123,15 +154,22 @@ mod bytes_mut;
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
 mod python;
 
+#[cfg(feature = "wasm")]
+mod wasm_iter;
+
+#[cfg(feature = "pyo3")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
+pub use python::{register_classes, register_compact, register_shared};
+
 mod buffer;
 
-// mod utf8_buf;
-// mod utf8_buffer;
+mod utf8_buf;
+mod utf8_buffer;
 
-// #[cfg(any(feature = "std", feature = "alloc"))]
-// mod utf8_bytes;
-// #[cfg(any(feature = "std", feature = "alloc"))]
-// mod utf8_bytes_mut;
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod utf8_bytes;
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod utf8_bytes_mut;
 
 mod macros;
 

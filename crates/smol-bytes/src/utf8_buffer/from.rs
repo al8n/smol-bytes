@@ -1,3 +1,6 @@
+#[cfg(any(feature = "std", feature = "alloc"))]
+use std::string::ToString;
+
 use super::*;
 
 impl From<&str> for Utf8Buffer {
@@ -29,6 +32,17 @@ impl TryFrom<Buffer> for Utf8Buffer {
     // Validate UTF-8
     core::str::from_utf8(buffer.as_slice())?;
     Ok(Self { inner: buffer })
+  }
+}
+
+impl TryFrom<&[u8]> for Utf8Buffer {
+  type Error = FromBytesError;
+
+  /// Creates a `Utf8Buffer` from a byte slice, validating UTF-8 and
+  /// checking inline capacity.
+  fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+    let s = core::str::from_utf8(bytes)?;
+    Ok(Self::try_from_str(s)?)
   }
 }
 

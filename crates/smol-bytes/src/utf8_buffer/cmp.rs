@@ -105,3 +105,45 @@ impl core::hash::Hash for Utf8Buffer {
     self.as_str().hash(state);
   }
 }
+
+// Cross-type equality with the heap-capable wrappers. Gated because
+// `Utf8Bytes` and `Utf8BytesMut` require `std` or `alloc`.
+#[cfg(any(feature = "std", feature = "alloc"))]
+const _: () = {
+  use crate::bytes::{strategy::ImmutableStorage, RawBytes};
+  use crate::Utf8BytesMut;
+
+  impl<S> PartialEq<crate::utf8_bytes::Utf8Bytes<S>> for Utf8Buffer
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn eq(&self, other: &crate::utf8_bytes::Utf8Bytes<S>) -> bool {
+      self.as_str() == other.as_str()
+    }
+  }
+
+  impl<S> PartialEq<Utf8Buffer> for crate::utf8_bytes::Utf8Bytes<S>
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn eq(&self, other: &Utf8Buffer) -> bool {
+      self.as_str() == other.as_str()
+    }
+  }
+
+  impl PartialEq<Utf8BytesMut> for Utf8Buffer {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn eq(&self, other: &Utf8BytesMut) -> bool {
+      self.as_str() == other.as_str()
+    }
+  }
+
+  impl PartialEq<Utf8Buffer> for Utf8BytesMut {
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn eq(&self, other: &Utf8Buffer) -> bool {
+      self.as_str() == other.as_str()
+    }
+  }
+};
