@@ -725,30 +725,12 @@ impl PySharedBytes {
     view: *mut pyo3::ffi::Py_buffer,
     flags: ::std::os::raw::c_int,
   ) -> PyResult<()> {
-    use pyo3::exceptions::PyBufferError;
-    use std::ffi::c_void;
-
-    if view.is_null() {
-      return Err(PyBufferError::new_err("view is null"));
+    let py = slf.py();
+    let snapshot = PyBytes::new(py, slf.as_ref());
+    if unsafe { pyo3::ffi::PyObject_GetBuffer(snapshot.as_ptr(), view, flags) } == 0 {
+      Ok(())
+    } else {
+      Err(PyErr::fetch(py))
     }
-    if flags & pyo3::ffi::PyBUF_WRITABLE != 0 {
-      return Err(PyBufferError::new_err("buffer is read-only"));
-    }
-
-    let slice: &[u8] = slf.as_ref();
-    unsafe {
-      (*view).buf = slice.as_ptr() as *mut c_void;
-      (*view).len = slice.len() as isize;
-      (*view).itemsize = 1;
-      (*view).ndim = 1;
-      (*view).format = c"B".as_ptr().cast_mut();
-      (*view).shape = &mut (*view).len;
-      (*view).strides = &mut (*view).itemsize;
-      (*view).suboffsets = std::ptr::null_mut();
-      (*view).readonly = 1;
-      (*view).obj = pyo3::ffi::Py_NewRef(slf.as_ptr());
-      (*view).internal = std::ptr::null_mut();
-    }
-    Ok(())
   }
 }

@@ -12,7 +12,6 @@
  */
 export class Buffer {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(Buffer.prototype);
         obj.__wbg_ptr = ptr;
         BufferFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -345,7 +344,7 @@ export class Buffer {
      */
     constructor() {
         const ret = wasm.buffer_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         BufferFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -595,7 +594,6 @@ if (Symbol.dispose) Buffer.prototype[Symbol.dispose] = Buffer.prototype.free;
  */
 export class ByteIterator {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(ByteIterator.prototype);
         obj.__wbg_ptr = ptr;
         ByteIteratorFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -641,7 +639,6 @@ if (Symbol.dispose) ByteIterator.prototype[Symbol.dispose] = ByteIterator.protot
  */
 export class BytesMut {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(BytesMut.prototype);
         obj.__wbg_ptr = ptr;
         BytesMutFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -990,7 +987,7 @@ export class BytesMut {
      */
     constructor() {
         const ret = wasm.bytesmut_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         BytesMutFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -1268,7 +1265,6 @@ if (Symbol.dispose) BytesMut.prototype[Symbol.dispose] = BytesMut.prototype.free
  */
 export class CharIterator {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(CharIterator.prototype);
         obj.__wbg_ptr = ptr;
         CharIteratorFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -1306,7 +1302,6 @@ if (Symbol.dispose) CharIterator.prototype[Symbol.dispose] = CharIterator.protot
  */
 export class CompactBytes {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(CompactBytes.prototype);
         obj.__wbg_ptr = ptr;
         CompactBytesFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -1660,7 +1655,7 @@ export class CompactBytes {
      */
     constructor() {
         const ret = wasm.compactbytes_new();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         CompactBytesFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -1768,7 +1763,6 @@ if (Symbol.dispose) CompactBytes.prototype[Symbol.dispose] = CompactBytes.protot
  */
 export class CompactUtf8Bytes {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(CompactUtf8Bytes.prototype);
         obj.__wbg_ptr = ptr;
         CompactUtf8BytesFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -1787,7 +1781,7 @@ export class CompactUtf8Bytes {
     /**
      * Advance the read cursor by `cnt` bytes.
      *
-     * @throws {Error} If `cnt` exceeds the number of remaining bytes.
+     * @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
      * @param {number} cnt
      */
     advance(cnt) {
@@ -1869,7 +1863,7 @@ export class CompactUtf8Bytes {
      */
     constructor() {
         const ret = wasm.compactutf8bytes_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         CompactUtf8BytesFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -1963,7 +1957,6 @@ if (Symbol.dispose) CompactUtf8Bytes.prototype[Symbol.dispose] = CompactUtf8Byte
  */
 export class SharedBytes {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(SharedBytes.prototype);
         obj.__wbg_ptr = ptr;
         SharedBytesFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -2317,7 +2310,7 @@ export class SharedBytes {
      */
     constructor() {
         const ret = wasm.sharedbytes_new();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         SharedBytesFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -2434,7 +2427,6 @@ if (Symbol.dispose) SharedBytes.prototype[Symbol.dispose] = SharedBytes.prototyp
  */
 export class Utf8Buffer {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(Utf8Buffer.prototype);
         obj.__wbg_ptr = ptr;
         Utf8BufferFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -2512,7 +2504,7 @@ export class Utf8Buffer {
      */
     constructor() {
         const ret = wasm.utf8buffer_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         Utf8BufferFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -2640,7 +2632,6 @@ if (Symbol.dispose) Utf8Buffer.prototype[Symbol.dispose] = Utf8Buffer.prototype.
  */
 export class Utf8Bytes {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(Utf8Bytes.prototype);
         obj.__wbg_ptr = ptr;
         Utf8BytesFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -2659,7 +2650,7 @@ export class Utf8Bytes {
     /**
      * Advance the read cursor by `cnt` bytes.
      *
-     * @throws {Error} If `cnt` exceeds the number of remaining bytes.
+     * @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
      * @param {number} cnt
      */
     advance(cnt) {
@@ -2741,7 +2732,7 @@ export class Utf8Bytes {
      */
     constructor() {
         const ret = wasm.utf8bytes_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         Utf8BytesFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -2842,7 +2833,6 @@ if (Symbol.dispose) Utf8Bytes.prototype[Symbol.dispose] = Utf8Bytes.prototype.fr
  */
 export class Utf8BytesMut {
     static __wrap(ptr) {
-        ptr = ptr >>> 0;
         const obj = Object.create(Utf8BytesMut.prototype);
         obj.__wbg_ptr = ptr;
         Utf8BytesMutFinalization.register(obj, obj.__wbg_ptr, obj);
@@ -2932,7 +2922,7 @@ export class Utf8BytesMut {
      */
     constructor() {
         const ret = wasm.utf8bytesmut_new_wasm();
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         Utf8BytesMutFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -3081,18 +3071,18 @@ export class Utf8BytesMut {
     }
 }
 if (Symbol.dispose) Utf8BytesMut.prototype[Symbol.dispose] = Utf8BytesMut.prototype.free;
-export function __wbg_Error_2e59b1b37a9a34c3(arg0, arg1) {
+export function __wbg_Error_92b29b0548f8b746(arg0, arg1) {
     const ret = Error(getStringFromWasm0(arg0, arg1));
     return ret;
 }
-export function __wbg___wbindgen_throw_81fc77679af83bc6(arg0, arg1) {
+export function __wbg___wbindgen_throw_344f42d3211c4765(arg0, arg1) {
     throw new Error(getStringFromWasm0(arg0, arg1));
 }
-export function __wbg_new_4f9fafbb3909af72() {
+export function __wbg_new_da52cf8fe3429cb2() {
     const ret = new Object();
     return ret;
 }
-export function __wbg_set_8ee2d34facb8466e() { return handleError(function (arg0, arg1, arg2) {
+export function __wbg_set_8535240470bf2500() { return handleError(function (arg0, arg1, arg2) {
     const ret = Reflect.set(arg0, arg1, arg2);
     return ret;
 }, arguments); }
@@ -3117,34 +3107,34 @@ export function __wbindgen_init_externref_table() {
 }
 const BufferFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_buffer_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_buffer_free(ptr, 1));
 const ByteIteratorFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_byteiterator_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_byteiterator_free(ptr, 1));
 const BytesMutFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_bytesmut_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_bytesmut_free(ptr, 1));
 const CharIteratorFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_chariterator_free(ptr >>> 0, 1));
-const Utf8BufferFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_utf8buffer_free(ptr >>> 0, 1));
-const Utf8BytesMutFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_utf8bytesmut_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_chariterator_free(ptr, 1));
 const CompactBytesFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_compactbytes_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_compactbytes_free(ptr, 1));
 const CompactUtf8BytesFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_compactutf8bytes_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_compactutf8bytes_free(ptr, 1));
 const SharedBytesFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_sharedbytes_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_sharedbytes_free(ptr, 1));
+const Utf8BufferFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_utf8buffer_free(ptr, 1));
 const Utf8BytesFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_utf8bytes_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_utf8bytes_free(ptr, 1));
+const Utf8BytesMutFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_utf8bytesmut_free(ptr, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();
@@ -3164,8 +3154,7 @@ function getArrayU8FromWasm0(ptr, len) {
 }
 
 function getStringFromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return decodeText(ptr, len);
+    return decodeText(ptr >>> 0, len);
 }
 
 let cachedUint8ArrayMemory0 = null;

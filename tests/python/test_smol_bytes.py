@@ -1,6 +1,7 @@
 """Comprehensive pytest suite for the smol-bytes pyo3 bindings."""
 
 import copy
+import gc
 import pickle
 import struct
 
@@ -13,6 +14,7 @@ import pytest
 from smol_bytes import Buffer, BytesMut, Utf8Buffer, Utf8Bytes, Utf8BytesMut
 from smol_bytes.shared import Bytes as SharedBytes
 from smol_bytes.compact import Bytes as CompactBytes
+from smol_bytes.compact import Utf8Bytes as CompactUtf8Bytes
 
 
 class TestImportPaths:
@@ -250,6 +252,60 @@ class TestBasicOperations:
     )
     def test_bool_nonempty_is_true(self, make_buf):
         assert bool(make_buf())
+
+
+@pytest.mark.parametrize(
+    "bytes_type",
+    [SharedBytes, CompactBytes],
+    ids=["shared.Bytes", "compact.Bytes"],
+)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda owner: owner.advance(17), id="advance"),
+        pytest.param(lambda owner: owner.clear(), id="clear"),
+        pytest.param(lambda owner: owner.split_to(31), id="split_to"),
+        pytest.param(lambda owner: owner.split_off(31), id="split_off"),
+        pytest.param(lambda owner: owner.get_u64_le(), id="get_u64_le"),
+        pytest.param(lambda owner: owner.get_uint(7), id="get_uint"),
+    ],
+)
+def test_memoryview_remains_snapshot_after_owner_mutation(bytes_type, mutation):
+    original = bytes(range(96))
+    owner = bytes_type.from_bytes(original)
+    view = memoryview(owner)
+
+    assert type(view.obj) is bytes
+    assert view.obj is not owner
+    assert view.obj is not original
+    assert view.obj == original
+    snapshot_id = id(view.obj)
+
+    returned = mutation(owner)
+    del owner
+    del returned
+
+    for value in range(64):
+        allocation = bytes_type.from_bytes(bytes([value]) * len(original))
+        del allocation
+    gc.collect()
+
+    assert bytes(view) == original
+    assert view[0] == original[0]
+    assert view[-1] == original[-1]
+    assert bytes(view[11:37]) == original[11:37]
+    assert view.readonly is True
+    assert view.format == "B"
+    assert view.itemsize == 1
+    assert view.ndim == 1
+    assert view.shape == (len(original),)
+    assert view.strides == (1,)
+    assert view.c_contiguous is True
+    assert type(view.obj) is bytes
+    assert id(view.obj) == snapshot_id
+    assert view.obj == original
+    with pytest.raises(TypeError):
+        view[0] = 255
 
 
 # ---------------------------------------------------------------------------
@@ -970,6 +1026,48 @@ class TestMultibyteUtf8:
         raw = bytes(buf)
         assert raw == "\u00e9\U0001f980".encode("utf-8")
         assert len(raw) == 6  # 2 + 4
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Utf8Buffer.from_str("\u00e9x"),
+            lambda: Utf8Bytes.from_str("\u00e9x"),
+            lambda: CompactUtf8Bytes.from_str("\u00e9x"),
+            lambda: Utf8BytesMut.from_str("\u00e9x"),
+        ],
+        ids=["Utf8Buffer", "Utf8Bytes", "CompactUtf8Bytes", "Utf8BytesMut"],
+    )
+    def test_byte_advance_requires_char_boundary(self, make_buf):
+        buf = make_buf()
+
+        with pytest.raises(BufferError, match="UTF-8 character boundary"):
+            buf.advance(1)
+
+        assert str(buf) == "\u00e9x"
+        buf.advance(2)
+        assert str(buf) == "x"
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Utf8Buffer.from_str("\u00e9x"),
+            lambda: Utf8Bytes.from_str("\u00e9x"),
+            lambda: CompactUtf8Bytes.from_str("\u00e9x"),
+            lambda: Utf8BytesMut.from_str("\u00e9x"),
+        ],
+        ids=["Utf8Buffer", "Utf8Bytes", "CompactUtf8Bytes", "Utf8BytesMut"],
+    )
+    def test_numeric_reads_require_char_boundary(self, make_buf):
+        buf = make_buf()
+
+        with pytest.raises(BufferError, match="UTF-8 character boundary"):
+            buf.get_u8()
+        with pytest.raises(BufferError, match="UTF-8 character boundary"):
+            buf.get_uint(1)
+
+        assert str(buf) == "\u00e9x"
+        assert buf.get_u16() == int.from_bytes("\u00e9".encode(), "big")
+        assert str(buf) == "x"
 
 
 # ---------------------------------------------------------------------------

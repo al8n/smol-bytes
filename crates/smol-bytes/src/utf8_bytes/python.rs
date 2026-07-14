@@ -337,7 +337,7 @@ impl PySharedUtf8Bytes {
   ///     cnt: Number of bytes to advance.
   ///
   /// Raises:
-  ///     BufferError: If trying to advance beyond available data.
+  ///     BufferError: If `cnt` exceeds available data or would end inside a UTF-8 character.
   #[pyo3(name = "advance")]
   fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
     use bytes::Buf;
@@ -348,11 +348,15 @@ impl PySharedUtf8Bytes {
         self.inner.as_inner().remaining()
       )));
     }
+    crate::python::validate_utf8_advance(self, cnt)?;
     self.inner.inner.advance(cnt);
     Ok(())
   }
 
   /// Read an unsigned 8-bit integer from the underlying bytes.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_u8")]
   fn __python_get_u8(&mut self) -> PyResult<u8> {
     use bytes::Buf;
@@ -361,10 +365,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u8",
       ));
     }
+    crate::python::validate_utf8_advance(self, 1)?;
     Ok(self.inner.inner.get_u8())
   }
 
   /// Read a signed 8-bit integer from the underlying bytes.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_i8")]
   fn __python_get_i8(&mut self) -> PyResult<i8> {
     use bytes::Buf;
@@ -373,10 +381,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i8",
       ));
     }
+    crate::python::validate_utf8_advance(self, 1)?;
     Ok(self.inner.inner.get_i8())
   }
 
   /// Read an unsigned 16-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16")]
   fn __python_get_u16(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -385,10 +397,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_u16())
   }
 
   /// Read an unsigned 16-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16_le")]
   fn __python_get_u16_le(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -397,10 +413,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_u16_le())
   }
 
   /// Read a signed 16-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16")]
   fn __python_get_i16(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -409,10 +429,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_i16())
   }
 
   /// Read a signed 16-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16_le")]
   fn __python_get_i16_le(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -421,10 +445,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_i16_le())
   }
 
   /// Read an unsigned 32-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32")]
   fn __python_get_u32(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -433,10 +461,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_u32())
   }
 
   /// Read an unsigned 32-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32_le")]
   fn __python_get_u32_le(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -445,10 +477,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_u32_le())
   }
 
   /// Read a signed 32-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32")]
   fn __python_get_i32(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -457,10 +493,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_i32())
   }
 
   /// Read a signed 32-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32_le")]
   fn __python_get_i32_le(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -469,10 +509,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_i32_le())
   }
 
   /// Read an unsigned 64-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64")]
   fn __python_get_u64(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -481,10 +525,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_u64())
   }
 
   /// Read an unsigned 64-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64_le")]
   fn __python_get_u64_le(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -493,10 +541,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_u64_le())
   }
 
   /// Read a signed 64-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64")]
   fn __python_get_i64(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -505,10 +557,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_i64())
   }
 
   /// Read a signed 64-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64_le")]
   fn __python_get_i64_le(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -517,10 +573,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_i64_le())
   }
 
   /// Read an unsigned 128-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128")]
   fn __python_get_u128(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -529,10 +589,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_u128())
   }
 
   /// Read an unsigned 128-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128_le")]
   fn __python_get_u128_le(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -541,10 +605,14 @@ impl PySharedUtf8Bytes {
         "not enough data for u128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_u128_le())
   }
 
   /// Read a signed 128-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128")]
   fn __python_get_i128(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -553,10 +621,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_i128())
   }
 
   /// Read a signed 128-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128_le")]
   fn __python_get_i128_le(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -565,10 +637,14 @@ impl PySharedUtf8Bytes {
         "not enough data for i128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_i128_le())
   }
 
   /// Read a 32-bit floating point number in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32")]
   fn __python_get_f32(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -577,10 +653,14 @@ impl PySharedUtf8Bytes {
         "not enough data for f32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_f32())
   }
 
   /// Read a 32-bit floating point number in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32_le")]
   fn __python_get_f32_le(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -589,10 +669,14 @@ impl PySharedUtf8Bytes {
         "not enough data for f32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_f32_le())
   }
 
   /// Read a 64-bit floating point number in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64")]
   fn __python_get_f64(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -601,10 +685,14 @@ impl PySharedUtf8Bytes {
         "not enough data for f64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_f64())
   }
 
   /// Read a 64-bit floating point number in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64_le")]
   fn __python_get_f64_le(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -613,10 +701,14 @@ impl PySharedUtf8Bytes {
         "not enough data for f64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_f64_le())
   }
 
   /// Read an unsigned integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint")]
   fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
     use bytes::Buf;
@@ -625,10 +717,14 @@ impl PySharedUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_uint(nbytes))
   }
 
   /// Read an unsigned integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint_le")]
   fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
     use bytes::Buf;
@@ -637,10 +733,14 @@ impl PySharedUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_uint_le(nbytes))
   }
 
   /// Read a signed integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int")]
   fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
     use bytes::Buf;
@@ -649,10 +749,14 @@ impl PySharedUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_int(nbytes))
   }
 
   /// Read a signed integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
     use bytes::Buf;
@@ -661,6 +765,7 @@ impl PySharedUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_int_le(nbytes))
   }
 }
@@ -964,7 +1069,7 @@ impl PyCompactUtf8Bytes {
   ///     cnt: Number of bytes to advance.
   ///
   /// Raises:
-  ///     BufferError: If trying to advance beyond available data.
+  ///     BufferError: If `cnt` exceeds available data or would end inside a UTF-8 character.
   #[pyo3(name = "advance")]
   fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
     use bytes::Buf;
@@ -975,11 +1080,15 @@ impl PyCompactUtf8Bytes {
         self.inner.as_inner().remaining()
       )));
     }
+    crate::python::validate_utf8_advance(self, cnt)?;
     self.inner.inner.advance(cnt);
     Ok(())
   }
 
   /// Read an unsigned 8-bit integer from the underlying bytes.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_u8")]
   fn __python_get_u8(&mut self) -> PyResult<u8> {
     use bytes::Buf;
@@ -988,10 +1097,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u8",
       ));
     }
+    crate::python::validate_utf8_advance(self, 1)?;
     Ok(self.inner.inner.get_u8())
   }
 
   /// Read a signed 8-bit integer from the underlying bytes.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_i8")]
   fn __python_get_i8(&mut self) -> PyResult<i8> {
     use bytes::Buf;
@@ -1000,10 +1113,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i8",
       ));
     }
+    crate::python::validate_utf8_advance(self, 1)?;
     Ok(self.inner.inner.get_i8())
   }
 
   /// Read an unsigned 16-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16")]
   fn __python_get_u16(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -1012,10 +1129,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_u16())
   }
 
   /// Read an unsigned 16-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16_le")]
   fn __python_get_u16_le(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -1024,10 +1145,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_u16_le())
   }
 
   /// Read a signed 16-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16")]
   fn __python_get_i16(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -1036,10 +1161,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_i16())
   }
 
   /// Read a signed 16-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16_le")]
   fn __python_get_i16_le(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -1048,10 +1177,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i16",
       ));
     }
+    crate::python::validate_utf8_advance(self, 2)?;
     Ok(self.inner.inner.get_i16_le())
   }
 
   /// Read an unsigned 32-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32")]
   fn __python_get_u32(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -1060,10 +1193,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_u32())
   }
 
   /// Read an unsigned 32-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32_le")]
   fn __python_get_u32_le(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -1072,10 +1209,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_u32_le())
   }
 
   /// Read a signed 32-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32")]
   fn __python_get_i32(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -1084,10 +1225,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_i32())
   }
 
   /// Read a signed 32-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32_le")]
   fn __python_get_i32_le(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -1096,10 +1241,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_i32_le())
   }
 
   /// Read an unsigned 64-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64")]
   fn __python_get_u64(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -1108,10 +1257,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_u64())
   }
 
   /// Read an unsigned 64-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64_le")]
   fn __python_get_u64_le(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -1120,10 +1273,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_u64_le())
   }
 
   /// Read a signed 64-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64")]
   fn __python_get_i64(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -1132,10 +1289,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_i64())
   }
 
   /// Read a signed 64-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64_le")]
   fn __python_get_i64_le(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -1144,10 +1305,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_i64_le())
   }
 
   /// Read an unsigned 128-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128")]
   fn __python_get_u128(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -1156,10 +1321,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_u128())
   }
 
   /// Read an unsigned 128-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128_le")]
   fn __python_get_u128_le(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -1168,10 +1337,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for u128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_u128_le())
   }
 
   /// Read a signed 128-bit integer in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128")]
   fn __python_get_i128(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -1180,10 +1353,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_i128())
   }
 
   /// Read a signed 128-bit integer in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128_le")]
   fn __python_get_i128_le(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -1192,10 +1369,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for i128",
       ));
     }
+    crate::python::validate_utf8_advance(self, 16)?;
     Ok(self.inner.inner.get_i128_le())
   }
 
   /// Read a 32-bit floating point number in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32")]
   fn __python_get_f32(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -1204,10 +1385,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for f32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_f32())
   }
 
   /// Read a 32-bit floating point number in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32_le")]
   fn __python_get_f32_le(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -1216,10 +1401,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for f32",
       ));
     }
+    crate::python::validate_utf8_advance(self, 4)?;
     Ok(self.inner.inner.get_f32_le())
   }
 
   /// Read a 64-bit floating point number in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64")]
   fn __python_get_f64(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -1228,10 +1417,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for f64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_f64())
   }
 
   /// Read a 64-bit floating point number in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64_le")]
   fn __python_get_f64_le(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -1240,10 +1433,14 @@ impl PyCompactUtf8Bytes {
         "not enough data for f64",
       ));
     }
+    crate::python::validate_utf8_advance(self, 8)?;
     Ok(self.inner.inner.get_f64_le())
   }
 
   /// Read an unsigned integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint")]
   fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
     use bytes::Buf;
@@ -1252,10 +1449,14 @@ impl PyCompactUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_uint(nbytes))
   }
 
   /// Read an unsigned integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint_le")]
   fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
     use bytes::Buf;
@@ -1264,10 +1465,14 @@ impl PyCompactUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_uint_le(nbytes))
   }
 
   /// Read a signed integer spanning `nbytes` in big-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int")]
   fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
     use bytes::Buf;
@@ -1276,10 +1481,14 @@ impl PyCompactUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_int(nbytes))
   }
 
   /// Read a signed integer spanning `nbytes` in little-endian byte order.
+  ///
+  /// Raises:
+  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
     use bytes::Buf;
@@ -1288,6 +1497,7 @@ impl PyCompactUtf8Bytes {
         "not enough data or nbytes > 8",
       ));
     }
+    crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.inner.get_int_le(nbytes))
   }
 }

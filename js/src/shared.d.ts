@@ -208,7 +208,7 @@ export class Utf8Bytes {
     /**
      * Advance the read cursor by `cnt` bytes.
      *
-     * @throws {Error} If `cnt` exceeds the number of remaining bytes.
+     * @throws {Error} If `cnt` exceeds the number of remaining bytes or does not end on a UTF-8 character boundary.
      */
     advance(cnt: number): void;
     /**

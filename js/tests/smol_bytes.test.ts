@@ -10,6 +10,7 @@ import {
 } from '../src/index.js';
 import { Bytes as SharedBytes } from '../src/shared.js';
 import { Bytes as CompactBytes } from '../src/compact.js';
+import { Utf8Bytes as CompactUtf8Bytes } from '../src/compact.js';
 
 describe('imports', () => {
   test('all types are defined', () => {
@@ -129,6 +130,18 @@ describe('Utf8Bytes', () => {
     const s = Utf8Bytes.fromString('caf\u00e9');
     const bytes = s.toBytes();
     expect(bytes).toEqual(new TextEncoder().encode('caf\u00e9'));
+  });
+
+  test.each([
+    ['shared', () => Utf8Bytes.fromString('\u00e9x')],
+    ['compact', () => CompactUtf8Bytes.fromString('\u00e9x')],
+  ])('%s advance requires a character boundary', (_strategy, makeBytes) => {
+    const s = makeBytes();
+
+    expect(() => s.advance(1)).toThrow();
+    expect(s.toString()).toBe('\u00e9x');
+    s.advance(2);
+    expect(s.toString()).toBe('x');
   });
 });
 

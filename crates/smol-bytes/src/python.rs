@@ -13,6 +13,29 @@ use crate::{Buf, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetError};
 #[cfg(any(feature = "std", feature = "alloc"))]
 use crate::bytes::{self, RawBytes};
 
+/// Verifies that consuming `cnt` bytes from a UTF-8 wrapper preserves its
+/// validated-string invariant.
+pub(crate) fn validate_utf8_advance(value: &impl AsRef<str>, cnt: usize) -> PyResult<()> {
+  let value = value.as_ref();
+
+  if cnt > value.len() {
+    return Err(PyBufferError::new_err(format!(
+      "cannot advance past remaining: {} > {}",
+      cnt,
+      value.len()
+    )));
+  }
+
+  if !value.is_char_boundary(cnt) {
+    return Err(PyBufferError::new_err(format!(
+      "cannot advance to byte {}: not a UTF-8 character boundary",
+      cnt
+    )));
+  }
+
+  Ok(())
+}
+
 impl From<TryPutError> for PyErr {
   fn from(err: TryPutError) -> PyErr {
     PyBufferError::new_err(format!(
