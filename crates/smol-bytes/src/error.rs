@@ -1,3 +1,5 @@
+use core::ops::{Bound, RangeBounds};
+
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use bytes::TryGetError;
 
@@ -198,6 +200,35 @@ impl core::fmt::Display for RangeOutOfBounds {
 }
 
 impl core::error::Error for RangeOutOfBounds {}
+
+/// Normalizes a range against `len` without panicking on reversed or
+/// overflowing bounds.
+pub(crate) fn normalize_range(
+  range: impl RangeBounds<usize>,
+  len: usize,
+) -> Result<(usize, usize), RangeOutOfBounds> {
+  let start = match range.start_bound() {
+    Bound::Included(&n) => n,
+    Bound::Excluded(&n) => n
+      .checked_add(1)
+      .ok_or_else(|| RangeOutOfBounds::new(n, n, len))?,
+    Bound::Unbounded => 0,
+  };
+
+  let end = match range.end_bound() {
+    Bound::Included(&n) => n
+      .checked_add(1)
+      .ok_or_else(|| RangeOutOfBounds::new(start, n, len))?,
+    Bound::Excluded(&n) => n,
+    Bound::Unbounded => len,
+  };
+
+  if start > end || end > len {
+    return Err(RangeOutOfBounds::new(start, end, len));
+  }
+
+  Ok((start, end))
+}
 
 #[cfg(feature = "std")]
 impl From<RangeOutOfBounds> for std::io::Error {

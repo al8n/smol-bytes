@@ -702,7 +702,7 @@ impl Repr {
   fn ptr_eq(&self, other: &Self) -> bool {
     match (self, other) {
       (Self::Inline { .. }, Self::Inline { .. }) => false,
-      (Self::Heap(a), Self::Heap(b)) => a.as_ptr() == b.as_ptr(),
+      (Self::Heap(a), Self::Heap(b)) => a.len() == b.len() && a.as_ptr() == b.as_ptr(),
       _ => false,
     }
   }

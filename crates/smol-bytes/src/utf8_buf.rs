@@ -1,6 +1,6 @@
-use core::ops::{Bound, RangeBounds};
+use core::ops::RangeBounds;
 
-use super::error::Utf8Error;
+use super::error::{normalize_range, Utf8Error};
 
 /// Extension trait for UTF-8 validated buffer types.
 ///
@@ -105,26 +105,8 @@ pub trait Utf8Buf: AsRef<str> + Sized {
     range: impl RangeBounds<usize>,
   ) -> Result<(usize, usize), Utf8Error> {
     let len = self.len();
-
-    let start = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n
-        .checked_add(1)
-        .ok_or(Utf8Error::OutOfBounds { at: n, len })?,
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n
-        .checked_add(1)
-        .ok_or(Utf8Error::OutOfBounds { at: n, len })?,
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    if start > end || end > len {
-      return Err(Utf8Error::OutOfBounds { at: end, len });
-    }
+    let (start, end) =
+      normalize_range(range, len).map_err(|err| Utf8Error::OutOfBounds { at: err.end, len })?;
 
     let s = self.as_str();
     if !s.is_char_boundary(start) {

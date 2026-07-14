@@ -5,7 +5,7 @@
 //! surface is operations involving multi-byte code points and char
 //! boundaries.
 
-use smol_bytes::{Utf8Buf, Utf8BufMut, Utf8Buffer, Utf8Bytes, Utf8BytesMut, Utf8Error};
+use smol_bytes::{Buf, Buffer, Bytes, BytesMut, Utf8Buffer, Utf8Bytes, Utf8BytesMut, Utf8Error};
 
 /// A 2-byte char (Latin-1 supplement).
 const LATIN_1: &str = "café"; // 'é' = 2 bytes
@@ -98,6 +98,65 @@ fn utf8_buffer_slice_mid_char_panics() {
 fn utf8_buffer_try_slice_mid_char_returns_err() {
   let b = Utf8Buffer::from("café");
   assert!(b.try_slice(3..4).is_err());
+}
+
+#[test]
+#[allow(clippy::reversed_empty_ranges)]
+fn utf8_fallible_slices_reject_reversed_and_overflowing_ranges() {
+  let inline = Utf8Buffer::from("hello");
+  assert!(inline.try_slice(4..2).is_err());
+  assert!(inline.try_slice(..=usize::MAX).is_err());
+
+  let immutable = Utf8Bytes::from("a".repeat(100));
+  assert!(immutable.try_slice(80..20).is_err());
+  assert!(immutable.try_slice(..=usize::MAX).is_err());
+
+  let mutable = Utf8BytesMut::from("hello");
+  assert!(mutable.try_slice(4..2).is_err());
+  assert!(mutable.try_slice(..=usize::MAX).is_err());
+}
+
+#[test]
+fn utf8_wrappers_forward_visible_lengths_and_split_bounds() {
+  let mut inline = Buffer::from(*b"hello");
+  inline.advance(1);
+  let mut inline = Utf8Buffer::try_from(inline).unwrap();
+  assert_eq!(inline.len(), 4);
+  assert_eq!(
+    inline.try_split_to(5),
+    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+  );
+  assert_eq!(inline.split_to(4).as_str(), "ello");
+  assert!(inline.is_empty());
+
+  let mut immutable = Bytes::from_static(b"hello");
+  immutable.advance(1);
+  let mut immutable = Utf8Bytes::try_from(immutable).unwrap();
+  assert_eq!(immutable.len(), 4);
+  assert_eq!(
+    immutable.try_split_to(5),
+    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+  );
+  assert_eq!(immutable.split_to(4).as_str(), "ello");
+  assert!(immutable.is_empty());
+
+  let mut inline_mut = BytesMut::from(&b"hello"[..]);
+  inline_mut.advance(1);
+  let mut inline_mut = Utf8BytesMut::try_from(inline_mut).unwrap();
+  assert_eq!(inline_mut.len(), 4);
+  assert_eq!(
+    inline_mut.try_split_to(5),
+    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+  );
+  assert_eq!(inline_mut.split_to(4).as_str(), "ello");
+  assert!(inline_mut.is_empty());
+
+  let mut heap_mut = BytesMut::with_capacity(128);
+  heap_mut.extend_from_slice(b"hello");
+  heap_mut.advance(1);
+  let heap_mut = Utf8BytesMut::try_from(heap_mut).unwrap();
+  assert_eq!(heap_mut.len(), 4);
+  assert_eq!(heap_mut.as_str(), "ello");
 }
 
 #[test]

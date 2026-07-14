@@ -8,7 +8,11 @@ use crate::{InvalidIntegerLength, TryPutIntegerError};
 use super::{panic_advance, panic_does_not_fit, Buffer, InlineSize, TryGetError, TryPutError};
 
 // https://en.wikipedia.org/wiki/Sign_extension
-const fn sign_extend(val: u64, nbytes: usize) -> i64 {
+pub(crate) const fn sign_extend(val: u64, nbytes: usize) -> i64 {
+  if nbytes == 0 {
+    return 0;
+  }
+
   let shift = (8 - nbytes) * 8;
   (val << shift) as i64 >> shift
 }
@@ -603,7 +607,9 @@ impl Buffer {
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
   pub fn try_get_int(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
-    impl_try_get!(be(self, i64, nbytes))
+    self
+      .try_get_uint(nbytes)
+      .map(|value| sign_extend(value, nbytes))
   }
 
   /// Gets a signed n-byte integer from `self` in little-endian byte order.
@@ -632,7 +638,9 @@ impl Buffer {
   /// This function panics if `nbytes` is greater than 8.
   #[inline]
   pub fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
-    impl_try_get!(le(self, i64, nbytes))
+    self
+      .try_get_uint_le(nbytes)
+      .map(|value| sign_extend(value, nbytes))
   }
 
   /// Gets a signed n-byte integer from `self` in native-endian byte order.
@@ -645,9 +653,11 @@ impl Buffer {
   /// or if `nbytes` is greater than 8.
   #[inline]
   pub fn get_int_ne(&mut self, nbytes: usize) -> i64 {
-    self
-      .try_get_int_ne(nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+    if cfg!(target_endian = "big") {
+      self.get_int(nbytes)
+    } else {
+      self.get_int_le(nbytes)
+    }
   }
 
   /// Tries to get a signed n-byte integer from `self` in native-endian byte order.
@@ -788,16 +798,20 @@ impl Buffer {
     let bytes = n.to_be_bytes();
     let mut i = 0;
     while i < nbytes {
+      // SAFETY: the capacity check proves `end + nbytes <= INLINE_CAP`, and
+      // `i < nbytes`; this writes one byte within the uninitialized tail.
       unsafe {
         *self
           .buf
           .as_mut_ptr()
-          .add(self.len.to_usize() + i)
+          .add(self.end.to_usize() + i)
           .cast::<u8>() = bytes[8 - nbytes + i];
       }
       i += 1;
     }
-    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + nbytes as u8) };
+    // SAFETY: the capacity check proves the new absolute end is at most
+    // `INLINE_CAP`, and the loop initialized every newly exposed byte.
+    self.end = unsafe { InlineSize::from_u8(self.end.to_u8() + nbytes as u8) };
     Ok(())
   }
 
@@ -842,16 +856,20 @@ impl Buffer {
     let bytes = n.to_le_bytes();
     let mut i = 0;
     while i < nbytes {
+      // SAFETY: the capacity check proves `end + nbytes <= INLINE_CAP`, and
+      // `i < nbytes`; this writes one byte within the uninitialized tail.
       unsafe {
         *self
           .buf
           .as_mut_ptr()
-          .add(self.len.to_usize() + i)
+          .add(self.end.to_usize() + i)
           .cast::<u8>() = bytes[i];
       }
       i += 1;
     }
-    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + nbytes as u8) };
+    // SAFETY: the capacity check proves the new absolute end is at most
+    // `INLINE_CAP`, and the loop initialized every newly exposed byte.
+    self.end = unsafe { InlineSize::from_u8(self.end.to_u8() + nbytes as u8) };
     Ok(())
   }
 

@@ -1,6 +1,10 @@
 #![warn(rust_2018_idioms)]
 
 use smol_bytes::{Buf, BufMut, Bytes, BytesMut, INLINE_CAP};
+use std::cmp::Ordering as CmpOrdering;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::ops::Bound;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -65,6 +69,178 @@ fn from_slice() {
   assert_eq!(b"abcdefgh"[..], a);
   assert_eq!(&b"abcdefgh"[..], a);
   assert_eq!(Vec::from(&b"abcdefgh"[..]), a);
+}
+
+fn heap_bytes(input: &[u8]) -> Bytes {
+  let mut bytes = BytesMut::from(input);
+  bytes.make_heap();
+  assert!(!bytes.is_inline());
+  let bytes = bytes.freeze_shared();
+  assert!(!bytes.is_inline());
+  bytes
+}
+
+fn heap_bytes_mut(input: &[u8]) -> BytesMut {
+  let mut bytes = BytesMut::from(input);
+  bytes.make_heap();
+  assert!(!bytes.is_inline());
+  bytes
+}
+
+#[test]
+fn heap_signed_variable_width_reads_match_infallible_reads() {
+  const BIG_ENDIAN: [u8; 3] = [0xff, 0x00, 0x01];
+  const LITTLE_ENDIAN: [u8; 3] = [0x01, 0x00, 0xff];
+
+  macro_rules! assert_signed_read_parity {
+    ($constructor:ident, $input:expr, $get:ident, $try_get:ident) => {{
+      let mut infallible = $constructor($input);
+      let mut fallible = $constructor($input);
+
+      assert!(!infallible.is_inline());
+      assert!(!fallible.is_inline());
+      assert_eq!(infallible.$get(3), -65_535);
+      assert_eq!(fallible.$try_get(3), Ok(-65_535));
+      assert_eq!(infallible.remaining(), 0);
+      assert_eq!(fallible.remaining(), 0);
+    }};
+  }
+
+  let native_endian = if cfg!(target_endian = "big") {
+    BIG_ENDIAN
+  } else {
+    LITTLE_ENDIAN
+  };
+
+  assert_signed_read_parity!(heap_bytes, &BIG_ENDIAN, get_int, try_get_int);
+  assert_signed_read_parity!(heap_bytes, &LITTLE_ENDIAN, get_int_le, try_get_int_le);
+  assert_signed_read_parity!(heap_bytes, &native_endian, get_int_ne, try_get_int_ne);
+
+  assert_signed_read_parity!(heap_bytes_mut, &BIG_ENDIAN, get_int, try_get_int);
+  assert_signed_read_parity!(heap_bytes_mut, &LITTLE_ENDIAN, get_int_le, try_get_int_le);
+  assert_signed_read_parity!(heap_bytes_mut, &native_endian, get_int_ne, try_get_int_ne);
+}
+
+#[test]
+fn heap_signed_variable_width_edge_reads_match_infallible_reads() {
+  const EMPTY: [u8; 0] = [];
+  const NEGATIVE: [u8; 1] = [0x80];
+  const BIG_ENDIAN_BOUNDARY: [u8; 8] = [0x80, 0, 0, 0, 0, 0, 0, 0];
+  const LITTLE_ENDIAN_BOUNDARY: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0x80];
+
+  macro_rules! assert_zero_width_read {
+    ($constructor:ident, $get:ident, $try_get:ident) => {{
+      let mut infallible = $constructor(&EMPTY);
+      let mut fallible = $constructor(&EMPTY);
+      let infallible_remaining = infallible.remaining();
+      let fallible_remaining = fallible.remaining();
+
+      assert!(!infallible.is_inline());
+      assert!(!fallible.is_inline());
+      assert_eq!(infallible.$get(0), 0);
+      assert_eq!(fallible.$try_get(0), Ok(0));
+      assert_eq!(infallible.remaining(), infallible_remaining);
+      assert_eq!(fallible.remaining(), fallible_remaining);
+    }};
+  }
+
+  macro_rules! assert_nonzero_width_read {
+    ($constructor:ident, $input:expr, $nbytes:expr, $expected:expr, $get:ident, $try_get:ident) => {{
+      let mut infallible = $constructor($input);
+      let mut fallible = $constructor($input);
+      let infallible_remaining = infallible.remaining();
+      let fallible_remaining = fallible.remaining();
+
+      assert!(!infallible.is_inline());
+      assert!(!fallible.is_inline());
+      assert_eq!(infallible.$get($nbytes), $expected);
+      assert_eq!(fallible.$try_get($nbytes), Ok($expected));
+      assert_eq!(infallible.remaining(), infallible_remaining - $nbytes);
+      assert_eq!(fallible.remaining(), fallible_remaining - $nbytes);
+    }};
+  }
+
+  let native_endian_boundary = if cfg!(target_endian = "big") {
+    BIG_ENDIAN_BOUNDARY
+  } else {
+    LITTLE_ENDIAN_BOUNDARY
+  };
+
+  assert_zero_width_read!(heap_bytes, get_int, try_get_int);
+  assert_zero_width_read!(heap_bytes, get_int_le, try_get_int_le);
+  assert_zero_width_read!(heap_bytes, get_int_ne, try_get_int_ne);
+  assert_nonzero_width_read!(heap_bytes, &NEGATIVE, 1, -128, get_int, try_get_int);
+  assert_nonzero_width_read!(heap_bytes, &NEGATIVE, 1, -128, get_int_le, try_get_int_le);
+  assert_nonzero_width_read!(heap_bytes, &NEGATIVE, 1, -128, get_int_ne, try_get_int_ne);
+  assert_nonzero_width_read!(
+    heap_bytes,
+    &BIG_ENDIAN_BOUNDARY,
+    8,
+    i64::MIN,
+    get_int,
+    try_get_int
+  );
+  assert_nonzero_width_read!(
+    heap_bytes,
+    &LITTLE_ENDIAN_BOUNDARY,
+    8,
+    i64::MIN,
+    get_int_le,
+    try_get_int_le
+  );
+  assert_nonzero_width_read!(
+    heap_bytes,
+    &native_endian_boundary,
+    8,
+    i64::MIN,
+    get_int_ne,
+    try_get_int_ne
+  );
+
+  assert_zero_width_read!(heap_bytes_mut, get_int, try_get_int);
+  assert_zero_width_read!(heap_bytes_mut, get_int_le, try_get_int_le);
+  assert_zero_width_read!(heap_bytes_mut, get_int_ne, try_get_int_ne);
+  assert_nonzero_width_read!(heap_bytes_mut, &NEGATIVE, 1, -128, get_int, try_get_int);
+  assert_nonzero_width_read!(
+    heap_bytes_mut,
+    &NEGATIVE,
+    1,
+    -128,
+    get_int_le,
+    try_get_int_le
+  );
+  assert_nonzero_width_read!(
+    heap_bytes_mut,
+    &NEGATIVE,
+    1,
+    -128,
+    get_int_ne,
+    try_get_int_ne
+  );
+  assert_nonzero_width_read!(
+    heap_bytes_mut,
+    &BIG_ENDIAN_BOUNDARY,
+    8,
+    i64::MIN,
+    get_int,
+    try_get_int
+  );
+  assert_nonzero_width_read!(
+    heap_bytes_mut,
+    &LITTLE_ENDIAN_BOUNDARY,
+    8,
+    i64::MIN,
+    get_int_le,
+    try_get_int_le
+  );
+  assert_nonzero_width_read!(
+    heap_bytes_mut,
+    &native_endian_boundary,
+    8,
+    i64::MIN,
+    get_int_ne,
+    try_get_int_ne
+  );
 }
 
 #[test]
@@ -415,6 +591,44 @@ fn truncate() {
   assert_eq!(hello, s);
   hello.truncate(5);
   assert_eq!(hello, "hello");
+}
+
+#[test]
+#[allow(clippy::reversed_empty_ranges)]
+fn fallible_slicing_is_checked_for_inline_and_shared_heap() {
+  let mut inline = Bytes::from_static(b"abcdef");
+  inline.advance(2);
+  assert_eq!(inline.try_slice(0..4).unwrap(), b"cdef"[..]);
+  assert!(inline.try_slice(4..5).is_err());
+  assert!(inline.try_split_to(5).is_err());
+
+  let heap = Bytes::from(vec![b'x'; 100]);
+  assert!(heap.is_heap());
+  assert!(heap.try_slice(80..20).is_err());
+  assert!(heap.try_slice(..=usize::MAX).is_err());
+  assert!(heap
+    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+    .is_err());
+}
+
+#[test]
+fn same_heap_pointer_with_different_lengths_obeys_eq_hash_ord_laws() {
+  fn hash(bytes: &Bytes) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
+  }
+
+  let full = Bytes::from(vec![b'x'; 100]);
+  let prefix = full.slice(..99);
+  assert!(full.is_heap());
+  assert!(prefix.is_heap());
+  assert_eq!(full.as_ptr(), prefix.as_ptr());
+
+  assert_ne!(full, prefix);
+  assert_ne!(hash(&full), hash(&prefix));
+  assert_eq!(full.cmp(&prefix), CmpOrdering::Greater);
+  assert_eq!(full.partial_cmp(&prefix), Some(CmpOrdering::Greater));
 }
 
 #[test]
