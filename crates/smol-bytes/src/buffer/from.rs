@@ -36,9 +36,10 @@ macro_rules! from_array {
 impl From<[u8; INLINE_CAP]> for Buffer {
   fn from(value: [u8; INLINE_CAP]) -> Self {
     Self {
-      len: InlineSize::_V62,
+      end: InlineSize::_V62,
       cur: InlineSize::_V0,
-      // SAFETY: mem size is equal
+      // SAFETY: `u8` and `MaybeUninit<u8>` have identical layout, and every
+      // source byte is initialized, establishing the Buffer invariant.
       buf: unsafe { transmute::<[u8; INLINE_CAP], [MaybeUninit<u8>; INLINE_CAP]>(value) },
     }
   }

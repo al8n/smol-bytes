@@ -1,7 +1,7 @@
 /* @ts-self-types="./smol_bytes.d.ts" */
-
 import * as wasm from "./smol_bytes_bg.wasm";
 import { __wbg_set_wasm } from "./smol_bytes_bg.js";
+
 __wbg_set_wasm(wasm);
 wasm.__wbindgen_start();
 export {

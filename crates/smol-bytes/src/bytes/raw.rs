@@ -38,7 +38,7 @@ pub struct RawBytes<S> {
 }
 
 impl<S> Clone for RawBytes<S> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn clone(&self) -> Self {
     match &self.repr {
       Repr::Inline(_) => unsafe { core::ptr::read(self as *const RawBytes<S>) },
@@ -116,7 +116,7 @@ impl<S> RawBytes<S> {
   /// assert!(inline_buf.is_inline());
   /// assert!(!heap_buf.is_inline());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_inline(&self) -> bool {
     matches!(self.repr, Repr::Inline(..))
   }
@@ -134,7 +134,7 @@ impl<S> RawBytes<S> {
   /// assert!(!inline_buf.is_heap());
   /// assert!(heap_buf.is_heap());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_heap(&self) -> bool {
     matches!(self.repr, Repr::Heap(..))
   }
@@ -307,7 +307,7 @@ where
   /// Tries to split the bytes into two at the given index, returning the tail.
   ///
   /// Returns `Err(OutOfBounds)` if `at > len`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let len = self.len();
     if at > len {
@@ -347,7 +347,7 @@ where
   /// Tries to split the bytes into two at the given index, returning the head.
   ///
   /// Returns `Err(OutOfBounds)` if `at > len`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let len = self.len();
     if at > len {
@@ -371,7 +371,7 @@ where
   /// b2.truncate(10);
   /// assert_eq!(b2.len(), 10);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn truncate(&mut self, new_len: usize) {
     ImmutableStorage::truncate(self, new_len);
   }
@@ -387,13 +387,13 @@ where
   /// b.clear();
   /// assert!(b.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn clear(&mut self) {
     ImmutableStorage::clear(self)
   }
 
   /// Attempts to advance the buffer by `cnt` bytes, returning an error if out of bounds.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     let len = self.len();
     if cnt > len {
@@ -405,7 +405,7 @@ where
 }
 
 impl<S> RawBytes<S> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   const fn new_in(repr: Repr) -> Self {
     Self {
       repr,
@@ -413,12 +413,12 @@ impl<S> RawBytes<S> {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const fn inline(storage: Buffer) -> Self {
     Self::new_in(Repr::inline(storage))
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const fn heap(bytes: Bytes) -> Self {
     Self::new_in(Repr::Heap(bytes))
   }
@@ -438,7 +438,7 @@ impl<S> RawBytes<S> {
   /// let b2 = Bytes::from(vec![1; 100]);
   /// assert!(b2.is_unique());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn is_unique(&self) -> bool {
     self.repr.is_unique()
   }
@@ -451,7 +451,7 @@ impl<S> RawBytes<S> {
   /// let b = Bytes::from_static(b"hello");
   /// assert_eq!(b.len(), 5);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn len(&self) -> usize {
     self.repr.len()
   }
@@ -464,7 +464,7 @@ impl<S> RawBytes<S> {
   /// let b = Bytes::new();
   /// assert!(b.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_empty(&self) -> bool {
     self.repr.is_empty()
   }
@@ -491,7 +491,7 @@ impl<S> RawBytes<S> {
   /// let b = Bytes::from_static(b"hello");
   /// assert_eq!(b, b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_slice(&self) -> &[u8] {
     self.repr.as_slice()
   }
@@ -556,7 +556,7 @@ impl<S> RawBytes<S> {
 }
 
 impl<S> Default for RawBytes<S> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
   }
@@ -576,12 +576,12 @@ where
     self.as_slice()
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn advance(&mut self, cnt: usize) {
     ImmutableStorage::advance(self, cnt);
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> Bytes {
     ImmutableStorage::copy_to_bytes(self, len)
   }
@@ -607,7 +607,7 @@ pub(crate) enum Repr {
 }
 
 impl Repr {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const fn inline(storage: Buffer) -> Self {
     Self::Inline(storage)
   }
@@ -658,7 +658,7 @@ impl Repr {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   const fn len(&self) -> usize {
     match self {
       Self::Inline(storage) => storage.remaining(),
@@ -666,7 +666,7 @@ impl Repr {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   const fn is_empty(&self) -> bool {
     match self {
       Self::Inline(storage) => storage.remaining() == 0,
@@ -674,7 +674,7 @@ impl Repr {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn is_unique(&self) -> bool {
     match self {
       Self::Inline { .. } => false,
@@ -682,7 +682,7 @@ impl Repr {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_slice(&self) -> &[u8] {
     match self {
       Self::Inline(storage) => storage.as_slice(),
@@ -690,19 +690,11 @@ impl Repr {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
-  pub(crate) fn unwrap_heap_mut(&mut self) -> &mut Bytes {
-    match self {
-      Self::Inline { .. } => panic!("cannot unwrap inline Bytes"),
-      Self::Heap(bytes) => bytes,
-    }
-  }
-
   #[inline]
   fn ptr_eq(&self, other: &Self) -> bool {
     match (self, other) {
       (Self::Inline { .. }, Self::Inline { .. }) => false,
-      (Self::Heap(a), Self::Heap(b)) => a.as_ptr() == b.as_ptr(),
+      (Self::Heap(a), Self::Heap(b)) => a.len() == b.len() && a.as_ptr() == b.as_ptr(),
       _ => false,
     }
   }

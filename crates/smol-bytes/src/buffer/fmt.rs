@@ -48,7 +48,7 @@ impl core::fmt::UpperHex for Buffer {
 }
 
 impl core::fmt::Write for Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn write_str(&mut self, s: &str) -> core::fmt::Result {
     if self.remaining_mut() >= s.len() {
       self.put_slice(s.as_bytes());

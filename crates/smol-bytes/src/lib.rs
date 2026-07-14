@@ -171,6 +171,7 @@ mod utf8_bytes;
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod utf8_bytes_mut;
 
+#[cfg(any(feature = "std", feature = "alloc"))]
 mod macros;
 
 /// Error types for byte buffer operations.

@@ -1,9 +1,11 @@
+#[cfg(any(feature = "alloc", feature = "std"))]
+use core::borrow::Borrow;
+
 use core::{
-  borrow::Borrow,
   mem::{transmute, MaybeUninit},
-  ops::{Bound, RangeBounds},
+  ops::RangeBounds,
   ptr::{copy_nonoverlapping, write_bytes},
-  slice::{from_raw_parts, from_raw_parts_mut},
+  slice::from_raw_parts_mut,
 };
 
 use super::error::*;
@@ -14,6 +16,9 @@ mod from;
 mod io;
 mod iter;
 mod ops;
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub(crate) use io::sign_extend;
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -108,7 +113,7 @@ pub(crate) enum InlineSize {
 impl core::ops::Sub for InlineSize {
   type Output = Self;
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn sub(self, rhs: Self) -> Self::Output {
     // Safety: subtraction result is guaranteed to be less than or equal to INLINE_CAP
     unsafe { InlineSize::from_u8(self.to_u8() - rhs.to_u8()) }
@@ -121,7 +126,7 @@ impl InlineSize {
   /// ## Safety
   ///
   /// `value` must be less than or equal to [`INLINE_CAP`].
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const unsafe fn from_u8(value: u8) -> Self {
     debug_assert!(value <= InlineSize::MAX);
     // SAFETY: caller guarantees `value <= INLINE_CAP == InlineSize::MAX`,
@@ -129,12 +134,12 @@ impl InlineSize {
     unsafe { transmute::<u8, InlineSize>(value) }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const fn to_u8(self) -> u8 {
     self as u8
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const fn to_usize(self) -> usize {
     self as usize
   }
@@ -157,15 +162,16 @@ impl InlineSize {
 #[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass(skip_from_py_object))]
 #[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Buffer {
-  // The write cursor
-  len: InlineSize,
+  // Invariant: 0 <= cur <= end <= INLINE_CAP, and buf[0..end] is initialized.
+  // The absolute write cursor. Public lengths are always `end - cur`.
+  end: InlineSize,
   // The read cursor
   cur: InlineSize,
   buf: [MaybeUninit<u8>; INLINE_CAP],
 }
 
 impl Default for Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
   }
@@ -181,10 +187,10 @@ impl Buffer {
   ///
   /// let buf = Buffer::new();
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn new() -> Self {
     Self {
-      len: InlineSize::_V0,
+      end: InlineSize::_V0,
       cur: InlineSize::_V0,
       buf: [const { MaybeUninit::uninit() }; INLINE_CAP],
     }
@@ -194,7 +200,8 @@ impl Buffer {
   ///
   /// ## Safety
   /// - `len` must be less than or equal to [`INLINE_CAP`].
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg(any(feature = "alloc", feature = "std"))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) const unsafe fn zeroed(len: usize) -> Self {
     let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
     // SAFETY: caller guarantees `len <= INLINE_CAP`, so writing `len`
@@ -205,7 +212,7 @@ impl Buffer {
     Self {
       cur: InlineSize::_V0,
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      len: unsafe { InlineSize::from_u8(len as u8) },
+      end: unsafe { InlineSize::from_u8(len as u8) },
       buf: storage,
     }
   }
@@ -214,13 +221,13 @@ impl Buffer {
   ///
   /// ## Safety
   /// - `len` must be less than or equal to [`INLINE_CAP`].
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   #[allow(unused)]
   pub(crate) const unsafe fn from_array(buf: [u8; INLINE_CAP], len: usize) -> Self {
     Self {
       cur: InlineSize::_V0,
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
-      len: unsafe { InlineSize::from_u8(len as u8) },
+      end: unsafe { InlineSize::from_u8(len as u8) },
       // SAFETY: all bytes are initialized
       buf: unsafe { transmute::<[u8; INLINE_CAP], [MaybeUninit<u8>; INLINE_CAP]>(buf) },
     }
@@ -230,7 +237,7 @@ impl Buffer {
   ///
   /// ## Safety
   /// - the length of `src` must be less than or equal to [`INLINE_CAP`].
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const unsafe fn copy_from_slice(src: &[u8]) -> Self {
     let len = src.len();
     let mut storage = [const { MaybeUninit::uninit() }; INLINE_CAP];
@@ -243,7 +250,7 @@ impl Buffer {
 
     Self {
       // SAFETY: caller guarantees that `len` is less than or equal to `INLINE_CAP`.
-      len: unsafe { InlineSize::from_u8(len as u8) },
+      end: unsafe { InlineSize::from_u8(len as u8) },
       cur: InlineSize::_V0,
       buf: storage,
     }
@@ -274,12 +281,12 @@ impl Buffer {
   /// Implementations of `remaining` should ensure that the return value does
   /// not change unless a call is made to `advance` or any other function that
   /// is documented to change the `Buf`'s current position.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn remaining(&self) -> usize {
-    self.len.to_usize() - self.cur as usize
+    self.end.to_usize() - self.cur.to_usize()
   }
 
-  /// Returns the number of bytes contained in this `BytesMut`.
+  /// Returns the number of visible bytes contained in this `Buffer`.
   ///
   /// ## Example
   ///
@@ -289,12 +296,12 @@ impl Buffer {
   /// let bytes = Buffer::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn len(&self) -> usize {
-    self.len.to_usize()
+    self.remaining()
   }
 
-  /// Returns `true` if the BytesMut has a length of `0`.
+  /// Returns `true` if the `Buffer` has no visible bytes.
   ///
   /// ## Example
   ///
@@ -304,7 +311,7 @@ impl Buffer {
   /// let bytes = BytesMut::new();
   /// assert!(bytes.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_empty(&self) -> bool {
     self.len() == 0
   }
@@ -327,16 +334,49 @@ impl Buffer {
   ///
   /// assert_eq!(original_remaining - 5, dst.remaining_mut());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn remaining_mut(&self) -> usize {
-    INLINE_CAP - (self.len.to_usize())
+    INLINE_CAP - self.end.to_usize()
   }
 
-  /// Sets the length of the buffer.
+  /// Reclaims consumed prefix space when doing so provides `additional`
+  /// bytes of writable tail without allocating.
+  #[cfg(any(feature = "alloc", feature = "std"))]
+  #[cfg_attr(not(coverage), inline(always))]
+  pub(crate) fn try_reclaim(&mut self, additional: usize) -> bool {
+    if additional <= self.remaining_mut() {
+      return true;
+    }
+
+    let len = self.len();
+    if additional > INLINE_CAP - len {
+      return false;
+    }
+
+    let cur = self.cur.to_usize();
+    if cur != 0 {
+      // `copy_within` is overlap-safe; the invariant keeps `cur..end` within
+      // the initialized prefix and its length is exactly `len`.
+      self.buf.copy_within(cur..self.end.to_usize(), 0);
+    }
+
+    self.cur = InlineSize::_V0;
+    // SAFETY: `len <= INLINE_CAP`, so it is a valid `InlineSize`; the copy
+    // above established that `buf[..len]` is initialized.
+    self.end = unsafe { InlineSize::from_u8(len as u8) };
+    true
+  }
+
+  /// Sets the visible length of the buffer.
   ///
   /// This will explicitly set the size of the buffer without actually
   /// modifying the data, so it is up to the caller to ensure that the data
   /// has been initialized.
+  ///
+  /// ## Safety
+  ///
+  /// - `len` must not exceed [`capacity`](Self::capacity).
+  /// - Every byte in the current view's `0..len` range must be initialized.
   ///
   /// ## Examples
   ///
@@ -358,10 +398,13 @@ impl Buffer {
   /// assert_eq!(&b[..], b"hello world");
   /// ```
   #[allow(clippy::missing_safety_doc)]
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const unsafe fn set_len(&mut self, len: usize) {
-    debug_assert!(len <= INLINE_CAP, "set_len out of bounds");
-    self.len = unsafe { InlineSize::from_u8(len as u8) };
+    debug_assert!(len <= self.capacity(), "set_len out of bounds");
+    let end = self.cur.to_usize() + len;
+    // SAFETY: the caller guarantees `len <= self.capacity()`, so
+    // `cur + len <= INLINE_CAP` and is a valid `InlineSize` discriminant.
+    self.end = unsafe { InlineSize::from_u8(end as u8) };
   }
 
   /// Advance the internal cursor of the `Buffer`
@@ -389,7 +432,7 @@ impl Buffer {
   /// ## Panics
   ///
   /// This function panics if `cnt > self.remaining()`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn advance(&mut self, requested: usize) {
     if let Err(err) = self.try_advance(requested) {
       panic_advance(err.available, err.requested)
@@ -399,16 +442,18 @@ impl Buffer {
   /// Tries to advance the internal cursor of the `Buffer`.
   ///
   /// Returns `Err(OutOfBounds)` if `requested` exceeds the remaining length.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn try_advance(&mut self, requested: usize) -> Result<(), OutOfBounds> {
     if requested == 0 {
       return Ok(());
     }
 
-    let available = (self.len - self.cur).to_usize();
+    let available = self.remaining();
     if available < requested {
       return Err(OutOfBounds::new(requested, available));
     }
+    // SAFETY: `requested <= remaining == end - cur`, so the new cursor is
+    // at most `end` and therefore at most `INLINE_CAP`.
     self.cur = unsafe { InlineSize::from_u8(self.cur.to_u8() + requested as u8) };
     Ok(())
   }
@@ -457,7 +502,10 @@ impl Buffer {
       panic_advance(available, requested)
     }
 
-    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + requested as u8) };
+    // SAFETY: `requested <= remaining_mut == INLINE_CAP - end`, so the new
+    // absolute end is a valid `InlineSize` and the caller initialized the
+    // bytes being exposed, as required by `advance_mut`.
+    self.end = unsafe { InlineSize::from_u8(self.end.to_u8() + requested as u8) };
   }
 
   /// Shortens the buffer, keeping the first len bytes and dropping the rest.
@@ -476,30 +524,16 @@ impl Buffer {
   /// bytes.truncate(5);
   /// assert_eq!(bytes.as_mut_slice(), b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn truncate(&mut self, new_len: usize) {
-    if new_len == 0 {
-      return self.clear();
-    }
-
-    let remaining = self.remaining();
-    if new_len >= remaining {
+    if new_len >= self.len() {
       return;
     }
 
-    let cur = self.cur as usize;
-    if cur == 0 {
-      self.len = unsafe { InlineSize::from_u8(new_len as u8) };
-      return;
-    }
-
-    let (head, tail) = self.buf.split_at_mut(cur);
-    unsafe {
-      // SAFETY: new_len < remaining, so tail[new_len..] is valid
-      copy_nonoverlapping(tail.as_ptr(), head.as_mut_ptr(), new_len);
-    }
-    self.len = unsafe { InlineSize::from_u8(new_len as u8) };
-    self.cur = InlineSize::_V0;
+    let new_end = self.cur.to_usize() + new_len;
+    // SAFETY: `new_len < self.len() == end - cur`, so `new_end < end` and
+    // remains a valid `InlineSize`. No bytes are moved or newly exposed.
+    self.end = unsafe { InlineSize::from_u8(new_end as u8) };
   }
 
   /// Splits the buffer into two at the given index.
@@ -583,12 +617,15 @@ impl Buffer {
     }
 
     let tail_len = len - at;
+    // SAFETY: `at <= len` proves the source range `at..len` is initialized;
+    // `tail_len <= INLINE_CAP` keeps the destination in `new_buf`, and the
+    // distinct buffers cannot overlap.
     let tail = unsafe {
       let mut new_buf = Self::new();
       if tail_len > 0 {
         let src = self.as_slice().as_ptr().add(at);
         copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, tail_len);
-        new_buf.len = InlineSize::from_u8(tail_len as u8);
+        new_buf.end = InlineSize::from_u8(tail_len as u8);
       }
       new_buf
     };
@@ -621,16 +658,21 @@ impl Buffer {
       return Err(OutOfBounds::new(at, len));
     }
 
+    // SAFETY: `at <= len <= INLINE_CAP` proves the source prefix is
+    // initialized and the destination fits; the distinct buffers cannot
+    // overlap.
     let head = unsafe {
       let mut new_buf = Self::new();
       if at > 0 {
         let src = self.as_slice().as_ptr();
         copy_nonoverlapping(src, new_buf.buf.as_mut_ptr() as *mut u8, at);
-        new_buf.len = InlineSize::from_u8(at as u8);
+        new_buf.end = InlineSize::from_u8(at as u8);
       }
       new_buf
     };
 
+    // SAFETY: `at <= remaining == end - cur`, so the new cursor is at most
+    // `end` and remains a valid `InlineSize`.
     self.cur = unsafe { InlineSize::from_u8(self.cur.to_u8() + at as u8) };
     Ok(head)
   }
@@ -669,32 +711,15 @@ impl Buffer {
   /// ```
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
     let len = self.len();
-
-    let begin = match range.start_bound() {
-      Bound::Included(&n) => n,
-      Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Unbounded => 0,
-    };
-
-    let end = match range.end_bound() {
-      Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-      Bound::Excluded(&n) => n,
-      Bound::Unbounded => len,
-    };
-
-    if begin > len || end > len {
-      return Err(RangeOutOfBounds::new(begin, end, len));
-    }
+    let (begin, end) = normalize_range(range, len)?;
 
     if begin == end {
       return Ok(Self::new());
     }
 
-    Ok(unsafe {
-      let ptr = self.as_slice().as_ptr();
-      let slice = from_raw_parts(ptr.add(begin), end - begin);
-      Self::copy_from_slice(slice)
-    })
+    // SAFETY: `normalize_range` proves `begin <= end <= self.len()`, so the
+    // subslice is initialized and its length is at most `INLINE_CAP`.
+    Ok(unsafe { Self::copy_from_slice(&self.as_slice()[begin..end]) })
   }
 
   /// Resizes the buffer to the specified length, filling with zeros if expanding.
@@ -737,13 +762,7 @@ impl Buffer {
       self.capacity()
     );
 
-    // Fill with zeros
-    unsafe {
-      let ptr = self.buf.as_mut_ptr() as *mut u8;
-      let start = self.len.to_usize();
-      core::ptr::write_bytes(ptr.add(start), 0, additional);
-      self.len = InlineSize::from_u8(new_len as u8);
-    }
+    self.put_bytes(0, additional);
   }
 
   /// Tries to resize the buffer to the specified length, filling with zeros if expanding.
@@ -780,14 +799,14 @@ impl Buffer {
       return Err(OutOfBounds::new(new_len, self.capacity()));
     }
 
-    // Fill with zeros
-    unsafe {
-      let ptr = self.buf.as_mut_ptr() as *mut u8;
-      let start = self.len.to_usize();
-      core::ptr::write_bytes(ptr.add(start), 0, additional);
-      self.len = InlineSize::from_u8(new_len as u8);
+    match self.try_put_bytes(0, additional) {
+      Ok(()) => Ok(()),
+      Err(_) => {
+        // The identical capacity check above makes this branch unreachable;
+        // retain a defensive error instead of relying on unchecked state.
+        Err(OutOfBounds::new(new_len, self.capacity()))
+      }
     }
-    Ok(())
   }
 
   /// Clears the buffer, removing all data. Existing capacity is preserved.
@@ -801,9 +820,9 @@ impl Buffer {
   /// bytes.clear();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn clear(&mut self) {
-    self.len = InlineSize::_V0;
+    self.end = InlineSize::_V0;
     self.cur = InlineSize::_V0;
   }
 
@@ -831,17 +850,19 @@ impl Buffer {
   ///
   /// assert_eq!(buf.as_slice(), &[0, 1, 2]);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-    let len = self.len.to_usize();
-    unsafe { from_raw_parts_mut(self.buf.as_mut_ptr().add(len), INLINE_CAP - len) }
+    let end = self.end.to_usize();
+    // SAFETY: the invariant guarantees `end <= INLINE_CAP`; `buf.add(end)`
+    // starts the uninitialized tail and the returned length stays in `buf`.
+    unsafe { from_raw_parts_mut(self.buf.as_mut_ptr().add(end), INLINE_CAP - end) }
   }
 
   /// Returns the capacity of the buffer.
   ///
   /// The capacity is not always equal to [`INLINE_CAP`], as the [`advance`](Self::advance) method
   /// may move the underlying cursor forward, reducing the available capacity.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn capacity(&self) -> usize {
     INLINE_CAP - self.cur.to_usize()
   }
@@ -849,20 +870,24 @@ impl Buffer {
   /// Returns the initialized portion of the buffer as a slice.
   ///
   /// This will include all bytes from the start of the buffer up to the current length.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn as_slice(&self) -> &[u8] {
     let ptr = self.buf.as_ptr() as *const u8;
     let remaining = self.remaining();
+    // SAFETY: the invariant guarantees `buf[..end]` is initialized and
+    // `cur + remaining == end <= INLINE_CAP`.
     unsafe { core::slice::from_raw_parts(ptr.add(self.cur.to_usize()), remaining) }
   }
 
   /// Returns the mutable initialized portion of the buffer as a mutable slice.
   ///
   /// This will include all bytes from the start of the buffer up to the current length.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn as_mut_slice(&mut self) -> &mut [u8] {
     let ptr = self.buf.as_mut_ptr() as *mut u8;
     let remaining = Self::remaining(self);
+    // SAFETY: the invariant guarantees `buf[..end]` is initialized and this
+    // exclusive borrow covers exactly `cur..end` within the backing array.
     unsafe { core::slice::from_raw_parts_mut(ptr.add(self.cur.to_usize()), remaining) }
   }
 
@@ -919,7 +944,10 @@ impl Buffer {
       });
     }
 
-    let slen = self.len.to_usize();
+    let slen = self.end.to_usize();
+    // SAFETY: `requested <= remaining_mut` proves `slen + requested <=
+    // INLINE_CAP`; `src` is initialized and cannot overlap this exclusive
+    // buffer borrow.
     unsafe {
       copy_nonoverlapping(
         src.as_ptr(),
@@ -927,7 +955,9 @@ impl Buffer {
         requested,
       );
     }
-    self.len = unsafe { InlineSize::from_u8(slen as u8 + requested as u8) };
+    // SAFETY: the capacity check above proves the new absolute end is at most
+    // `INLINE_CAP`, and the copy initialized every newly exposed byte.
+    self.end = unsafe { InlineSize::from_u8(slen as u8 + requested as u8) };
     Ok(())
   }
 
@@ -993,11 +1023,14 @@ impl Buffer {
       });
     }
 
-    // Safety: we have already checked that there is enough capacity.
+    // SAFETY: `cnt <= remaining_mut` proves `end + cnt <= INLINE_CAP`; the
+    // write initializes exactly the bytes that the new end exposes.
     unsafe {
-      write_bytes(self.buf.as_mut_ptr().add(self.len.to_usize()), val, cnt);
+      write_bytes(self.buf.as_mut_ptr().add(self.end.to_usize()), val, cnt);
     }
-    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + cnt as u8) };
+    // SAFETY: the capacity check above proves the new absolute end is a valid
+    // `InlineSize`, and `write_bytes` initialized the extended region.
+    self.end = unsafe { InlineSize::from_u8(self.end.to_u8() + cnt as u8) };
     Ok(())
   }
 
@@ -1064,8 +1097,10 @@ impl Buffer {
       });
     }
 
-    self.buf[self.len.to_usize()].write(val);
-    self.len = unsafe { InlineSize::from_u8(self.len.to_u8() + 1) };
+    self.buf[self.end.to_usize()].write(val);
+    // SAFETY: `remaining_mut >= 1` proves `end + 1 <= INLINE_CAP`, and the
+    // preceding write initialized the byte being exposed.
+    self.end = unsafe { InlineSize::from_u8(self.end.to_u8() + 1) };
     Ok(())
   }
 }
@@ -1077,17 +1112,17 @@ const _: () = {
   use crate::macros::{forward_buf, forward_buf_mut};
 
   impl Buf for Buffer {
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn remaining(&self) -> usize {
       Self::remaining(self)
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn chunk(&self) -> &[u8] {
       self.borrow()
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn advance(&mut self, cnt: usize) {
       Self::advance(self, cnt);
     }
@@ -1108,33 +1143,33 @@ const _: () = {
 
   #[cfg(any(feature = "alloc", feature = "std"))]
   unsafe impl BufMut for Buffer {
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn remaining_mut(&self) -> usize {
       Self::remaining_mut(self)
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     unsafe fn advance_mut(&mut self, cnt: usize) {
       // SAFETY: forwards to the inherent `Buffer::advance_mut` which has
       // the same safety contract as the trait method.
       unsafe { Self::advance_mut(self, cnt) };
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn chunk_mut(&mut self) -> &mut UninitSlice {
-      let len = self.len.to_usize();
-      if len >= INLINE_CAP {
+      let end = self.end.to_usize();
+      if end >= INLINE_CAP {
         return UninitSlice::new(&mut []);
       }
-      UninitSlice::uninit(&mut self.buf[len..])
+      UninitSlice::uninit(&mut self.buf[end..])
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn put_slice(&mut self, src: &[u8]) {
       Self::put_slice(self, src);
     }
 
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn put_bytes(&mut self, val: u8, requested: usize) {
       Self::put_bytes(self, val, requested);
     }

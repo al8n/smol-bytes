@@ -57,46 +57,46 @@ impl From<super::Bytes> for PySharedBytes {
 }
 
 impl AsRef<[u8]> for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_ref(&self) -> &[u8] {
     self.inner.as_ref()
   }
 }
 
 impl Buf for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining(&self) -> usize {
     self.inner.remaining()
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn chunk(&self) -> &[u8] {
     self.inner.chunk()
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn advance(&mut self, cnt: usize) {
     Buf::advance(&mut self.inner, cnt);
   }
 }
 
 impl PyBufCommon for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.inner.try_split_to(at).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.inner.try_split_off(at).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_slice(&self, start: usize, end: usize) -> Result<Self, RangeOutOfBounds> {
     self.inner.try_slice(start..end).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     self.inner.try_advance(cnt)
   }
@@ -725,30 +725,12 @@ impl PySharedBytes {
     view: *mut pyo3::ffi::Py_buffer,
     flags: ::std::os::raw::c_int,
   ) -> PyResult<()> {
-    use pyo3::exceptions::PyBufferError;
-    use std::ffi::c_void;
-
-    if view.is_null() {
-      return Err(PyBufferError::new_err("view is null"));
+    let py = slf.py();
+    let snapshot = PyBytes::new(py, slf.as_ref());
+    if unsafe { pyo3::ffi::PyObject_GetBuffer(snapshot.as_ptr(), view, flags) } == 0 {
+      Ok(())
+    } else {
+      Err(PyErr::fetch(py))
     }
-    if flags & pyo3::ffi::PyBUF_WRITABLE != 0 {
-      return Err(PyBufferError::new_err("buffer is read-only"));
-    }
-
-    let slice: &[u8] = slf.as_ref();
-    unsafe {
-      (*view).buf = slice.as_ptr() as *mut c_void;
-      (*view).len = slice.len() as isize;
-      (*view).itemsize = 1;
-      (*view).ndim = 1;
-      (*view).format = b"B\0".as_ptr() as *mut _;
-      (*view).shape = &mut (*view).len;
-      (*view).strides = &mut (*view).itemsize;
-      (*view).suboffsets = std::ptr::null_mut();
-      (*view).readonly = 1;
-      (*view).obj = pyo3::ffi::Py_NewRef(slf.as_ptr());
-      (*view).internal = std::ptr::null_mut();
-    }
-    Ok(())
   }
 }

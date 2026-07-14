@@ -18,7 +18,12 @@ on:
       - '**.md'
       - '**.txt'
   workflow_dispatch:
-  schedule: [cron: "0 1 */7 * *"]
+  schedule:
+    - cron: "0 1 1 * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -62,12 +67,38 @@ jobs:
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
     - name: Apply clippy lints
-      run: cargo hack clippy --each-feature --exclude-no-default-features
+      run: cargo clippy --workspace --all-features --all-targets
 
-  # Run tests on some extra platforms
+  feature-check:
+    name: feature-check
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: target
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache Cargo registry, git, and target
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-feature-check-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-feature-check-
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Check featureless no_std rlib
+        run: cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
+      - name: Check no_std feature powerset rlib
+        run: cargo hack --workspace --feature-powerset --include-features alloc,serde,borsh,arbitrary rustc --lib --crate-type rlib
+      - name: Test alloc-only quickcheck
+        run: cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
+
+  # Check compilation on extra targets
   cross:
     name: cross
     strategy:
@@ -99,15 +130,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cross-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cross-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cross-
+            ${{ runner.os }}-cross-${{ matrix.target }}-
       - name: Install Rust
         run: rustup update stable && rustup default stable
-      - name: cargo build --target ${{ matrix.target }}
+      - name: cargo rustc --target ${{ matrix.target }}
         run: |
           rustup target add ${{ matrix.target }}
-          cargo build --target ${{ matrix.target }} 
+          cargo rustc --package smol-bytes --lib --target ${{ matrix.target }} --crate-type rlib
 
   build:
     name: build
@@ -127,21 +158,14 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.toml') }}
         restore-keys: |
           ${{ runner.os }}-build-
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
-    - name: Cache ~/.cargo
-      uses: actions/cache@v5
-      with:
-        path: ~/.cargo
-        key: ${{ runner.os }}-coverage-dotcargo
     - name: Run build
-      run: cargo hack build --feature-powerset --exclude-no-default-features
+      run: cargo build --workspace
   
   test:
     name: test
@@ -161,21 +185,14 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.toml') }}
         restore-keys: |
           ${{ runner.os }}-test-
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
-    - name: Cache ~/.cargo
-      uses: actions/cache@v5
-      with:
-        path: ~/.cargo
-        key: ${{ runner.os }}-coverage-dotcargo
     - name: Run test
-      run: cargo hack test --feature-powerset --exclude-no-default-features --exclude-features loom
+      run: cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
   
   sanitizer:
     name: sanitizer
@@ -193,15 +210,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-sanitizer-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-sanitizer-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-sanitizer-
       - name: Install Rust
-        run: rustup update $nightly && rustup default $nightly
+        run: rustup update "$nightly" && rustup default "$nightly"
       - name: Install rust-src
         run: rustup component add rust-src
-      - name: Install cargo-hack
-        run: cargo install cargo-hack
       - name: ASAN / LSAN / TSAN (Linux)
         run: ci/sanitizer.sh
 
@@ -242,11 +257,19 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-miri-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-miri-
-      - name: Install cargo-hack
-        run: cargo install cargo-hack
+            ${{ runner.os }}-miri-${{ matrix.target }}-
+      - name: Install i686 Miri linker
+        if: runner.os == 'Linux' && matrix.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-multilib
+      - name: Install PowerPC64 Miri linker
+        if: runner.os == 'Linux' && matrix.target == 'powerpc64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-powerpc64-linux-gnu
       - name: Miri
         run: |
           bash ci/miri_tb.sh ${{ matrix.target }} ${{ matrix.cfg }}
@@ -288,119 +311,55 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-miri-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-miri-
-      - name: Install cargo-hack
-        run: cargo install cargo-hack
+            ${{ runner.os }}-miri-${{ matrix.target }}-
+      - name: Install i686 Miri linker
+        if: runner.os == 'Linux' && matrix.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-multilib
+      - name: Install PowerPC64 Miri linker
+        if: runner.os == 'Linux' && matrix.target == 'powerpc64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-powerpc64-linux-gnu
       - name: Miri
         run: |
           bash ci/miri_sb.sh ${{ matrix.target }} ${{ matrix.cfg }}
 
-  loom:
-    name: loom
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache cargo build and registry
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-loom-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-loom-
-      - name: Install Rust
-        run: rustup update $nightly && rustup default $nightly
-      - name: Loom tests
-        run: cargo test --tests --features loom
-
-  # valgrind
-  valgrind:
-    name: valgrind
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache cargo build and registry
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ubuntu-latest-valgrind-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ubuntu-latest-valgrind-
-
-      - name: Install Rust ${{ env.stable }}
-        uses: actions-rs/toolchain@v1
-        with:
-            toolchain: ${{ env.stable }}
-            override: true
-      - name: Install Valgrind
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y valgrind
-      # Compile tests
-      # - name: cargo build foo
-      #   run: cargo build --bin foo
-      #   working-directory: integration
-
-      # Run with valgrind
-      # - name: Run valgrind foo
-      #   run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/foo
-      #   working-directory: integration
-
   coverage:
     name: coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - rustfmt
       - clippy
+      - feature-check
       - build
       - cross
       - test
       - sanitizer
-      - loom
     steps:
-      - uses: actions/checkout@v6
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-      - uses: actions-rs/install@v0.1
-        with:
-          crate: cargo-tarpaulin
-          version: latest
-      - name: Cache ~/.cargo
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo
-          key: ${{ runner.os }}-coverage-dotcargo
-      - name: Cache cargo build
-        uses: actions/cache@v5
-        with:
-          path: target
-          key: ${{ runner.os }}-coverage-cargo-build-target
-      - name: Run tarpaulin
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTFLAGS: "--cfg tarpaulin"
-        with:
-          command: tarpaulin
-          args: --all-features --run-types tests --run-types doctests --workspace --out xml
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        run: rustup update "$nightly" && rustup default "$nightly" && rustup component add llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      # Platform binding behavior is validated by the dedicated Python and
+      # WebAssembly workflows. Keep this LCOV report focused on portable Rust.
+      - name: Generate core Rust and doctest coverage
+        run: >-
+          cargo llvm-cov --workspace --no-default-features
+          --features std,serde,borsh,arbitrary,quickcheck --doctests
+          --ignore-filename-regex '(/python\.rs$|/wasm\.rs$|/wasm_iter\.rs$)'
+          --lcov --output-path lcov.info
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: ${{ github.repository }}
+          use_oidc: true
+          files: lcov.info
+          disable_search: true
           fail_ci_if_error: true

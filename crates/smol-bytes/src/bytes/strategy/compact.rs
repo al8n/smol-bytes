@@ -239,7 +239,7 @@ use crate::{
 };
 use bytes::Buf;
 use core::mem;
-use core::ops::{Bound, RangeBounds};
+use core::ops::RangeBounds;
 
 #[cfg(feature = "pyo3")]
 mod python;
@@ -318,22 +318,7 @@ impl ImmutableStorage for RawBytes<Compact> {
       Repr::Inline(storage) => storage.try_slice(range).map(Self::inline),
       Repr::Heap(bytes) => {
         let len = bytes.len();
-
-        let begin = match range.start_bound() {
-          Bound::Included(&n) => n,
-          Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-          Bound::Unbounded => 0,
-        };
-
-        let end = match range.end_bound() {
-          Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-          Bound::Excluded(&n) => n,
-          Bound::Unbounded => len,
-        };
-
-        if begin > len || end > len || begin > end {
-          return Err(RangeOutOfBounds::new(begin, end, len));
-        }
+        let (begin, end) = normalize_range(range, len)?;
 
         let slen = end - begin;
         if slen == 0 {
@@ -341,7 +326,8 @@ impl ImmutableStorage for RawBytes<Compact> {
         }
 
         if slen <= INLINE_CAP {
-          // SAFETY: bounds checked above, and we are slicing within inline capacity.
+          // SAFETY: `normalize_range` proves the source range is initialized,
+          // and `slen <= INLINE_CAP` proves it fits in `Buffer`.
           return Ok(Self::inline(unsafe {
             Buffer::copy_from_slice(&self.as_slice()[begin..end])
           }));
@@ -448,12 +434,18 @@ impl ImmutableStorage for RawBytes<Compact> {
   }
 
   fn truncate(&mut self, new_len: usize) {
+    if new_len >= self.len() {
+      return;
+    }
+
     match &mut self.repr {
       Repr::Inline(storage) => {
         storage.truncate(new_len);
       }
       Repr::Heap(bytes) => {
         if new_len <= INLINE_CAP {
+          // SAFETY: the early return proves `new_len < bytes.len()`, and
+          // `new_len <= INLINE_CAP` proves the initialized prefix fits inline.
           let repr = Repr::inline(unsafe { Buffer::copy_from_slice(&bytes[..new_len]) });
           let _ = mem::replace(&mut self.repr, repr);
         } else {

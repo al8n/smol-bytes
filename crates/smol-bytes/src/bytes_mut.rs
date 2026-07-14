@@ -94,14 +94,14 @@ mod wasm;
 pub struct BytesMut(Repr);
 
 impl Default for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
   }
 }
 
 impl BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_bytes(bytes: bytes::Bytes) -> Self {
     if !bytes.is_unique() && bytes.len() <= INLINE_CAP {
       // SAFETY: bytes.len() is guaranteed to be less than or equal to INLINE_CAP
@@ -111,12 +111,12 @@ impl BytesMut {
     Self(Repr::Heap(bytes.into()))
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_bytes_mut(bytes: bytes::BytesMut) -> Self {
     Self(Repr::Heap(bytes))
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_inline(bytes: Buffer) -> Self {
     Self(Repr::Inline(bytes))
   }
@@ -162,7 +162,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn new() -> Self {
     Self(Repr::Inline(Buffer::new()))
   }
@@ -172,7 +172,7 @@ impl BytesMut {
   /// The returned `BytesMut` will be able to hold at least capacity bytes without reallocating.
   ///
   /// It is important to note that this function does not specify the length of the returned BytesMut, but only the capacity.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn with_capacity(capacity: usize) -> Self {
     if capacity <= INLINE_CAP {
       Self(Repr::Inline(Buffer::new()))
@@ -201,14 +201,14 @@ impl BytesMut {
   pub fn extend_from_slice(&mut self, extend: &[u8]) {
     match &mut self.0 {
       Repr::Inline(b) => {
-        let available = b.remaining_mut();
         let requested = extend.len();
-        if available >= requested {
+        if b.try_reclaim(requested) {
           b.put_slice(extend);
           return;
         }
 
-        let mut new_buf = bytes::BytesMut::with_capacity(b.len() + requested);
+        let required = b.len().checked_add(requested).expect("capacity overflow");
+        let mut new_buf = bytes::BytesMut::with_capacity(required);
         new_buf.put_slice(b.as_slice());
         new_buf.extend_from_slice(extend);
         self.0 = Repr::Heap(new_buf);
@@ -228,7 +228,7 @@ impl BytesMut {
   /// bytes.clear();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn clear(&mut self) {
     match &mut self.0 {
       Repr::Inline(b) => b.clear(),
@@ -252,7 +252,7 @@ impl BytesMut {
   /// bytes.truncate(5);
   /// assert_eq!(bytes.as_slice(), b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn truncate(&mut self, len: usize) {
     match &mut self.0 {
       Repr::Inline(b) => b.truncate(len),
@@ -272,7 +272,7 @@ impl BytesMut {
   ///
   /// assert_eq!(bytes.capacity(), 100);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn capacity(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.capacity(),
@@ -293,7 +293,7 @@ impl BytesMut {
   /// let heap_buf = BytesMut::with_capacity(100);
   /// assert!(!heap_buf.is_inline());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_inline(&self) -> bool {
     matches!(&self.0, Repr::Inline(_))
   }
@@ -878,25 +878,21 @@ impl BytesMut {
   #[must_use = "consider BytesMut::reserve if you need an infallible reservation"]
   pub fn try_reclaim(&mut self, additional: usize) -> bool {
     match &mut self.0 {
-      Repr::Inline(b) => {
-        let rem = b.remaining_mut();
-
-        if additional <= rem {
-          // The handle can already store at least `additional` more bytes, so
-          // there is no further work needed to be done.
-          return true;
-        }
-        false
-      }
+      Repr::Inline(b) => b.try_reclaim(additional),
       Repr::Heap(b) => b.try_reclaim(additional),
     }
   }
 
-  /// Sets the length of the buffer.
+  /// Sets the visible length of the buffer.
   ///
   /// This will explicitly set the size of the buffer without actually
   /// modifying the data, so it is up to the caller to ensure that the data
   /// has been initialized.
+  ///
+  /// ## Safety
+  ///
+  /// - `len` must not exceed [`capacity`](Self::capacity).
+  /// - Every byte in the current view's `0..len` range must be initialized.
   ///
   /// ## Examples
   ///
@@ -920,8 +916,9 @@ impl BytesMut {
   #[allow(clippy::missing_safety_doc)]
   #[inline]
   pub unsafe fn set_len(&mut self, len: usize) {
-    // SAFETY: forwards to the inner buffer's `set_len`; the caller's
-    // safety contract requires `len <= capacity`, same as the inner types.
+    // SAFETY: both inner methods interpret `len` as a visible length. The
+    // caller guarantees `len <= capacity()` and that every byte newly exposed
+    // in the current view is initialized.
     unsafe {
       match &mut self.0 {
         Repr::Inline(b) => b.set_len(len),
@@ -953,49 +950,20 @@ impl BytesMut {
   /// assert_eq!(&buf[..], &[0x1, 0x1, 0x3, 0x3]);
   /// ```
   pub fn resize(&mut self, new_len: usize, value: u8) {
-    let additional = if let Some(additional) = new_len.checked_sub(self.len()) {
-      additional
-    } else {
+    let current_len = self.len();
+    if new_len < current_len {
       self.truncate(new_len);
       return;
-    };
+    }
 
+    let additional = new_len - current_len;
     if additional == 0 {
       return;
     }
 
+    self.reserve(additional);
     match &mut self.0 {
-      Repr::Inline(storage) => {
-        let rem = storage.remaining_mut();
-
-        if additional <= rem {
-          // The handle can already store at least `additional` more bytes, so
-          // fill them with the value.
-          let dst = storage.spare_capacity_mut().as_mut_ptr();
-
-          // SAFETY: `spare_capacity_mut` returns a valid, properly aligned pointer and we've
-          // verified there's enough space to write `additional` bytes. There are at least
-          // `new_len` initialized bytes in the buffer so no uninitialized bytes are being exposed.
-          unsafe {
-            core::ptr::write_bytes(dst, value, additional);
-            storage.set_len(new_len);
-          }
-          return;
-        }
-        let mut new_buf = bytes::BytesMut::with_capacity(storage.len() + additional);
-        new_buf.put_slice(storage.as_slice());
-        let dst = new_buf.spare_capacity_mut().as_mut_ptr();
-
-        // SAFETY: `spare_capacity_mut` returns a valid, properly aligned pointer and we've
-        // reserved enough space to write `additional` bytes.
-        unsafe { core::ptr::write_bytes(dst, value, additional) };
-
-        // SAFETY: There are at least `new_len` initialized bytes in the buffer so no
-        // uninitialized bytes are being exposed.
-        unsafe { new_buf.set_len(new_len) };
-
-        self.0 = Repr::Heap(new_buf);
-      }
+      Repr::Inline(storage) => storage.put_bytes(value, additional),
       Repr::Heap(b) => b.resize(new_len, value),
     }
   }
@@ -1039,16 +1007,18 @@ impl BytesMut {
   /// Panics if the new capacity overflows `usize`.
   #[inline]
   pub fn reserve(&mut self, additional: usize) {
+    let required = self
+      .len()
+      .checked_add(additional)
+      .expect("capacity overflow");
+
     match &mut self.0 {
       Repr::Inline(storage) => {
-        let rem = storage.remaining_mut();
-
-        if additional <= rem {
-          // The handle can already store at least `additional` more bytes, so
-          // there is no further work needed to be done.
+        if storage.try_reclaim(additional) {
           return;
         }
-        let mut new_buf = bytes::BytesMut::with_capacity(storage.len() + additional);
+
+        let mut new_buf = bytes::BytesMut::with_capacity(required);
         new_buf.extend_from_slice(storage.as_slice());
         self.0 = Repr::Heap(new_buf);
       }
@@ -1066,7 +1036,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn len(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.len(),
@@ -1084,7 +1054,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert!(bytes.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
@@ -1099,7 +1069,7 @@ impl BytesMut {
   /// let buf = BytesMut::from(&b"hello"[..]);
   /// assert_eq!(buf.as_slice(), b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_slice(&self) -> &[u8] {
     self
   }
@@ -1115,14 +1085,14 @@ impl BytesMut {
   /// buf.as_mut_slice()[0] = b'j';
   /// assert_eq!(buf.as_slice(), b"jello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_mut_slice(&mut self) -> &mut [u8] {
     self
   }
 }
 
 impl Buf for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.remaining(),
@@ -1130,7 +1100,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn chunk(&self) -> &[u8] {
     match &self.0 {
       Repr::Inline(b) => b.as_slice(),
@@ -1138,7 +1108,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn advance(&mut self, cnt: usize) {
     match &mut self.0 {
       Repr::Inline(b) => b.advance(cnt),
@@ -1146,7 +1116,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
     match self.split_to(len) {
       Ok(a) => a.freeze_shared().into(),
@@ -1169,7 +1139,7 @@ impl Buf for BytesMut {
 }
 
 unsafe impl BufMut for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining_mut(&self) -> usize {
     usize::MAX - self.len()
   }
@@ -1186,6 +1156,15 @@ unsafe impl BufMut for BytesMut {
   }
 
   fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
+    let promote = match &mut self.0 {
+      Repr::Inline(buffer) if buffer.remaining_mut() == 0 => !buffer.try_reclaim(1),
+      _ => false,
+    };
+
+    if promote {
+      self.reserve(64);
+    }
+
     match &mut self.0 {
       Repr::Inline(b) => b.chunk_mut(),
       Repr::Heap(b) => b.chunk_mut(),
@@ -1199,14 +1178,9 @@ unsafe impl BufMut for BytesMut {
   fn put_bytes(&mut self, val: u8, cnt: usize) {
     self.reserve(cnt);
 
-    unsafe {
-      let dst = self.spare_capacity_mut();
-      // Reserved above
-      debug_assert!(dst.len() >= cnt);
-
-      core::ptr::write_bytes(dst.as_mut_ptr(), val, cnt);
-
-      self.advance_mut(cnt);
+    match &mut self.0 {
+      Repr::Inline(b) => b.put_bytes(val, cnt),
+      Repr::Heap(b) => b.put_bytes(val, cnt),
     }
   }
 }

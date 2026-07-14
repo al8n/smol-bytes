@@ -34,7 +34,7 @@ where
   type Item = &'a u8;
   type IntoIter = core::slice::Iter<'a, u8>;
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn into_iter(self) -> Self::IntoIter {
     self.as_ref().iter()
   }
@@ -47,7 +47,7 @@ where
   type Item = u8;
   type IntoIter = ::bytes::buf::IntoIter<RawBytes<S>>;
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn into_iter(self) -> Self::IntoIter {
     ::bytes::buf::IntoIter::new(self)
   }

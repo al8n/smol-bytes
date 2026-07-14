@@ -8,7 +8,7 @@ where
 {
   type Output = I::Output;
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn index(&self, index: I) -> &Self::Output {
     &self.as_str()[index]
   }

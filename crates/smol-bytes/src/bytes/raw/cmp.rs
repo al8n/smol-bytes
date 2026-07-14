@@ -10,7 +10,7 @@ macro_rules! bail {
       where
         Self: ImmutableStorage,
       {
-        #[cfg_attr(not(tarpaulin), inline(always))]
+        #[cfg_attr(not(coverage), inline(always))]
         fn eq(&self, other: &$ty) -> ::core::primitive::bool {
           <Self as ::core::cmp::PartialEq<$other>>::eq(self, other.$method())
         }
@@ -20,7 +20,7 @@ macro_rules! bail {
       where
         RawBytes<S>: ImmutableStorage,
       {
-        #[cfg_attr(not(tarpaulin), inline(always))]
+        #[cfg_attr(not(coverage), inline(always))]
         fn eq(&self, other: &RawBytes<S>) -> ::core::primitive::bool {
           <RawBytes<S> as ::core::cmp::PartialEq<$ty>>::eq(other, self)
         }
@@ -30,7 +30,7 @@ macro_rules! bail {
       where
         Self: ImmutableStorage,
       {
-        #[cfg_attr(not(tarpaulin), inline(always))]
+        #[cfg_attr(not(coverage), inline(always))]
         fn partial_cmp(&self, other: &$ty) -> ::core::option::Option<::core::cmp::Ordering> {
           <Self as ::core::cmp::PartialOrd<$other>>::partial_cmp(self, other.$method())
         }
@@ -40,7 +40,7 @@ macro_rules! bail {
       where
         RawBytes<S>: ImmutableStorage,
       {
-        #[cfg_attr(not(tarpaulin), inline(always))]
+        #[cfg_attr(not(coverage), inline(always))]
         fn partial_cmp(&self, other: &RawBytes<S>) -> ::core::option::Option<::core::cmp::Ordering> {
           <$other as ::core::cmp::PartialOrd<RawBytes<S>>>::partial_cmp(self.$method(), other)
         }
@@ -63,7 +63,7 @@ impl<'a, T: ?Sized, S> PartialEq<&'a T> for RawBytes<S>
 where
   Self: PartialEq<T> + ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &&'a T) -> bool {
     self.eq(other)
   }
@@ -73,7 +73,7 @@ impl<'a, T: ?Sized, S> PartialOrd<&'a T> for RawBytes<S>
 where
   Self: PartialOrd<T> + ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &&'a T) -> Option<Ordering> {
     self.partial_cmp(other)
   }
@@ -116,7 +116,7 @@ impl<S> PartialEq<[u8]> for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &[u8]) -> bool {
     self.as_slice() == other
   }
@@ -126,7 +126,7 @@ impl<S> PartialEq<RawBytes<S>> for [u8]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
     <RawBytes<S> as PartialEq<[u8]>>::eq(other, self)
   }
@@ -136,7 +136,7 @@ impl<S> PartialOrd<[u8]> for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &[u8]) -> Option<Ordering> {
     Some(self.as_slice().cmp(other))
   }
@@ -146,7 +146,7 @@ impl<S> PartialOrd<RawBytes<S>> for [u8]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     Some(self.cmp(other.as_slice()))
   }
@@ -156,7 +156,7 @@ impl<S, const N: usize> PartialEq<[u8; N]> for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &[u8; N]) -> bool {
     N == self.len() && self.as_slice() == other.as_slice()
   }
@@ -166,7 +166,7 @@ impl<S, const N: usize> PartialEq<RawBytes<S>> for [u8; N]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
     other.eq(self)
   }
@@ -176,7 +176,7 @@ impl<S, const N: usize> PartialOrd<[u8; N]> for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &[u8; N]) -> Option<Ordering> {
     Some(self.as_slice().cmp(other.as_slice()))
   }
@@ -186,7 +186,7 @@ impl<S, const N: usize> PartialOrd<RawBytes<S>> for [u8; N]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     Some(self.as_slice().cmp(other.as_slice()))
   }
@@ -197,7 +197,7 @@ impl<S> PartialEq<RawBytes<S>> for &[u8]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
     <[u8] as PartialEq<RawBytes<S>>>::eq(self, other)
   }
@@ -207,7 +207,7 @@ impl<S> PartialOrd<RawBytes<S>> for &[u8]
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     <[u8] as PartialOrd<RawBytes<S>>>::partial_cmp(self, other)
   }
@@ -218,7 +218,7 @@ impl<S> PartialEq<RawBytes<S>> for &str
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn eq(&self, other: &RawBytes<S>) -> bool {
     <str as PartialEq<RawBytes<S>>>::eq(self, other)
   }
@@ -228,7 +228,7 @@ impl<S> PartialOrd<RawBytes<S>> for &str
 where
   RawBytes<S>: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn partial_cmp(&self, other: &RawBytes<S>) -> Option<Ordering> {
     <str as PartialOrd<RawBytes<S>>>::partial_cmp(self, other)
   }

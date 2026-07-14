@@ -64,7 +64,7 @@ pub struct Utf8Buffer {
 }
 
 impl Default for Utf8Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
   }
@@ -81,7 +81,7 @@ impl Utf8Buffer {
   /// let buf = Utf8Buffer::new();
   /// assert!(buf.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn new() -> Self {
     Self {
       inner: Buffer::new(),
@@ -106,7 +106,7 @@ impl Utf8Buffer {
   /// const GREETING: Utf8Buffer = Utf8Buffer::from_static("hello");
   /// assert_eq!(GREETING.as_str(), "hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn from_static(s: &'static str) -> Self {
     let bytes = s.as_bytes();
     assert!(
@@ -120,13 +120,13 @@ impl Utf8Buffer {
   }
 
   /// Returns a reference to the inner `Buffer`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn as_inner(&self) -> &Buffer {
     &self.inner
   }
 
   /// Consumes `self` and returns the inner `Buffer`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn into_inner(self) -> Buffer {
     self.inner
   }
@@ -141,7 +141,7 @@ impl Utf8Buffer {
   /// let buf = Utf8Buffer::from("hello");
   /// assert_eq!(buf.as_str(), "hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_str(&self) -> &str {
     // SAFETY: Utf8Buffer guarantees valid UTF-8
     unsafe { str::from_utf8_unchecked(self.inner.as_slice()) }
@@ -157,7 +157,7 @@ impl Utf8Buffer {
   /// let buf = Utf8Buffer::from("hello");
   /// assert_eq!(buf.len(), 5);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn len(&self) -> usize {
     self.inner.len()
   }
@@ -172,7 +172,7 @@ impl Utf8Buffer {
   /// let buf = Utf8Buffer::new();
   /// assert!(buf.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_empty(&self) -> bool {
     self.inner.is_empty()
   }
@@ -189,13 +189,13 @@ impl Utf8Buffer {
   /// let buf = Utf8Buffer::from("hi");
   /// assert_eq!(buf.remaining(), 2);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn remaining(&self) -> usize {
     self.inner.remaining()
   }
 
   /// Returns the capacity of the buffer.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn capacity(&self) -> usize {
     self.inner.capacity()
   }
@@ -409,21 +409,21 @@ impl Utf8Buffer {
 }
 
 impl AsRef<str> for Utf8Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_ref(&self) -> &str {
     self.as_str()
   }
 }
 
 impl AsRef<[u8]> for Utf8Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_ref(&self) -> &[u8] {
     self.as_str().as_bytes()
   }
 }
 
 impl Borrow<str> for Utf8Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn borrow(&self) -> &str {
     self.as_str()
   }
@@ -432,7 +432,7 @@ impl Borrow<str> for Utf8Buffer {
 impl core::ops::Deref for Utf8Buffer {
   type Target = str;
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn deref(&self) -> &Self::Target {
     self.as_str()
   }

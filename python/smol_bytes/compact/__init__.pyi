@@ -250,83 +250,83 @@ class Utf8Bytes:
         """Return the number of bytes available for reading."""
         ...
     def advance(self, cnt: int) -> None:
-        """Advance the read cursor by ``cnt`` bytes."""
+        """Advance the read cursor by ``cnt`` bytes. Raises BufferError if ``cnt`` exceeds remaining bytes or does not end on a UTF-8 character boundary."""
         ...
     def get_u8(self) -> int:
-        """Read an unsigned 8-bit integer. Advances cursor by 1."""
+        """Read an unsigned 8-bit integer. Advances cursor by 1. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i8(self) -> int:
-        """Read a signed 8-bit integer. Advances cursor by 1."""
+        """Read a signed 8-bit integer. Advances cursor by 1. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u16(self) -> int:
-        """Read an unsigned 16-bit integer (big-endian). Advances cursor by 2."""
+        """Read an unsigned 16-bit integer (big-endian). Advances cursor by 2. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u16_le(self) -> int:
-        """Read an unsigned 16-bit integer (little-endian). Advances cursor by 2."""
+        """Read an unsigned 16-bit integer (little-endian). Advances cursor by 2. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i16(self) -> int:
-        """Read a signed 16-bit integer (big-endian). Advances cursor by 2."""
+        """Read a signed 16-bit integer (big-endian). Advances cursor by 2. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i16_le(self) -> int:
-        """Read a signed 16-bit integer (little-endian). Advances cursor by 2."""
+        """Read a signed 16-bit integer (little-endian). Advances cursor by 2. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u32(self) -> int:
-        """Read an unsigned 32-bit integer (big-endian). Advances cursor by 4."""
+        """Read an unsigned 32-bit integer (big-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u32_le(self) -> int:
-        """Read an unsigned 32-bit integer (little-endian). Advances cursor by 4."""
+        """Read an unsigned 32-bit integer (little-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i32(self) -> int:
-        """Read a signed 32-bit integer (big-endian). Advances cursor by 4."""
+        """Read a signed 32-bit integer (big-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i32_le(self) -> int:
-        """Read a signed 32-bit integer (little-endian). Advances cursor by 4."""
+        """Read a signed 32-bit integer (little-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_f32(self) -> float:
-        """Read a 32-bit float (big-endian). Advances cursor by 4."""
+        """Read a 32-bit float (big-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_f32_le(self) -> float:
-        """Read a 32-bit float (little-endian). Advances cursor by 4."""
+        """Read a 32-bit float (little-endian). Advances cursor by 4. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u64(self) -> int:
-        """Read an unsigned 64-bit integer (big-endian). Advances cursor by 8."""
+        """Read an unsigned 64-bit integer (big-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u64_le(self) -> int:
-        """Read an unsigned 64-bit integer (little-endian). Advances cursor by 8."""
+        """Read an unsigned 64-bit integer (little-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i64(self) -> int:
-        """Read a signed 64-bit integer (big-endian). Advances cursor by 8."""
+        """Read a signed 64-bit integer (big-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i64_le(self) -> int:
-        """Read a signed 64-bit integer (little-endian). Advances cursor by 8."""
+        """Read a signed 64-bit integer (little-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_f64(self) -> float:
-        """Read a 64-bit float (big-endian). Advances cursor by 8."""
+        """Read a 64-bit float (big-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_f64_le(self) -> float:
-        """Read a 64-bit float (little-endian). Advances cursor by 8."""
+        """Read a 64-bit float (little-endian). Advances cursor by 8. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u128(self) -> int:
-        """Read an unsigned 128-bit integer (big-endian). Advances cursor by 16."""
+        """Read an unsigned 128-bit integer (big-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_u128_le(self) -> int:
-        """Read an unsigned 128-bit integer (little-endian). Advances cursor by 16."""
+        """Read an unsigned 128-bit integer (little-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i128(self) -> int:
-        """Read a signed 128-bit integer (big-endian). Advances cursor by 16."""
+        """Read a signed 128-bit integer (big-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_i128_le(self) -> int:
-        """Read a signed 128-bit integer (little-endian). Advances cursor by 16."""
+        """Read a signed 128-bit integer (little-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
         ...

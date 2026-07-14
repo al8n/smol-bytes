@@ -1,6 +1,10 @@
 #![warn(rust_2018_idioms)]
 
 use smol_bytes::{compact::Bytes, Buf, BufMut, BytesMut, INLINE_CAP};
+use std::cmp::Ordering;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::ops::Bound;
 
 const LONG: &[u8] = b"mary had a little lamb, little lamb, little lamb...............";
 const SHORT: &[u8] = b"hello world";
@@ -22,13 +26,13 @@ fn test_layout() {
 
   assert_eq!(
     mem::size_of::<Bytes>(),
-    mem::size_of::<usize>() * 8,
-    "Bytes size should be 8 words",
+    INLINE_CAP + 2,
+    "Bytes size should be the inline capacity plus two metadata bytes",
   );
   assert_eq!(
     mem::size_of::<BytesMut>(),
-    mem::size_of::<usize>() * 8,
-    "BytesMut should be 8 words",
+    INLINE_CAP + 2,
+    "BytesMut size should be the inline capacity plus two metadata bytes",
   );
 
   assert_eq!(
@@ -367,6 +371,58 @@ fn truncate() {
   assert_eq!(hello, s);
   hello.truncate(5);
   assert_eq!(hello, "hello");
+}
+
+#[test]
+fn compact_heap_truncate_at_or_above_len_is_a_representation_preserving_noop() {
+  let mut bytes = Bytes::from(bytes::Bytes::from_static(b"hello"));
+  assert!(bytes.is_heap());
+
+  bytes.truncate(6);
+  assert_eq!(bytes, b"hello"[..]);
+  assert!(bytes.is_heap());
+
+  bytes.truncate(5);
+  assert_eq!(bytes, b"hello"[..]);
+  assert!(bytes.is_heap());
+}
+
+#[test]
+#[allow(clippy::reversed_empty_ranges)]
+fn fallible_slicing_is_checked_for_inline_and_compact_heap() {
+  let mut inline = Bytes::from_static(b"abcdef");
+  inline.advance(2);
+  assert_eq!(inline.try_slice(0..4).unwrap(), b"cdef"[..]);
+  assert!(inline.try_slice(4..5).is_err());
+  assert!(inline.try_split_to(5).is_err());
+
+  let heap = Bytes::from(vec![b'x'; 100]);
+  assert!(heap.is_heap());
+  assert!(heap.try_slice(80..20).is_err());
+  assert!(heap.try_slice(..=usize::MAX).is_err());
+  assert!(heap
+    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+    .is_err());
+}
+
+#[test]
+fn same_heap_pointer_with_different_lengths_obeys_eq_hash_ord_laws() {
+  fn hash(bytes: &Bytes) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
+  }
+
+  let full = Bytes::from(vec![b'x'; 100]);
+  let prefix = full.slice(..99);
+  assert!(full.is_heap());
+  assert!(prefix.is_heap());
+  assert_eq!(full.as_ptr(), prefix.as_ptr());
+
+  assert_ne!(full, prefix);
+  assert_ne!(hash(&full), hash(&prefix));
+  assert_eq!(full.cmp(&prefix), Ordering::Greater);
+  assert_eq!(full.partial_cmp(&prefix), Some(Ordering::Greater));
 }
 
 #[test]

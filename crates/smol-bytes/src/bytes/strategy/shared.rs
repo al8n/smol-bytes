@@ -163,8 +163,8 @@ use crate::{
   error::*,
 };
 use bytes::Buf;
+use core::mem;
 use core::ops::RangeBounds;
-use core::{mem, ops::Bound};
 
 /// A strategy that preserves heap allocations for fast, zero-copy conversions with [`bytes::Bytes`].
 ///
@@ -287,22 +287,7 @@ impl ImmutableStorage for RawBytes<Shared> {
       Repr::Inline(storage) => storage.try_slice(range).map(Self::inline),
       Repr::Heap(bytes) => {
         let len = bytes.len();
-
-        let begin = match range.start_bound() {
-          Bound::Included(&n) => n,
-          Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-          Bound::Unbounded => 0,
-        };
-
-        let end = match range.end_bound() {
-          Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-          Bound::Excluded(&n) => n,
-          Bound::Unbounded => len,
-        };
-
-        if begin > len || end > len || begin > end {
-          return Err(RangeOutOfBounds::new(begin, end, len));
-        }
+        let (begin, end) = normalize_range(range, len)?;
 
         if begin == end {
           return Ok(Self::new());
