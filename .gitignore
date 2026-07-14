@@ -18,3 +18,8 @@ __pycache__/
 
 # JS build artifacts
 js/node_modules/
+
+docs/
+**.claude/
+
+
