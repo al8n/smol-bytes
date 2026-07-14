@@ -26,13 +26,13 @@ fn test_layout() {
 
   assert_eq!(
     mem::size_of::<Bytes>(),
-    mem::size_of::<usize>() * 8,
-    "Bytes size should be 8 words",
+    INLINE_CAP + 2,
+    "Bytes size should be the inline capacity plus two metadata bytes",
   );
   assert_eq!(
     mem::size_of::<BytesMut>(),
-    mem::size_of::<usize>() * 8,
-    "BytesMut should be 8 words",
+    INLINE_CAP + 2,
+    "BytesMut size should be the inline capacity plus two metadata bytes",
   );
 
   assert_eq!(
