@@ -51,7 +51,7 @@ jobs:
         run: echo "::notice::GIST_PAT is not configured; skipping Gist upload."
       - name: Upload total loc to GitHub Gist
         if: env.GIST_PAT != ''
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ env.GIST_PAT }}
           script: |
