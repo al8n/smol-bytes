@@ -94,14 +94,14 @@ mod wasm;
 pub struct BytesMut(Repr);
 
 impl Default for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
   }
 }
 
 impl BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_bytes(bytes: bytes::Bytes) -> Self {
     if !bytes.is_unique() && bytes.len() <= INLINE_CAP {
       // SAFETY: bytes.len() is guaranteed to be less than or equal to INLINE_CAP
@@ -111,12 +111,12 @@ impl BytesMut {
     Self(Repr::Heap(bytes.into()))
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_bytes_mut(bytes: bytes::BytesMut) -> Self {
     Self(Repr::Heap(bytes))
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub(crate) fn from_inline(bytes: Buffer) -> Self {
     Self(Repr::Inline(bytes))
   }
@@ -162,7 +162,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn new() -> Self {
     Self(Repr::Inline(Buffer::new()))
   }
@@ -172,7 +172,7 @@ impl BytesMut {
   /// The returned `BytesMut` will be able to hold at least capacity bytes without reallocating.
   ///
   /// It is important to note that this function does not specify the length of the returned BytesMut, but only the capacity.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn with_capacity(capacity: usize) -> Self {
     if capacity <= INLINE_CAP {
       Self(Repr::Inline(Buffer::new()))
@@ -228,7 +228,7 @@ impl BytesMut {
   /// bytes.clear();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn clear(&mut self) {
     match &mut self.0 {
       Repr::Inline(b) => b.clear(),
@@ -252,7 +252,7 @@ impl BytesMut {
   /// bytes.truncate(5);
   /// assert_eq!(bytes.as_slice(), b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn truncate(&mut self, len: usize) {
     match &mut self.0 {
       Repr::Inline(b) => b.truncate(len),
@@ -272,7 +272,7 @@ impl BytesMut {
   ///
   /// assert_eq!(bytes.capacity(), 100);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn capacity(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.capacity(),
@@ -293,7 +293,7 @@ impl BytesMut {
   /// let heap_buf = BytesMut::with_capacity(100);
   /// assert!(!heap_buf.is_inline());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub const fn is_inline(&self) -> bool {
     matches!(&self.0, Repr::Inline(_))
   }
@@ -1036,7 +1036,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert_eq!(bytes.len(), 0);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn len(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.len(),
@@ -1054,7 +1054,7 @@ impl BytesMut {
   /// let bytes = BytesMut::new();
   /// assert!(bytes.is_empty());
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
@@ -1069,7 +1069,7 @@ impl BytesMut {
   /// let buf = BytesMut::from(&b"hello"[..]);
   /// assert_eq!(buf.as_slice(), b"hello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_slice(&self) -> &[u8] {
     self
   }
@@ -1085,14 +1085,14 @@ impl BytesMut {
   /// buf.as_mut_slice()[0] = b'j';
   /// assert_eq!(buf.as_slice(), b"jello");
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn as_mut_slice(&mut self) -> &mut [u8] {
     self
   }
 }
 
 impl Buf for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining(&self) -> usize {
     match &self.0 {
       Repr::Inline(b) => b.remaining(),
@@ -1100,7 +1100,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn chunk(&self) -> &[u8] {
     match &self.0 {
       Repr::Inline(b) => b.as_slice(),
@@ -1108,7 +1108,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn advance(&mut self, cnt: usize) {
     match &mut self.0 {
       Repr::Inline(b) => b.advance(cnt),
@@ -1116,7 +1116,7 @@ impl Buf for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
     match self.split_to(len) {
       Ok(a) => a.freeze_shared().into(),
@@ -1139,7 +1139,7 @@ impl Buf for BytesMut {
 }
 
 unsafe impl BufMut for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining_mut(&self) -> usize {
     usize::MAX - self.len()
   }

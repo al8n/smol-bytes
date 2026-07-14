@@ -17,7 +17,7 @@ impl<S> core::fmt::LowerHex for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match &self.repr {
       Repr::Inline(b) => b.fmt(f),
@@ -30,7 +30,7 @@ impl<S> core::fmt::UpperHex for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match &self.repr {
       Repr::Inline(b) => b.fmt(f),

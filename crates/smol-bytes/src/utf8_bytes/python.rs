@@ -7,7 +7,6 @@ use pyo3::{
 
 use crate::bytes::strategy::compact::Compact;
 use crate::bytes::strategy::shared::Shared;
-use crate::utf8_buf::Utf8Buf;
 
 /// Concrete shared Utf8Bytes type for Python bindings.
 type SharedUtf8Bytes = super::Utf8Bytes<Shared>;

@@ -5,14 +5,14 @@ use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 use super::*;
 
 impl<const N: usize> From<[u8; N]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(array: [u8; N]) -> Self {
     Self::from(&array)
   }
 }
 
 impl<const N: usize> From<&[u8; N]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(array: &[u8; N]) -> Self {
     if N <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
@@ -24,14 +24,14 @@ impl<const N: usize> From<&[u8; N]> for BytesMut {
 }
 
 impl From<Buffer> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(buffer: Buffer) -> Self {
     Self(Repr::Inline(buffer))
   }
 }
 
 impl From<&[u8]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(slice: &[u8]) -> Self {
     if slice.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
@@ -43,21 +43,21 @@ impl From<&[u8]> for BytesMut {
 }
 
 impl From<&str> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(s: &str) -> Self {
     Self::from(s.as_bytes())
   }
 }
 
 impl From<bytes::Bytes> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(bytes: bytes::Bytes) -> Self {
     Self::from_bytes(bytes)
   }
 }
 
 impl From<bytes::BytesMut> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(bytes: bytes::BytesMut) -> Self {
     Self::from_bytes_mut(bytes)
   }
@@ -78,7 +78,7 @@ where
 }
 
 impl From<BytesMut> for bytes::BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => {
@@ -92,7 +92,7 @@ impl From<BytesMut> for bytes::BytesMut {
 }
 
 impl From<BytesMut> for bytes::Bytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => bytes::Bytes::copy_from_slice(&storage),
@@ -102,7 +102,7 @@ impl From<BytesMut> for bytes::Bytes {
 }
 
 impl From<Vec<u8>> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(vec: Vec<u8>) -> Self {
     if vec.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
@@ -114,7 +114,7 @@ impl From<Vec<u8>> for BytesMut {
 }
 
 impl From<BytesMut> for Vec<u8> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => storage.as_slice().to_vec(),
@@ -124,7 +124,7 @@ impl From<BytesMut> for Vec<u8> {
 }
 
 impl From<BytesMut> for Box<[u8]> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => storage.as_slice().into(),
@@ -134,7 +134,7 @@ impl From<BytesMut> for Box<[u8]> {
 }
 
 impl From<BytesMut> for Arc<[u8]> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => Arc::from(storage.as_slice()),
@@ -144,7 +144,7 @@ impl From<BytesMut> for Arc<[u8]> {
 }
 
 impl From<BytesMut> for Rc<[u8]> {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(smol_bytes_mut: BytesMut) -> Self {
     match smol_bytes_mut.0 {
       Repr::Inline(storage) => Rc::from(storage.as_slice()),
@@ -154,14 +154,14 @@ impl From<BytesMut> for Rc<[u8]> {
 }
 
 impl From<String> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(s: String) -> Self {
     Self::from(s.into_bytes())
   }
 }
 
 impl From<Box<[u8]>> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(vec: Box<[u8]>) -> Self {
     if vec.len() <= INLINE_CAP {
       // SAFETY: len is guaranteed to be less than or equal to INLINE_CAP
@@ -173,14 +173,14 @@ impl From<Box<[u8]>> for BytesMut {
 }
 
 impl From<Arc<[u8]>> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(arc: Arc<[u8]>) -> Self {
     Self::from(arc.as_ref())
   }
 }
 
 impl From<Rc<[u8]>> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(rc: Rc<[u8]>) -> Self {
     Self::from(rc.as_ref())
   }

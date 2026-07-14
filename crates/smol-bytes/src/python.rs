@@ -119,22 +119,22 @@ pub trait PyBufCommon: Sized {
 }
 
 impl PyBufCommon for Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.try_split_to(at)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.try_split_off(at)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_slice(&self, start: usize, end: usize) -> Result<Self, RangeOutOfBounds> {
     self.try_slice(start..end)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     self.try_advance(cnt)
   }
@@ -145,29 +145,29 @@ impl<S> PyBufCommon for RawBytes<S>
 where
   RawBytes<S>: bytes::strategy::ImmutableStorage,
 {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.try_split_to(at)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.try_split_off(at)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_slice(&self, start: usize, end: usize) -> Result<Self, RangeOutOfBounds> {
     self.try_slice(start..end)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     self.try_advance(cnt)
   }
 }
 
 impl PyBufCommon for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
     match self.try_split_to(at)? {
       Ok(bytes) => Ok(bytes),
@@ -175,7 +175,7 @@ impl PyBufCommon for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
     match self.try_split_off(at)? {
       Ok(bytes) => Ok(bytes),
@@ -183,12 +183,12 @@ impl PyBufCommon for BytesMut {
     }
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_slice(&self, _: usize, _: usize) -> Result<BytesMut, RangeOutOfBounds> {
     unreachable!("BytesMut does not support slicing");
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     self.try_advance(cnt)
   }

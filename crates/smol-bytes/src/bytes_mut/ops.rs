@@ -3,7 +3,7 @@ use super::*;
 impl core::ops::Deref for BytesMut {
   type Target = [u8];
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn deref(&self) -> &Self::Target {
     match &self.0 {
       Repr::Inline(b) => b.as_slice(),
@@ -13,7 +13,7 @@ impl core::ops::Deref for BytesMut {
 }
 
 impl core::ops::DerefMut for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn deref_mut(&mut self) -> &mut Self::Target {
     match &mut self.0 {
       Repr::Inline(b) => b.as_mut_slice(),
@@ -23,28 +23,28 @@ impl core::ops::DerefMut for BytesMut {
 }
 
 impl core::borrow::Borrow<[u8]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn borrow(&self) -> &[u8] {
     self.as_ref()
   }
 }
 
 impl core::borrow::BorrowMut<[u8]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn borrow_mut(&mut self) -> &mut [u8] {
     self.as_mut()
   }
 }
 
 impl AsRef<[u8]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_ref(&self) -> &[u8] {
     self
   }
 }
 
 impl AsMut<[u8]> for BytesMut {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_mut(&mut self) -> &mut [u8] {
     self
   }

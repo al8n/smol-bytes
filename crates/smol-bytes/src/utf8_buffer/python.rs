@@ -318,7 +318,6 @@ impl Utf8Buffer {
   ///     int: Number of bytes available for reading.
   #[pyo3(name = "remaining")]
   fn __python_remaining(&self) -> usize {
-    use bytes::Buf;
     self.inner.remaining()
   }
 
@@ -331,7 +330,6 @@ impl Utf8Buffer {
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
   fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
-    use bytes::Buf;
     if cnt > self.inner.remaining() {
       return Err(pyo3::exceptions::PyBufferError::new_err(format!(
         "cannot advance past remaining: {} > {}",
@@ -354,7 +352,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 1 byte remains.
   #[pyo3(name = "get_u8")]
   fn __python_get_u8(&mut self) -> PyResult<u8> {
-    use bytes::Buf;
     if self.inner.remaining() < 1 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u8",
@@ -374,7 +371,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 1 byte remains.
   #[pyo3(name = "get_i8")]
   fn __python_get_i8(&mut self) -> PyResult<i8> {
-    use bytes::Buf;
     if self.inner.remaining() < 1 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i8",
@@ -394,7 +390,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 2 bytes remain.
   #[pyo3(name = "get_u16")]
   fn __python_get_u16(&mut self) -> PyResult<u16> {
-    use bytes::Buf;
     if self.inner.remaining() < 2 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u16",
@@ -414,7 +409,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 2 bytes remain.
   #[pyo3(name = "get_u16_le")]
   fn __python_get_u16_le(&mut self) -> PyResult<u16> {
-    use bytes::Buf;
     if self.inner.remaining() < 2 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u16",
@@ -434,7 +428,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 2 bytes remain.
   #[pyo3(name = "get_i16")]
   fn __python_get_i16(&mut self) -> PyResult<i16> {
-    use bytes::Buf;
     if self.inner.remaining() < 2 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i16",
@@ -454,7 +447,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 2 bytes remain.
   #[pyo3(name = "get_i16_le")]
   fn __python_get_i16_le(&mut self) -> PyResult<i16> {
-    use bytes::Buf;
     if self.inner.remaining() < 2 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i16",
@@ -474,7 +466,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_u32")]
   fn __python_get_u32(&mut self) -> PyResult<u32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u32",
@@ -494,7 +485,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_u32_le")]
   fn __python_get_u32_le(&mut self) -> PyResult<u32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u32",
@@ -514,7 +504,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_i32")]
   fn __python_get_i32(&mut self) -> PyResult<i32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i32",
@@ -534,7 +523,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_i32_le")]
   fn __python_get_i32_le(&mut self) -> PyResult<i32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i32",
@@ -554,7 +542,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_u64")]
   fn __python_get_u64(&mut self) -> PyResult<u64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u64",
@@ -574,7 +561,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_u64_le")]
   fn __python_get_u64_le(&mut self) -> PyResult<u64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u64",
@@ -594,7 +580,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_i64")]
   fn __python_get_i64(&mut self) -> PyResult<i64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i64",
@@ -614,7 +599,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_i64_le")]
   fn __python_get_i64_le(&mut self) -> PyResult<i64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i64",
@@ -634,7 +618,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 16 bytes remain.
   #[pyo3(name = "get_u128")]
   fn __python_get_u128(&mut self) -> PyResult<u128> {
-    use bytes::Buf;
     if self.inner.remaining() < 16 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u128",
@@ -654,7 +637,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 16 bytes remain.
   #[pyo3(name = "get_u128_le")]
   fn __python_get_u128_le(&mut self) -> PyResult<u128> {
-    use bytes::Buf;
     if self.inner.remaining() < 16 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for u128",
@@ -674,7 +656,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 16 bytes remain.
   #[pyo3(name = "get_i128")]
   fn __python_get_i128(&mut self) -> PyResult<i128> {
-    use bytes::Buf;
     if self.inner.remaining() < 16 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i128",
@@ -694,7 +675,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 16 bytes remain.
   #[pyo3(name = "get_i128_le")]
   fn __python_get_i128_le(&mut self) -> PyResult<i128> {
-    use bytes::Buf;
     if self.inner.remaining() < 16 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for i128",
@@ -714,7 +694,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_f32")]
   fn __python_get_f32(&mut self) -> PyResult<f32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for f32",
@@ -734,7 +713,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 4 bytes remain.
   #[pyo3(name = "get_f32_le")]
   fn __python_get_f32_le(&mut self) -> PyResult<f32> {
-    use bytes::Buf;
     if self.inner.remaining() < 4 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for f32",
@@ -754,7 +732,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_f64")]
   fn __python_get_f64(&mut self) -> PyResult<f64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for f64",
@@ -774,7 +751,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than 8 bytes remain.
   #[pyo3(name = "get_f64_le")]
   fn __python_get_f64_le(&mut self) -> PyResult<f64> {
-    use bytes::Buf;
     if self.inner.remaining() < 8 {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data for f64",
@@ -797,7 +773,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
   #[pyo3(name = "get_uint")]
   fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
-    use bytes::Buf;
     if nbytes > 8 || self.inner.remaining() < nbytes {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data or nbytes > 8",
@@ -820,7 +795,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
   #[pyo3(name = "get_uint_le")]
   fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
-    use bytes::Buf;
     if nbytes > 8 || self.inner.remaining() < nbytes {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data or nbytes > 8",
@@ -843,7 +817,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
   #[pyo3(name = "get_int")]
   fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
-    use bytes::Buf;
     if nbytes > 8 || self.inner.remaining() < nbytes {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data or nbytes > 8",
@@ -866,7 +839,6 @@ impl Utf8Buffer {
   ///     BufferError: If fewer than `nbytes` bytes remain or `nbytes` > 8.
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
-    use bytes::Buf;
     if nbytes > 8 || self.inner.remaining() < nbytes {
       return Err(pyo3::exceptions::PyBufferError::new_err(
         "not enough data or nbytes > 8",

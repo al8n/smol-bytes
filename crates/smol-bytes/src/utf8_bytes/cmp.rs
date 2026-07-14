@@ -100,7 +100,7 @@ const _: () = {
   where
     RawBytes<S>: ImmutableStorage,
   {
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn eq(&self, other: &Utf8BytesMut) -> bool {
       self.as_str() == other.as_str()
     }
@@ -110,7 +110,7 @@ const _: () = {
   where
     RawBytes<S>: ImmutableStorage,
   {
-    #[cfg_attr(not(tarpaulin), inline(always))]
+    #[cfg_attr(not(coverage), inline(always))]
     fn eq(&self, other: &Utf8Bytes<S>) -> bool {
       self.as_str() == other.as_str()
     }

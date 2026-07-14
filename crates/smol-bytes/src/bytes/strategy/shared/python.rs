@@ -57,46 +57,46 @@ impl From<super::Bytes> for PySharedBytes {
 }
 
 impl AsRef<[u8]> for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn as_ref(&self) -> &[u8] {
     self.inner.as_ref()
   }
 }
 
 impl Buf for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn remaining(&self) -> usize {
     self.inner.remaining()
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn chunk(&self) -> &[u8] {
     self.inner.chunk()
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn advance(&mut self, cnt: usize) {
     Buf::advance(&mut self.inner, cnt);
   }
 }
 
 impl PyBufCommon for PySharedBytes {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.inner.try_split_to(at).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     self.inner.try_split_off(at).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_slice(&self, start: usize, end: usize) -> Result<Self, RangeOutOfBounds> {
     self.inner.try_slice(start..end).map(Into::into)
   }
 
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn py_try_advance(&mut self, cnt: usize) -> Result<(), OutOfBounds> {
     self.inner.try_advance(cnt)
   }
@@ -741,7 +741,7 @@ impl PySharedBytes {
       (*view).len = slice.len() as isize;
       (*view).itemsize = 1;
       (*view).ndim = 1;
-      (*view).format = b"B\0".as_ptr() as *mut _;
+      (*view).format = c"B".as_ptr().cast_mut();
       (*view).shape = &mut (*view).len;
       (*view).strides = &mut (*view).itemsize;
       (*view).suboffsets = std::ptr::null_mut();

@@ -19,7 +19,7 @@ impl Utf8Buffer {
 }
 
 impl From<Utf8Buffer> for Buffer {
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg_attr(not(coverage), inline(always))]
   fn from(value: Utf8Buffer) -> Self {
     value.inner
   }
