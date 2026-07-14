@@ -1,0 +1,434 @@
+//! The **Shared** strategy for `Bytes`.
+//!
+//! This module provides the [`Bytes`] type alias configured with the [`Shared`] strategy,
+//! which prioritizes **fast conversions** and **allocation sharing** with [`bytes::Bytes`].
+//!
+//! # Key Characteristics
+//!
+//! - **Zero-copy conversions**: Converting to/from `Bytes` is O(1) for heap-allocated data
+//! - **Preserves heap allocations**: Once heap-allocated, stays on heap even when data shrinks
+//! - **Reference-counted sharing**: Heap allocations use `Arc` for cheap clones
+//! - **Recommended default**: Best for most use cases, especially I/O and networking
+//!
+//! # When to Use
+//!
+//! Choose this strategy when:
+//!
+//! - **Frequent `Bytes` conversions**: You often convert between `Bytes` and `bytes::Bytes`
+//! - **Network protocols**: Building HTTP servers, WebSocket handlers, or other I/O-heavy applications
+//! - **Performance-critical paths**: Speed is more important than memory overhead
+//! - **Shared buffers**: You frequently clone buffers and want cheap reference counting
+//!
+//! # Basic Usage
+//!
+//! ```rust
+//! use smol_bytes::shared::Bytes;
+//!
+//! // Small data (≤62 bytes) is stored inline
+//! let small = Bytes::from_static(b"hello world");
+//! assert!(!small.is_heap());
+//!
+//! // Large data is heap-allocated
+//! let large = Bytes::from(vec![1u8; 100]);
+//! assert!(large.is_heap());
+//!
+//! // Cheap clone (reference counting)
+//! let clone = large.clone();
+//! ```
+//!
+//! # Behavior Details
+//!
+//! ## Memory Layout
+//!
+//! ```text
+//! ┌─────────────────────────────────────────┐
+//! │  Bytes (64 bytes on stack)          │
+//! ├─────────────────────────────────────────┤
+//! │  Variant: Inline (≤62 bytes)            │
+//! │  ┌────────────────────────────────────┐ │
+//! │  │ [u8; 62] data                      │ │
+//! │  │ u8 length                          │ │
+//! │  │ u8 current_offset                  │ │
+//! │  └────────────────────────────────────┘ │
+//! │                                           │
+//! │  Variant: Heap (>62 bytes or shrunk)    │
+//! │  ┌────────────────────────────────────┐ │
+//! │  │ bytes::Bytes (Arc<[u8]>)           │ │
+//! │  └────────────────────────────────────┘ │
+//! └─────────────────────────────────────────┘
+//! ```
+//!
+//! ## Operations and Allocation Behavior
+//!
+//! ```rust
+//! use smol_bytes::shared::Bytes;
+//! use bytes::Buf;
+//!
+//! // Start with large heap allocation
+//! let mut data = Bytes::from(vec![1u8; 100]);
+//! assert!(data.is_heap());
+//!
+//! // After advance, still heap-allocated (Shared strategy)
+//! data.advance(70); // 30 bytes remain
+//! assert!(data.is_heap()); // ✓ Still on heap!
+//!
+//! // Zero-copy conversion to Bytes
+//! let bytes: bytes::Bytes = data.into();
+//! assert_eq!(bytes.len(), 30);
+//! ```
+//!
+//! ## Comparison: Operations That Keep vs Convert to Heap
+//!
+//! | Operation | Starting State | Result State | Notes |
+//! |-----------|---------------|--------------|-------|
+//! | `advance()` | Heap (100 bytes) | Heap (30 bytes) | Stays heap |
+//! | `truncate()` | Heap (100 bytes) | Heap (30 bytes) | Stays heap |
+//! | `split_to()` | Heap (100 bytes) | Heap (70 bytes) | Both parts may be heap |
+//! | `split_off()` | Heap (100 bytes) | Heap (30 bytes) | Both parts may be heap |
+//! | `slice()` | Heap | Inline or Heap | Result inline if ≤62 bytes |
+//!
+//! # Performance Characteristics
+//!
+//! ## Fast Operations (O(1))
+//!
+//! - `clone()` - Reference count increment
+//! - `advance()` - Pointer adjustment
+//! - `truncate()` - Length update
+//! - `into::<Bytes>()` - Zero-copy when heap-allocated
+//!
+//! ## Linear Operations (O(62) - copies up to 62 bytes)
+//!
+//! - Creating inline from slice
+//! - `slice()` when result fits inline
+//! - Operations producing inline results
+//!
+//! # Examples
+//!
+//! ## Network Protocol Buffer
+//!
+//! ```rust
+//! use smol_bytes::shared::Bytes;
+//! use bytes::Buf;
+//!
+//! // Receive data from network
+//! let mut buffer = Bytes::from(vec![0u8; 1024]);
+//!
+//! // Process header (advance past it)
+//! buffer.advance(16);
+//!
+//! // Buffer stays on heap for efficient passing to bytes::Bytes
+//! assert!(buffer.is_heap());
+//!
+//! // Zero-copy conversion for writing
+//! let bytes: bytes::Bytes = buffer.into();
+//! // ... write bytes to socket
+//! ```
+//!
+//! ## Parsing with Zero-Copy Slicing
+//!
+//! ```rust
+//! use smol_bytes::shared::Bytes;
+//!
+//! let data = Bytes::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+//!
+//! // Extract different segments
+//! let header = data.slice(0..2);
+//! let payload = data.slice(2..8);
+//! let checksum = data.slice(8..10);
+//!
+//! // All share the same underlying allocation!
+//! ```
+//!
+//! ## Efficient Cloning
+//!
+//! ```rust
+//! use smol_bytes::shared::Bytes;
+//!
+//! let original = Bytes::from(vec![1u8; 100]);
+//!
+//! // Cheap clones (just Arc reference count)
+//! let clone1 = original.clone();
+//! let clone2 = original.clone();
+//! let clone3 = original.clone();
+//!
+//! // All share the same heap allocation
+//! assert!(original.is_heap());
+//! assert!(clone1.is_heap());
+//! ```
+
+use super::ImmutableStorage;
+use crate::{
+  buffer::{Buffer, INLINE_CAP},
+  bytes::raw::{RawBytes, Repr},
+  error::*,
+};
+use bytes::Buf;
+use core::ops::RangeBounds;
+use core::{mem, ops::Bound};
+
+/// A strategy that preserves heap allocations for fast, zero-copy conversions with [`bytes::Bytes`].
+///
+/// # Overview
+///
+/// The `Shared` strategy prioritizes **fast conversions** and **allocation sharing** with
+/// [`bytes::Bytes`]. When data is heap-allocated, it remains on the heap even after operations
+/// like `advance()`, `truncate()`, or `split_to/off()` that reduce the size below the inline
+/// capacity.
+///
+/// This makes `Shared` ideal when:
+/// - You frequently convert between `Bytes` and `Bytes`
+/// - You want to share heap allocations (cheap clones via reference counting)
+/// - Performance is more important than memory overhead
+///
+/// # Behavior
+///
+/// - **Inline → Inline**: Small data stays inline (≤62 bytes)
+/// - **Heap → Heap**: Large data stays on heap, **even if it shrinks** below inline capacity
+/// - **Conversions**: Zero-cost `From`/`Into` with `Bytes` when heap-allocated
+///
+/// ## Example
+///
+/// ```rust
+/// use smol_bytes::shared::Bytes;
+/// use bytes::Buf;
+///
+/// // Create heap-allocated bytes (>62 bytes)
+/// let mut data = Bytes::from(vec![1u8; 100]);
+/// assert!(data.is_heap());
+///
+/// // Advance past most data
+/// data.advance(70); // Only 30 bytes remain
+///
+/// // Still heap-allocated! (Shared strategy preserves heap)
+/// assert!(data.is_heap());
+///
+/// // Fast, zero-copy conversion to Bytes
+/// let bytes: bytes::Bytes = data.into();
+/// assert_eq!(bytes.len(), 30);
+/// ```
+///
+/// # Comparison with Compact
+///
+/// | Operation | Shared | Compact |
+/// |-----------|--------|---------|
+/// | Heap→Inline on shrink | ❌ No | ✅ Yes |
+/// | Bytes conversion | ⚡ Zero-copy | 📋 May copy |
+/// | Memory usage | 💾 Higher | 💾 Lower |
+/// | Best for | Speed, Bytes interop | Memory efficiency |
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Shared(());
+
+impl RawBytes<Shared> {
+  /// Create [`Bytes`] with a buffer whose lifetime is controlled
+  /// via an explicit owner.
+  ///
+  /// A common use case is to zero-copy construct from mapped memory.
+  ///
+  /// ```
+  /// # struct File;
+  /// #
+  /// # impl File {
+  /// #     pub fn open(_: &str) -> Result<Self, ()> {
+  /// #         Ok(Self)
+  /// #     }
+  /// # }
+  /// #
+  /// # mod memmap2 {
+  /// #     pub struct Mmap;
+  /// #
+  /// #     impl Mmap {
+  /// #         pub unsafe fn map(_file: &super::File) -> Result<Self, ()> {
+  /// #             Ok(Self)
+  /// #         }
+  /// #     }
+  /// #
+  /// #     impl AsRef<[u8]> for Mmap {
+  /// #         fn as_ref(&self) -> &[u8] {
+  /// #             b"buf"
+  /// #         }
+  /// #     }
+  /// # }
+  /// use smol_bytes::shared::Bytes;
+  /// use memmap2::Mmap;
+  ///
+  /// # fn main() -> Result<(), ()> {
+  /// let file = File::open("upload_bundle.tar.gz")?;
+  /// let mmap = unsafe { Mmap::map(&file) }?;
+  /// let b = Bytes::from_owner(mmap);
+  /// # Ok(())
+  /// # }
+  /// ```
+  ///
+  /// The `owner` will be transferred to the constructed [`Bytes`] object, which
+  /// will ensure it is dropped once all remaining clones of the constructed
+  /// object are dropped. The owner will then be responsible for dropping the
+  /// specified region of memory as part of its [Drop] implementation.
+  ///
+  /// Note that converting [`Bytes`] constructed from an owner into a [`BytesMut`]
+  /// will always create a deep copy of the buffer into newly allocated memory.
+  pub fn from_owner<T>(owner: T) -> Self
+  where
+    T: AsRef<[u8]> + Send + 'static,
+  {
+    Self::heap(bytes::Bytes::from_owner(owner))
+  }
+}
+
+impl ImmutableStorage for RawBytes<Shared> {
+  fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+    self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, crate::RangeOutOfBounds>
+  where
+    Self: Sized,
+  {
+    match &self.repr {
+      Repr::Inline(storage) => storage.try_slice(range).map(Self::inline),
+      Repr::Heap(bytes) => {
+        let len = bytes.len();
+
+        let begin = match range.start_bound() {
+          Bound::Included(&n) => n,
+          Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+          Bound::Included(&n) => n.checked_add(1).expect("out of range"),
+          Bound::Excluded(&n) => n,
+          Bound::Unbounded => len,
+        };
+
+        if begin > len || end > len || begin > end {
+          return Err(RangeOutOfBounds::new(begin, end, len));
+        }
+
+        if begin == end {
+          return Ok(Self::new());
+        }
+
+        Ok(Self::heap(bytes.slice(begin..end)))
+      }
+    }
+  }
+
+  fn split_to(&mut self, at: usize) -> Self {
+    let len = self.len();
+    if at == len {
+      return mem::take(self);
+    }
+    if at == 0 {
+      return Self::new();
+    }
+    assert!(at <= len, "split_to out of bounds: {:?} <= {:?}", at, len);
+
+    match &mut self.repr {
+      Repr::Inline(storage) => {
+        Self::inline(storage.try_split_to(at).expect("already checked bounds"))
+      }
+      Repr::Heap(bytes) => {
+        if at <= INLINE_CAP {
+          // SAFETY: at <= INLINE_CAP, checked above.
+          let ret = Self::inline(unsafe { Buffer::copy_from_slice(&bytes[..at]) });
+          bytes.advance(at);
+          ret
+        } else {
+          Self::heap(bytes.split_to(at))
+        }
+      }
+    }
+  }
+
+  fn split_off(&mut self, at: usize) -> Self {
+    let len = self.len();
+    if at == len {
+      return Self::new();
+    }
+    if at == 0 {
+      return mem::take(self);
+    }
+    assert!(at <= len, "split_off out of bounds: {:?} <= {:?}", at, len);
+
+    match &mut self.repr {
+      Repr::Inline(storage) => {
+        Self::inline(storage.try_split_off(at).expect("already checked bounds"))
+      }
+      Repr::Heap(bytes) => {
+        let output_size = len - at;
+        if output_size <= INLINE_CAP {
+          // SAFETY: output_size <= INLINE_CAP, checked above.
+          let ret = Self::inline(unsafe { Buffer::copy_from_slice(&bytes[at..]) });
+          bytes.truncate(at);
+          ret
+        } else {
+          Self::heap(bytes.split_off(at))
+        }
+      }
+    }
+  }
+
+  fn truncate(&mut self, new_len: usize) {
+    match &mut self.repr {
+      Repr::Inline(storage) => storage.truncate(new_len),
+      Repr::Heap(bytes) => bytes.truncate(new_len),
+    }
+  }
+
+  fn advance(&mut self, cnt: usize) {
+    match &mut self.repr {
+      Repr::Inline(storage) => storage.advance(cnt),
+      Repr::Heap(bytes) => bytes.advance(cnt),
+    }
+  }
+
+  fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
+    self.split_to(len).into()
+  }
+
+  fn clear(&mut self) {
+    match &mut self.repr {
+      Repr::Heap(bytes) => bytes.clear(),
+      Repr::Inline(storage) => storage.clear(),
+    }
+  }
+}
+
+#[cfg(feature = "pyo3")]
+mod python;
+#[cfg(feature = "pyo3")]
+pub use python::PySharedBytes;
+
+#[cfg(feature = "wasm")]
+mod wasm;
+
+/// A space-efficient byte buffer that shares heap allocations with [`bytes::Bytes`].
+///
+/// This is a type alias for [`RawBytes<Shared>`](crate::smol_bytes::RawBytes) using the [`Shared`] strategy.
+///
+/// # When to use
+///
+/// Use `Bytes` (with `Shared` strategy) when:
+/// - You frequently convert to/from `bytes::Bytes`
+/// - You want fast, zero-copy operations
+/// - Memory overhead is acceptable for performance gains
+///
+/// For memory-constrained applications, consider [`compact::Bytes`](super::compact::Bytes) instead.
+///
+/// ## Example
+///
+/// ```rust
+/// use smol_bytes::shared::Bytes;
+///
+/// let data = Bytes::from_static(b"hello world");
+/// assert_eq!(data.as_slice(), b"hello world");
+///
+/// // Efficient conversion to Bytes
+/// let bytes: bytes::Bytes = data.into();
+/// ```
+pub type Bytes = RawBytes<Shared>;
+
+/// A shared, immutable UTF-8 string type alias using the [`Shared`] strategy.
+///
+/// See [`crate::utf8_bytes::Utf8Bytes`] for the generic type documentation.
+pub type Utf8Bytes = crate::utf8_bytes::Utf8Bytes<Shared>;

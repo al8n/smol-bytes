@@ -1,31 +1,20 @@
-[package]
-name = "template-rs"
-version = "0.0.0"
-edition = "2021"
-repository = "https://github.com/al8n/template-rs"
-homepage = "https://github.com/al8n/template-rs"
-documentation = "https://docs.rs/template-rs"
-description = "A template for creating Rust open-source repo on GitHub"
+[workspace]
+resolver = "2"
+members = [
+    "crates/smol-bytes",
+]
+
+[workspace.package]
+edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+version = "0.1.0"
+documentation = "https://docs.rs/smol-bytes"
+repository = "https://github.com/al8n/smol-bytes"
+homepage = "https://github.com/al8n/smol-bytes"
+description = "Small, clone-efficient byte buffer type"
+rust-version = "1.85"
 
-[[bench]]
-path = "benches/foo.rs"
-name = "foo"
-harness = false
-
-[features]
-default = ["std"]
-alloc = []
-std = []
-
-[dependencies]
-
-[dev-dependencies]
-criterion = "0.8"
-tempfile = "3"
-
-[profile.bench]
+[workspace.profile.bench]
 opt-level = 3
 debug = false
 codegen-units = 1
@@ -35,11 +24,11 @@ debug-assertions = false
 overflow-checks = false
 rpath = false
 
-[package.metadata.docs.rs]
+[workspace.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-[lints.rust]
+[workspace.lints.rust]
 rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = [
