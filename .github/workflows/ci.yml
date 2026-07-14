@@ -21,6 +21,10 @@ on:
   schedule: 
     - cron: "0 1 1 * *"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -160,13 +164,6 @@ jobs:
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
-    - name: Cache ~/.cargo
-      uses: actions/cache@v5
-      with:
-        path: ~/.cargo
-        key: ${{ runner.os }}-coverage-dotcargo
     - name: Run build
       run: cargo build --workspace
   
@@ -194,13 +191,6 @@ jobs:
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
-    - name: Cache ~/.cargo
-      uses: actions/cache@v5
-      with:
-        path: ~/.cargo
-        key: ${{ runner.os }}-coverage-dotcargo
     - name: Run test
       run: cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
   

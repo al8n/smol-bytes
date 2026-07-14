@@ -21,6 +21,10 @@ on:
       - 'art'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   loc:
     runs-on: ubuntu-latest
