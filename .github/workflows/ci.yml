@@ -39,7 +39,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add rustfmt
@@ -58,7 +58,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
@@ -91,9 +91,9 @@ jobs:
           - wasm32-wasip2
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -119,9 +119,9 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Cache cargo build and registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -136,7 +136,7 @@ jobs:
     - name: Install cargo-hack
       run: cargo install cargo-hack
     - name: Cache ~/.cargo
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cargo
         key: ${{ runner.os }}-coverage-dotcargo
@@ -153,9 +153,9 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Cache cargo build and registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -170,7 +170,7 @@ jobs:
     - name: Install cargo-hack
       run: cargo install cargo-hack
     - name: Cache ~/.cargo
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cargo
         key: ${{ runner.os }}-coverage-dotcargo
@@ -185,9 +185,9 @@ jobs:
           - ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -234,9 +234,9 @@ jobs:
             target: powerpc64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -280,9 +280,9 @@ jobs:
             target: powerpc64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -307,9 +307,9 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -328,9 +328,9 @@ jobs:
     name: valgrind
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Cache cargo build and registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -371,7 +371,7 @@ jobs:
       - sanitizer
       - loom
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
@@ -382,12 +382,12 @@ jobs:
           crate: cargo-tarpaulin
           version: latest
       - name: Cache ~/.cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-coverage-dotcargo
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: ${{ runner.os }}-coverage-cargo-build-target
