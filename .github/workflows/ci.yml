@@ -357,7 +357,7 @@ jobs:
           --ignore-filename-regex '(/python\.rs$|/wasm\.rs$|/wasm_iter\.rs$)'
           --lcov --output-path lcov.info
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           use_oidc: true
           files: lcov.info
