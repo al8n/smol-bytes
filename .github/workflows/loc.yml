@@ -61,7 +61,7 @@ jobs:
             await github.rest.gists.update({
               gist_id: gistId,
               files: {
-                "template-rs": {
+                "smol-bytes": {
                   content: output
                 }
               }
