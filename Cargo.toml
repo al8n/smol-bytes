@@ -7,13 +7,14 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.1.0"
+version = "0.1.1"
 repository = "https://github.com/al8n/smol-bytes"
 homepage = "https://github.com/al8n/smol-bytes"
-description = "Small, clone-efficient byte buffer type"
+description = "High-performance, clone-efficient byte buffers optimized for small data."
 rust-version = "1.85"
 keywords = ["bytes", "buffer", "inline", "no-std", "small"]
 categories = ["data-structures", "no-std", "memory-management"]
+readme = "README.md"
 
 [workspace.metadata.docs.rs]
 all-features = true
