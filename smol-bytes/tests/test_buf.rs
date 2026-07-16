@@ -407,6 +407,229 @@ mod chain_limited_slices {
   buf_tests!(make_input, true);
 }
 
+// ---------------------------------------------------------------------------
+// Forwarded `Buf` readers across every Buf impl. Calls go through the generic
+// `B: Buf` bound, so each `get_*` / `try_get_*` resolves to the trait method
+// (the macro-forwarded impl), not an inherent method.
+// ---------------------------------------------------------------------------
+
+fn check_reads<B: Buf>(make: impl Fn(&[u8]) -> B) {
+  macro_rules! rd {
+    ($be_bytes:expr, $le_bytes:expr, $get:ident, $get_le:ident, $get_ne:ident,
+     $tg:ident, $tg_le:ident, $tg_ne:ident, $val:expr) => {{
+      let val = $val;
+      // Big-endian and little-endian byte patterns decode to the same value.
+      assert_eq!(make(&$be_bytes).$get(), val);
+      assert_eq!(make(&$le_bytes).$get_le(), val);
+      let ne = make(if cfg!(target_endian = "big") {
+        &$be_bytes
+      } else {
+        &$le_bytes
+      })
+      .$get_ne();
+      assert_eq!(ne, val);
+      // try_get variants: success then insufficient-data error.
+      assert_eq!(make(&$be_bytes).$tg().unwrap(), val);
+      assert_eq!(make(&$le_bytes).$tg_le().unwrap(), val);
+      let tne = make(if cfg!(target_endian = "big") {
+        &$be_bytes
+      } else {
+        &$le_bytes
+      })
+      .$tg_ne()
+      .unwrap();
+      assert_eq!(tne, val);
+      assert!(make(&[]).$tg().is_err());
+    }};
+  }
+
+  rd!(
+    [0x01u8, 0x02],
+    [0x02u8, 0x01],
+    get_u16,
+    get_u16_le,
+    get_u16_ne,
+    try_get_u16,
+    try_get_u16_le,
+    try_get_u16_ne,
+    0x0102u16
+  );
+  rd!(
+    [0xFFu8, 0xFE],
+    [0xFEu8, 0xFF],
+    get_i16,
+    get_i16_le,
+    get_i16_ne,
+    try_get_i16,
+    try_get_i16_le,
+    try_get_i16_ne,
+    -2i16
+  );
+  rd!(
+    [0x01u8, 0x02, 0x03, 0x04],
+    [0x04u8, 0x03, 0x02, 0x01],
+    get_u32,
+    get_u32_le,
+    get_u32_ne,
+    try_get_u32,
+    try_get_u32_le,
+    try_get_u32_ne,
+    0x01020304u32
+  );
+  rd!(
+    [0xFFu8, 0xFF, 0xFF, 0xFE],
+    [0xFEu8, 0xFF, 0xFF, 0xFF],
+    get_i32,
+    get_i32_le,
+    get_i32_ne,
+    try_get_i32,
+    try_get_i32_le,
+    try_get_i32_ne,
+    -2i32
+  );
+  rd!(
+    [0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+    [0x08u8, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
+    get_u64,
+    get_u64_le,
+    get_u64_ne,
+    try_get_u64,
+    try_get_u64_le,
+    try_get_u64_ne,
+    0x0102030405060708u64
+  );
+  rd!(
+    [0xFFu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE],
+    [0xFEu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    get_i64,
+    get_i64_le,
+    get_i64_ne,
+    try_get_i64,
+    try_get_i64_le,
+    try_get_i64_ne,
+    -2i64
+  );
+  rd!(
+    [
+      0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+      0x10
+    ],
+    [
+      0x10u8, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02,
+      0x01
+    ],
+    get_u128,
+    get_u128_le,
+    get_u128_ne,
+    try_get_u128,
+    try_get_u128_le,
+    try_get_u128_ne,
+    0x0102030405060708090A0B0C0D0E0F10u128
+  );
+  rd!(
+    [
+      0xFFu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+      0xFE
+    ],
+    [
+      0xFEu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+      0xFF
+    ],
+    get_i128,
+    get_i128_le,
+    get_i128_ne,
+    try_get_i128,
+    try_get_i128_le,
+    try_get_i128_ne,
+    -2i128
+  );
+  // 12.5 is exactly representable, so equality checks are safe.
+  rd!(
+    [0x41u8, 0x48, 0x00, 0x00],
+    [0x00u8, 0x00, 0x48, 0x41],
+    get_f32,
+    get_f32_le,
+    get_f32_ne,
+    try_get_f32,
+    try_get_f32_le,
+    try_get_f32_ne,
+    12.5f32
+  );
+  rd!(
+    [0x40u8, 0x29, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x40],
+    get_f64,
+    get_f64_le,
+    get_f64_ne,
+    try_get_f64,
+    try_get_f64_le,
+    try_get_f64_ne,
+    12.5f64
+  );
+
+  // 8-bit readers.
+  assert_eq!(make(&[0xAB]).get_u8(), 0xAB);
+  assert_eq!(make(&[0xFB]).get_i8(), -5);
+  assert_eq!(make(&[0xAB]).try_get_u8().unwrap(), 0xAB);
+  assert_eq!(make(&[0xFB]).try_get_i8().unwrap(), -5);
+  assert!(make(&[]).try_get_u8().is_err());
+  assert!(make(&[]).try_get_i8().is_err());
+
+  // Variable-width unsigned readers, nbytes 1..=8. The expected value is the
+  // big-endian interpretation of the chosen bytes.
+  let full = 0x1122334455667788u64;
+  for nbytes in 1..=8usize {
+    let be: Vec<u8> = full.to_be_bytes()[8 - nbytes..].to_vec();
+    let v = be.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
+    let le: Vec<u8> = be.iter().rev().copied().collect();
+    assert_eq!(make(&be).get_uint(nbytes), v);
+    assert_eq!(make(&le).get_uint_le(nbytes), v);
+    let ne = make(if cfg!(target_endian = "big") {
+      &be
+    } else {
+      &le
+    })
+    .get_uint_ne(nbytes);
+    assert_eq!(ne, v);
+    assert_eq!(make(&be).try_get_uint(nbytes).unwrap(), v);
+    assert_eq!(make(&le).try_get_uint_le(nbytes).unwrap(), v);
+    assert!(make(&[]).try_get_uint(nbytes).is_err());
+  }
+
+  // Variable-width signed readers: all-ones sign-extends to -1.
+  for nbytes in 1..=8usize {
+    let ones = vec![0xFFu8; nbytes];
+    assert_eq!(make(&ones).get_int(nbytes), -1);
+    assert_eq!(make(&ones).get_int_le(nbytes), -1);
+    let ne = make(&ones).get_int_ne(nbytes);
+    assert_eq!(ne, -1);
+    assert_eq!(make(&ones).try_get_int(nbytes).unwrap(), -1);
+    assert_eq!(make(&ones).try_get_int_le(nbytes).unwrap(), -1);
+    assert_eq!(make(&ones).try_get_int_ne(nbytes).unwrap(), -1);
+    assert!(make(&[]).try_get_int(nbytes).is_err());
+  }
+}
+
+#[test]
+fn forwarded_buf_reads_buffer() {
+  check_reads(|b: &[u8]| smol_bytes::Buffer::try_from(b).unwrap());
+}
+
+#[test]
+fn forwarded_buf_reads_bytes_mut() {
+  check_reads(|b: &[u8]| BytesMut::from(b));
+}
+
+#[test]
+fn forwarded_buf_reads_shared_bytes() {
+  check_reads(|b: &[u8]| smol_bytes::shared::Bytes::copy_from_slice(b));
+}
+
+#[test]
+fn forwarded_buf_reads_compact_bytes() {
+  check_reads(|b: &[u8]| smol_bytes::compact::Bytes::copy_from_slice(b));
+}
+
 #[allow(unused_allocation)] // This is intentional.
 #[test]
 fn test_deref_buf_forwards() {
