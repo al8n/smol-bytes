@@ -178,8 +178,3 @@ mod macros;
 
 /// Error types for byte buffer operations.
 pub mod error;
-
-#[cfg(all(feature = "pyo3", feature = "std"))]
-pub use std::hash::DefaultHasher;
-#[cfg(all(feature = "pyo3", not(feature = "std")))]
-pub type DefaultHasher = ::core::hash::BuildHasherDefault<::core::hash::SipHasher>;

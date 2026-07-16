@@ -1939,3 +1939,18 @@ fn owned_safe_drop_on_as_ref_panic() {
 
 //   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
 // }
+
+#[test]
+fn from_bytes_crate_heap_is_zero_copy() {
+  let b = bytes::Bytes::from(vec![7u8; 100]);
+  let p = b.as_ptr();
+  let s = smol_bytes::shared::Bytes::from(b);
+  assert!(s.is_heap());
+  assert_eq!(s.as_slice().as_ptr(), p);
+}
+
+#[test]
+fn from_bytes_crate_small_retains_contents() {
+  let s = smol_bytes::shared::Bytes::from(bytes::Bytes::from_static(b"hi"));
+  assert_eq!(s.as_slice(), b"hi");
+}

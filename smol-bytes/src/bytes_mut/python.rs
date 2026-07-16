@@ -1,5 +1,5 @@
 use super::*;
-use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt};
+use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt, py_check_alloc};
 use bytes::BufMut;
 use pyo3::{
   basic::CompareOp,
@@ -68,8 +68,9 @@ impl BytesMut {
   ///     100
   #[staticmethod]
   #[pyo3(name = "with_capacity")]
-  fn __python_with_capacity(capacity: usize) -> Self {
-    Self::with_capacity(capacity)
+  fn __python_with_capacity(capacity: usize) -> PyResult<Self> {
+    py_check_alloc(capacity)?;
+    Ok(Self::with_capacity(capacity))
   }
 
   /// Create a new buffer filled with zeros.
@@ -91,8 +92,9 @@ impl BytesMut {
   ///     5
   #[staticmethod]
   #[pyo3(name = "zeroed")]
-  fn __python_zeroed(len: usize) -> Self {
-    Self::zeroed(len)
+  fn __python_zeroed(len: usize) -> PyResult<Self> {
+    py_check_alloc(len)?;
+    Ok(Self::zeroed(len))
   }
 
   /// Create a new buffer by copying from a bytes-like object.
@@ -492,8 +494,10 @@ impl BytesMut {
   ///     >>> buf.capacity() >= 105  # At least current len + additional
   ///     True
   #[pyo3(name = "reserve")]
-  fn __python_reserve(&mut self, additional: usize) {
+  fn __python_reserve(&mut self, additional: usize) -> PyResult<()> {
+    py_check_alloc(additional)?;
     self.reserve(additional);
+    Ok(())
   }
 
   /// Write a bytes-like object to the buffer.
@@ -512,8 +516,10 @@ impl BytesMut {
   ///    val: The byte value to write.
   ///    cnt: Number of times to write the byte.
   #[pyo3(name = "put_bytes")]
-  fn __python_put_bytes(&mut self, value: u8, count: usize) {
-    self.put_bytes(value, count)
+  fn __python_put_bytes(&mut self, value: u8, count: usize) -> PyResult<()> {
+    py_check_alloc(count)?;
+    self.put_bytes(value, count);
+    Ok(())
   }
 
   /// Write a signed 8-bit integer to the buffer.
@@ -754,13 +760,15 @@ impl BytesMut {
     self.try_put_int_le(value, nbytes).map_err(Into::into)
   }
 
-  /// Resize the buffer to the specified length, filling with zeros if expanding.
+  /// Resize the buffer to the specified length, filling with `value` if expanding.
   ///
   /// Args:
   ///     new_len: The new length of the buffer.
   #[pyo3(name = "resize")]
-  fn __python_resize(&mut self, new_len: usize, value: u8) {
+  fn __python_resize(&mut self, new_len: usize, value: u8) -> PyResult<()> {
+    py_check_alloc(new_len.saturating_sub(self.len()))?;
     self.resize(new_len, value);
+    Ok(())
   }
 
   /// Split off and return the first `at` bytes as a new buffer.

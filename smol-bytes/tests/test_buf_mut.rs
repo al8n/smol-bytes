@@ -424,3 +424,19 @@ fn copy_from_slice_panics_if_different_length_2() {
   let slice = unsafe { UninitSlice::from_raw_parts_mut(data.as_mut_ptr(), 3) };
   slice.copy_from_slice(b"abcd");
 }
+
+#[test]
+fn write_str_grows_past_inline_capacity() {
+  let mut buf = BytesMut::new();
+  let first = "a".repeat(INLINE_CAP + 1);
+  write!(buf, "{}", first).unwrap();
+  assert_eq!(buf.as_slice(), first.as_bytes());
+
+  let second = "b".repeat(50);
+  write!(buf, "{}", second).unwrap();
+
+  let mut expected = first.into_bytes();
+  expected.extend_from_slice(second.as_bytes());
+  assert!(expected.len() > 100);
+  assert_eq!(buf.as_slice(), expected.as_slice());
+}

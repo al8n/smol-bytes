@@ -1,3 +1,11 @@
 # Unreleased
 - Converted repository to a Cargo workspace
 - Implemented `Bytes` backed by inline storage (up to 62 bytes) or `bytes::Bytes`
+- Fixed `fmt::Write` for `BytesMut` to grow past the inline capacity instead of failing
+- Bounded borsh deserialization reads so hostile length prefixes cannot force huge preallocations; capped serde `visit_seq` size-hint preallocation
+- Added zero-copy `From<bytes::Bytes>` for `shared::Bytes`; `compact::Bytes::from(bytes::Bytes)` now inlines payloads that fit
+- `compact::Bytes::clear()` now releases the heap allocation
+- Removed the unused `Sub for InlineSize` impl and dead `DefaultHasher` re-exports
+- Raised the `bytes` dependency floor to 1.10 (required by the `Buf::try_get_*` overrides)
+- Python: size-taking methods raise `MemoryError` instead of aborting on absurd sizes
+- WebAssembly: `Buffer` `put*` methods throw a catchable error instead of trapping when full

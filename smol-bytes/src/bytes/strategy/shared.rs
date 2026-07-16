@@ -275,6 +275,14 @@ impl RawBytes<Shared> {
   }
 }
 
+/// Zero-copy conversion from [`bytes::Bytes`]: the heap allocation is retained
+/// and shared, the direction promised by this module's docs.
+impl From<bytes::Bytes> for RawBytes<Shared> {
+  fn from(bytes: bytes::Bytes) -> Self {
+    Self::heap(bytes)
+  }
+}
+
 impl ImmutableStorage for RawBytes<Shared> {
   fn slice(&self, range: impl RangeBounds<usize>) -> Self {
     self.try_slice(range).unwrap_or_else(|e| panic!("{e}"))

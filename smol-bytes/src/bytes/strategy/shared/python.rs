@@ -708,7 +708,8 @@ impl PySharedBytes {
     self.inner.py_get_int_le_object(nbytes)
   }
 
-  /// Expose a read-only buffer view (enables `memoryview`).
+  /// Expose a snapshot copy as a buffer (enables `memoryview`); later mutations
+  /// of this object are not reflected in the view.
   unsafe fn __getbuffer__(
     slf: PyRef<'_, Self>,
     view: *mut pyo3::ffi::Py_buffer,

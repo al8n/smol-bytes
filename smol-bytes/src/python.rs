@@ -37,6 +37,16 @@ pub(crate) fn validate_utf8_advance(value: &impl AsRef<str>, cnt: usize) -> PyRe
   Ok(())
 }
 
+/// Preflight an allocation of `additional` bytes so absurd or hostile sizes
+/// raise `MemoryError` like CPython containers instead of aborting the
+/// process inside the infallible Rust allocator path.
+pub(crate) fn py_check_alloc(additional: usize) -> PyResult<()> {
+  let mut probe: Vec<u8> = Vec::new();
+  probe
+    .try_reserve_exact(additional)
+    .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))
+}
+
 impl From<TryPutError> for PyErr {
   fn from(err: TryPutError) -> PyErr {
     PyBufferError::new_err(format!(
@@ -458,8 +468,12 @@ impl PyBufCommon for BytesMut {
   }
 
   #[cfg_attr(not(coverage), inline(always))]
-  fn py_try_slice(&self, _: usize, _: usize) -> Result<BytesMut, RangeOutOfBounds> {
-    unreachable!("BytesMut does not support slicing");
+  fn py_try_slice(&self, start: usize, end: usize) -> Result<BytesMut, RangeOutOfBounds> {
+    let len = self.len();
+    if start > end || end > len {
+      return Err(RangeOutOfBounds::new(start, end, len));
+    }
+    Ok(BytesMut::from(&self.as_slice()[start..end]))
   }
 
   #[cfg_attr(not(coverage), inline(always))]

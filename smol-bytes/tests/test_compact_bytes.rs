@@ -379,15 +379,16 @@ fn truncate() {
 
 #[test]
 fn compact_heap_truncate_at_or_above_len_is_a_representation_preserving_noop() {
-  let mut bytes = Bytes::from(bytes::Bytes::from_static(b"hello"));
+  let payload = vec![b'h'; 100];
+  let mut bytes = Bytes::from(bytes::Bytes::from(payload.clone()));
   assert!(bytes.is_heap());
 
-  bytes.truncate(6);
-  assert_eq!(bytes, b"hello"[..]);
+  bytes.truncate(101);
+  assert_eq!(bytes, payload[..]);
   assert!(bytes.is_heap());
 
-  bytes.truncate(5);
-  assert_eq!(bytes, b"hello"[..]);
+  bytes.truncate(100);
+  assert_eq!(bytes, payload[..]);
   assert!(bytes.is_heap());
 }
 
@@ -1575,3 +1576,28 @@ fn split_to_empty_addr_mut() {
 
 //   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
 // }
+
+#[test]
+fn from_bytes_crate_small_is_inlined() {
+  let b = Bytes::from(bytes::Bytes::from_static(b"hi"));
+  assert!(b.is_inline());
+  assert_eq!(b.as_slice(), b"hi");
+}
+
+#[test]
+fn from_bytes_crate_large_is_zero_copy_heap() {
+  let b = bytes::Bytes::from(vec![7u8; 100]);
+  let p = b.as_ptr();
+  let c = Bytes::from(b);
+  assert!(c.is_heap());
+  assert_eq!(c.as_slice().as_ptr(), p);
+}
+
+#[test]
+fn clear_releases_heap_allocation() {
+  let mut b = Bytes::from(vec![7u8; 100]);
+  assert!(b.is_heap());
+  b.clear();
+  assert!(b.is_inline());
+  assert!(b.is_empty());
+}

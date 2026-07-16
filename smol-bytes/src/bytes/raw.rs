@@ -503,8 +503,10 @@ impl<S> RawBytes<S> {
   /// If `self` is not unique for the entire original buffer, this will fail
   /// and return self.
   ///
-  /// This will also always fail if the buffer was constructed via either
-  /// [from_owner](Bytes::from_owner) or [from_static](Bytes::from_static).
+  /// Inline values always succeed by copying into an inline `BytesMut`. A heap
+  /// value fails only if its underlying `bytes::Bytes` is shared, or was
+  /// constructed via [from_owner](Bytes::from_owner) or
+  /// [from_static](Bytes::from_static).
   ///
   /// ## Examples
   ///

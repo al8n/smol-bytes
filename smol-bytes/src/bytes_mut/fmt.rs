@@ -33,9 +33,7 @@ impl core::fmt::UpperHex for BytesMut {
 impl core::fmt::Write for BytesMut {
   #[cfg_attr(not(coverage), inline(always))]
   fn write_str(&mut self, s: &str) -> core::fmt::Result {
-    match &mut self.0 {
-      Repr::Inline(inline_storage) => inline_storage.write_str(s),
-      Repr::Heap(bytes_mut) => bytes_mut.write_str(s),
-    }
+    self.extend_from_slice(s.as_bytes());
+    Ok(())
   }
 }

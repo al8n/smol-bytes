@@ -110,16 +110,6 @@ pub(crate) enum InlineSize {
   _V62,
 }
 
-impl core::ops::Sub for InlineSize {
-  type Output = Self;
-
-  #[cfg_attr(not(coverage), inline(always))]
-  fn sub(self, rhs: Self) -> Self::Output {
-    // Safety: subtraction result is guaranteed to be less than or equal to INLINE_CAP
-    unsafe { InlineSize::from_u8(self.to_u8() - rhs.to_u8()) }
-  }
-}
-
 impl InlineSize {
   const MAX: u8 = InlineSize::_V62 as u8;
 

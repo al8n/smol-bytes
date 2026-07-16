@@ -1,5 +1,5 @@
 use super::*;
-use crate::python::{py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::python::{py_check_alloc, py_str_contains, py_str_getitem, py_str_richcmp};
 use pyo3::{basic::CompareOp, exceptions::PyValueError, prelude::*, types::PyBytes};
 
 #[derive(Debug)]
@@ -42,8 +42,9 @@ impl Utf8BytesMut {
   ///     Utf8BytesMut: A new mutable UTF-8 buffer.
   #[staticmethod]
   #[pyo3(name = "with_capacity")]
-  fn __python_with_capacity(capacity: usize) -> Self {
-    Self::with_capacity(capacity)
+  fn __python_with_capacity(capacity: usize) -> PyResult<Self> {
+    py_check_alloc(capacity)?;
+    Ok(Self::with_capacity(capacity))
   }
 
   /// Create from a string.
@@ -200,8 +201,10 @@ impl Utf8BytesMut {
   /// Args:
   ///     additional: Additional capacity to reserve.
   #[pyo3(name = "reserve")]
-  fn __python_reserve(&mut self, additional: usize) {
+  fn __python_reserve(&mut self, additional: usize) -> PyResult<()> {
+    py_check_alloc(additional)?;
     self.reserve(additional);
+    Ok(())
   }
 
   /// Return the capacity.

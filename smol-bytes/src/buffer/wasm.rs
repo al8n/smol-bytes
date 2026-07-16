@@ -334,110 +334,146 @@ impl Buffer {
 
   /// Write an unsigned 8-bit integer.
   #[wasm_bindgen(js_name = "putU8")]
-  pub fn put_u8_wasm(&mut self, val: u8) {
-    bytes::BufMut::put_u8(self, val);
+  pub fn put_u8_wasm(&mut self, val: u8) -> Result<(), JsError> {
+    self
+      .try_put_u8(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 8-bit integer.
   #[wasm_bindgen(js_name = "putI8")]
-  pub fn put_i8_wasm(&mut self, val: i8) {
-    bytes::BufMut::put_i8(self, val);
+  pub fn put_i8_wasm(&mut self, val: i8) -> Result<(), JsError> {
+    self
+      .try_put_i8(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 16-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putU16")]
-  pub fn put_u16_wasm(&mut self, val: u16) {
-    bytes::BufMut::put_u16(self, val);
+  pub fn put_u16_wasm(&mut self, val: u16) -> Result<(), JsError> {
+    self
+      .try_put_u16(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 16-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putU16Le")]
-  pub fn put_u16_le_wasm(&mut self, val: u16) {
-    bytes::BufMut::put_u16_le(self, val);
+  pub fn put_u16_le_wasm(&mut self, val: u16) -> Result<(), JsError> {
+    self
+      .try_put_u16_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 16-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putI16")]
-  pub fn put_i16_wasm(&mut self, val: i16) {
-    bytes::BufMut::put_i16(self, val);
+  pub fn put_i16_wasm(&mut self, val: i16) -> Result<(), JsError> {
+    self
+      .try_put_i16(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 16-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putI16Le")]
-  pub fn put_i16_le_wasm(&mut self, val: i16) {
-    bytes::BufMut::put_i16_le(self, val);
+  pub fn put_i16_le_wasm(&mut self, val: i16) -> Result<(), JsError> {
+    self
+      .try_put_i16_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 32-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putU32")]
-  pub fn put_u32_wasm(&mut self, val: u32) {
-    bytes::BufMut::put_u32(self, val);
+  pub fn put_u32_wasm(&mut self, val: u32) -> Result<(), JsError> {
+    self
+      .try_put_u32(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 32-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putU32Le")]
-  pub fn put_u32_le_wasm(&mut self, val: u32) {
-    bytes::BufMut::put_u32_le(self, val);
+  pub fn put_u32_le_wasm(&mut self, val: u32) -> Result<(), JsError> {
+    self
+      .try_put_u32_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 32-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putI32")]
-  pub fn put_i32_wasm(&mut self, val: i32) {
-    bytes::BufMut::put_i32(self, val);
+  pub fn put_i32_wasm(&mut self, val: i32) -> Result<(), JsError> {
+    self
+      .try_put_i32(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 32-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putI32Le")]
-  pub fn put_i32_le_wasm(&mut self, val: i32) {
-    bytes::BufMut::put_i32_le(self, val);
+  pub fn put_i32_le_wasm(&mut self, val: i32) -> Result<(), JsError> {
+    self
+      .try_put_i32_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 64-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putU64")]
-  pub fn put_u64_wasm(&mut self, val: u64) {
-    bytes::BufMut::put_u64(self, val);
+  pub fn put_u64_wasm(&mut self, val: u64) -> Result<(), JsError> {
+    self
+      .try_put_u64(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 64-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putU64Le")]
-  pub fn put_u64_le_wasm(&mut self, val: u64) {
-    bytes::BufMut::put_u64_le(self, val);
+  pub fn put_u64_le_wasm(&mut self, val: u64) -> Result<(), JsError> {
+    self
+      .try_put_u64_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 64-bit integer in big-endian byte order.
   #[wasm_bindgen(js_name = "putI64")]
-  pub fn put_i64_wasm(&mut self, val: i64) {
-    bytes::BufMut::put_i64(self, val);
+  pub fn put_i64_wasm(&mut self, val: i64) -> Result<(), JsError> {
+    self
+      .try_put_i64(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a signed 64-bit integer in little-endian byte order.
   #[wasm_bindgen(js_name = "putI64Le")]
-  pub fn put_i64_le_wasm(&mut self, val: i64) {
-    bytes::BufMut::put_i64_le(self, val);
+  pub fn put_i64_le_wasm(&mut self, val: i64) -> Result<(), JsError> {
+    self
+      .try_put_i64_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a 32-bit float in big-endian byte order.
   #[wasm_bindgen(js_name = "putF32")]
-  pub fn put_f32_wasm(&mut self, val: f32) {
-    bytes::BufMut::put_f32(self, val);
+  pub fn put_f32_wasm(&mut self, val: f32) -> Result<(), JsError> {
+    self
+      .try_put_f32(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a 32-bit float in little-endian byte order.
   #[wasm_bindgen(js_name = "putF32Le")]
-  pub fn put_f32_le_wasm(&mut self, val: f32) {
-    bytes::BufMut::put_f32_le(self, val);
+  pub fn put_f32_le_wasm(&mut self, val: f32) -> Result<(), JsError> {
+    self
+      .try_put_f32_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a 64-bit float in big-endian byte order.
   #[wasm_bindgen(js_name = "putF64")]
-  pub fn put_f64_wasm(&mut self, val: f64) {
-    bytes::BufMut::put_f64(self, val);
+  pub fn put_f64_wasm(&mut self, val: f64) -> Result<(), JsError> {
+    self
+      .try_put_f64(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write a 64-bit float in little-endian byte order.
   #[wasm_bindgen(js_name = "putF64Le")]
-  pub fn put_f64_le_wasm(&mut self, val: f64) {
-    bytes::BufMut::put_f64_le(self, val);
+  pub fn put_f64_le_wasm(&mut self, val: f64) -> Result<(), JsError> {
+    self
+      .try_put_f64_le(val)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   // -- Iterator --

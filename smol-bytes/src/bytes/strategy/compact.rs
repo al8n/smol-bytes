@@ -302,7 +302,12 @@ pub struct Compact(());
 
 impl From<bytes::Bytes> for RawBytes<Compact> {
   fn from(bytes: bytes::Bytes) -> Self {
-    Self::heap(bytes)
+    if bytes.len() <= INLINE_CAP {
+      // SAFETY: length checked against INLINE_CAP above.
+      Self::inline(unsafe { Buffer::copy_from_slice(&bytes) })
+    } else {
+      Self::heap(bytes)
+    }
   }
 }
 
@@ -492,10 +497,9 @@ impl ImmutableStorage for RawBytes<Compact> {
   }
 
   fn clear(&mut self) {
-    match &mut self.repr {
-      Repr::Heap(bytes) => bytes.clear(),
-      Repr::Inline(storage) => storage.clear(),
-    }
+    // Compact keeps heap storage only for payloads that cannot fit inline;
+    // clearing drops the allocation instead of retaining an empty heap handle.
+    *self = Self::new();
   }
 }
 
