@@ -5,6 +5,7 @@
 //! constructed through the public API wherever a real operation can produce it.
 
 use std::error::Error as _;
+#[cfg(feature = "std")]
 use std::io;
 
 use smol_bytes::{
@@ -29,14 +30,17 @@ fn try_put_error_display_and_io() {
   );
   assert!(err.source().is_none());
 
-  // From<TryPutError> for io::Error uses io::Error::other (kind Other).
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::Other);
-  assert!(
-    io_err
-      .to_string()
-      .contains("Not enough bytes remaining in buffer to write value")
-  );
+  #[cfg(feature = "std")]
+  {
+    // From<TryPutError> for io::Error uses io::Error::other (kind Other).
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::Other);
+    assert!(
+      io_err
+        .to_string()
+        .contains("Not enough bytes remaining in buffer to write value")
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -59,10 +63,13 @@ fn invalid_integer_length_display_from_and_io() {
     "invalid integer length: 9 (must be less or equal to 8)"
   );
 
-  // From<InvalidIntegerLength> for io::Error uses InvalidInput.
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
-  assert!(io_err.to_string().contains("invalid integer length: 9"));
+  #[cfg(feature = "std")]
+  {
+    // From<InvalidIntegerLength> for io::Error uses InvalidInput.
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+    assert!(io_err.to_string().contains("invalid integer length: 9"));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -87,8 +94,11 @@ fn try_put_integer_error_not_enough_space() {
     "Not enough bytes remaining in buffer to write value (requested 3 but only 2 available)"
   );
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::Other);
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::Other);
+  }
 }
 
 #[test]
@@ -125,13 +135,16 @@ fn out_of_bounds_display_and_io() {
   let mut buf = Buffer::try_from(&b"abc"[..]).unwrap();
   assert_eq!(buf.try_split_off(10).unwrap_err(), OutOfBounds::new(10, 3));
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
-  assert!(
-    io_err
-      .to_string()
-      .contains("index out of bounds: requested 5")
-  );
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+      io_err
+        .to_string()
+        .contains("index out of bounds: requested 5")
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,13 +169,16 @@ fn range_out_of_bounds_reversed_and_oob() {
   let err2 = buf.try_slice(0..10).unwrap_err();
   assert_eq!(err2, RangeOutOfBounds::new(0, 10, 5));
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
-  assert!(
-    io_err
-      .to_string()
-      .contains("range out of bounds: requested 3..2")
-  );
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+      io_err
+        .to_string()
+        .contains("range out of bounds: requested 3..2")
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,13 +196,16 @@ fn utf8_error_invalid_char_boundary() {
     "index 4 does not lie on a UTF-8 character boundary"
   );
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
-  assert!(
-    io_err
-      .to_string()
-      .contains("does not lie on a UTF-8 character boundary")
-  );
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+      io_err
+        .to_string()
+        .contains("does not lie on a UTF-8 character boundary")
+    );
+  }
 }
 
 #[test]
@@ -222,9 +241,12 @@ fn from_bytes_error_invalid_utf8() {
   let direct: FromBytesError = inner.into();
   assert_eq!(direct, err);
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
-  assert!(io_err.to_string().contains("invalid UTF-8"));
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+    assert!(io_err.to_string().contains("invalid UTF-8"));
+  }
 }
 
 #[test]
@@ -248,6 +270,9 @@ fn from_bytes_error_too_large() {
   let converted: FromBytesError = put_err.into();
   assert_eq!(converted, err);
 
-  let io_err: io::Error = err.into();
-  assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+  #[cfg(feature = "std")]
+  {
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+  }
 }
