@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterator, overload
+from typing import ClassVar, Iterator, overload
 
 class Bytes:
     """Immutable byte buffer using the Shared strategy.
@@ -14,11 +14,19 @@ class Bytes:
         ...
     @staticmethod
     def from_bytes(data: bytes) -> Bytes:
-        """Create by copying from a bytes-like object."""
+        """Create by copying from a bytes-like object.
+
+        Raises:
+            MemoryError: If the requested allocation cannot be satisfied.
+        """
         ...
     @staticmethod
     def from_str(s: str) -> Bytes:
-        """Create from a UTF-8 string."""
+        """Create from a UTF-8 string.
+
+        Raises:
+            MemoryError: If the requested allocation cannot be satisfied.
+        """
         ...
     def __len__(self) -> int:
         """Return the number of readable bytes."""
@@ -35,9 +43,7 @@ class Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    def __hash__(self) -> int:
-        """Compute hash of the buffer contents."""
-        ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -186,10 +192,14 @@ class Utf8Bytes:
         ...
     @staticmethod
     def from_str(s: str) -> Utf8Bytes:
-        """Create from a string."""
+        """Create from a string.
+
+        Raises:
+            MemoryError: If the requested allocation cannot be satisfied.
+        """
         ...
     def __len__(self) -> int:
-        """Return byte length."""
+        """Return the number of Unicode scalar values."""
         ...
     def __bool__(self) -> bool:
         """Return True if non-empty."""
@@ -203,9 +213,7 @@ class Utf8Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    def __hash__(self) -> int:
-        """Compute hash of the string contents."""
-        ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -232,13 +240,16 @@ class Utf8Bytes:
         """Support pickling."""
         ...
     def split_to(self, at: int) -> Utf8Bytes:
-        """Split at byte position ``at`` (must be a char boundary)."""
+        """Split at Unicode scalar value (character) offset ``at``, returning the head."""
         ...
     def split_off(self, at: int) -> Utf8Bytes:
-        """Split at byte position ``at``, returning the tail."""
+        """Split at Unicode scalar value (character) offset ``at``, returning the tail."""
         ...
     def slice(self, start: int, end: int) -> Utf8Bytes:
-        """Return a view of the substring in byte range ``[start, end)``."""
+        """Return a view of the substring in Unicode scalar value (character) range ``[start, end)``."""
+        ...
+    def byte_len(self) -> int:
+        """Return the length in bytes."""
         ...
     def is_inline(self) -> bool:
         """Return True if stored inline (<=62 bytes)."""

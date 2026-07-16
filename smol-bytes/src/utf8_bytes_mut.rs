@@ -1,9 +1,9 @@
 use core::{borrow::Borrow, ops::RangeBounds, str};
 
 use super::{
+  BytesMut,
   error::*,
   utf8_buf::{Utf8Buf, Utf8BufMut},
-  BytesMut,
 };
 use bytes::BufMut;
 
@@ -230,13 +230,28 @@ impl Utf8BytesMut {
   ///
   /// Panics if `new_len` does not lie on a UTF-8 character boundary.
   pub fn truncate(&mut self, new_len: usize) {
-    if new_len < self.len() {
-      assert!(
-        self.as_str().is_char_boundary(new_len),
-        "new_len must lie on a UTF-8 character boundary"
-      );
+    self
+      .try_truncate(new_len)
+      .expect("new_len must lie on a UTF-8 character boundary");
+  }
+
+  /// Truncates the buffer at a UTF-8 character boundary.
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+    <Self as Utf8BufMut>::try_truncate(self, new_len)
+  }
+
+  /// Freezes this mutable value using the shared immutable strategy.
+  pub fn freeze_shared(self) -> crate::shared::Utf8Bytes {
+    crate::utf8_bytes::Utf8Bytes {
+      inner: self.inner.freeze_shared(),
     }
-    self.inner.truncate(new_len);
+  }
+
+  /// Freezes this mutable value using the compact immutable strategy.
+  pub fn freeze_compact(self) -> crate::compact::Utf8Bytes {
+    crate::utf8_bytes::Utf8Bytes {
+      inner: self.inner.freeze_compact(),
+    }
   }
 
   /// Reserves capacity for at least `additional` more bytes.
@@ -464,6 +479,17 @@ impl Utf8Buf for Utf8BytesMut {
 }
 
 impl Utf8BufMut for Utf8BytesMut {
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+    if new_len >= self.len() {
+      return Ok(());
+    }
+    if !self.as_str().is_char_boundary(new_len) {
+      return Err(Utf8Error::InvalidCharBoundary { at: new_len });
+    }
+    self.inner.truncate(new_len);
+    Ok(())
+  }
+
   fn push(&mut self, ch: char) {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);

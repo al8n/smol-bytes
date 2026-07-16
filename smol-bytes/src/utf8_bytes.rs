@@ -1,7 +1,7 @@
 use core::{borrow::Borrow, ops::RangeBounds, str};
 
 use super::{
-  bytes::{strategy::ImmutableStorage, RawBytes},
+  bytes::{RawBytes, strategy::ImmutableStorage},
   error::*,
   utf8_buf::Utf8Buf,
 };

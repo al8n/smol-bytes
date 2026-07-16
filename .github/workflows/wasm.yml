@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  SMOL_BYTES_CRATE: smol-bytes
+  WASM_OUT_DIR: ../js/pkg
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,17 +22,27 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: v0.13.1
       - uses: actions/setup-node@v7
         with:
           node-version: 20
+      - name: Check Wasm feature combinations
+        run: |
+          test "$(wasm-pack --version)" = "wasm-pack 0.13.1"
+          cargo tree -p smol-bytes --no-default-features --features wasm -i wasm-bindgen | grep -Fx 'wasm-bindgen v0.2.126'
+          cargo check -p smol-bytes --no-default-features --features wasm --target wasm32-unknown-unknown
+          cargo check -p smol-bytes --no-default-features --features wasm,serde,borsh,arbitrary,quickcheck --target wasm32-unknown-unknown
       - name: Build wasm
-        run: wasm-pack build crates/smol-bytes --target bundler --out-dir ../../js/pkg -- --features wasm
+        run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} -- --features wasm
       - name: Install JS deps
-        run: cd js && npm install
+        run: cd js && npm ci
       - name: Build JS
         run: cd js && npm run build:js
       - name: Run JS tests
         run: cd js && npm test
+      - name: Verify package
+        run: cd js && npm pack --dry-run
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
@@ -40,12 +54,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: v0.13.1
       - uses: actions/setup-node@v7
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-      - run: wasm-pack build crates/smol-bytes --target bundler --out-dir ../../js/pkg -- --features wasm
-      - run: cd js && npm install && npm run build:js
+      - run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} -- --features wasm
+      - run: cd js && npm ci && npm run build:js && npm test && npm pack --dry-run
       - run: cd js && npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

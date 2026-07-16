@@ -3,7 +3,7 @@
 use bytes::buf::UninitSlice;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
-use smol_bytes::{Buf, BufMut, BytesMut, INLINE_CAP};
+use smol_bytes::{Buf, BufMut, Buffer, BytesMut, INLINE_CAP};
 
 #[test]
 fn test_vec_as_mut_buf() {
@@ -392,7 +392,7 @@ fn bytes_mut_chunk_mut_makes_progress_when_inline_tail_is_full() {
 #[test]
 #[cfg_attr(not(panic = "unwind"), ignore)]
 fn reserve_and_put_bytes_overflow_panic_before_mutation() {
-  use std::panic::{catch_unwind, AssertUnwindSafe};
+  use std::panic::{AssertUnwindSafe, catch_unwind};
 
   for mut reserved in [BytesMut::from(&b"x"[..]), heap_with_data()] {
     let before = reserved.as_slice().to_vec();
@@ -423,4 +423,269 @@ fn copy_from_slice_panics_if_different_length_2() {
 
   let slice = unsafe { UninitSlice::from_raw_parts_mut(data.as_mut_ptr(), 3) };
   slice.copy_from_slice(b"abcd");
+}
+
+// ---------------------------------------------------------------------------
+// Forwarded `BufMut` writers, verified by reading the value back through `Buf`.
+// The generic `B: Buf + BufMut` bound forces trait-method (macro-forwarded)
+// dispatch for both the writes and the read-back.
+// ---------------------------------------------------------------------------
+
+fn check_writes<B: Buf + BufMut>(fresh: impl Fn() -> B) {
+  macro_rules! wr {
+    ($put:ident, $put_le:ident, $put_ne:ident, $get:ident, $get_le:ident, $get_ne:ident,
+     $be:expr, $le:expr, $val:expr) => {{
+      let val = $val;
+      // Big-endian: exact byte pattern, then value roundtrip.
+      let mut b = fresh();
+      b.$put(val);
+      assert_eq!(b.chunk(), &$be[..]);
+      assert_eq!(b.$get(), val);
+      // Little-endian: exact byte pattern, then value roundtrip.
+      let mut b = fresh();
+      b.$put_le(val);
+      assert_eq!(b.chunk(), &$le[..]);
+      assert_eq!(b.$get_le(), val);
+      // Native-endian: value roundtrip.
+      let mut b = fresh();
+      b.$put_ne(val);
+      assert_eq!(b.$get_ne(), val);
+    }};
+  }
+
+  wr!(
+    put_u16,
+    put_u16_le,
+    put_u16_ne,
+    get_u16,
+    get_u16_le,
+    get_u16_ne,
+    [0x01u8, 0x02],
+    [0x02u8, 0x01],
+    0x0102u16
+  );
+  wr!(
+    put_i16,
+    put_i16_le,
+    put_i16_ne,
+    get_i16,
+    get_i16_le,
+    get_i16_ne,
+    [0xFFu8, 0xFE],
+    [0xFEu8, 0xFF],
+    -2i16
+  );
+  wr!(
+    put_u32,
+    put_u32_le,
+    put_u32_ne,
+    get_u32,
+    get_u32_le,
+    get_u32_ne,
+    [0x01u8, 0x02, 0x03, 0x04],
+    [0x04u8, 0x03, 0x02, 0x01],
+    0x01020304u32
+  );
+  wr!(
+    put_i32,
+    put_i32_le,
+    put_i32_ne,
+    get_i32,
+    get_i32_le,
+    get_i32_ne,
+    [0xFFu8, 0xFF, 0xFF, 0xFE],
+    [0xFEu8, 0xFF, 0xFF, 0xFF],
+    -2i32
+  );
+  wr!(
+    put_u64,
+    put_u64_le,
+    put_u64_ne,
+    get_u64,
+    get_u64_le,
+    get_u64_ne,
+    [0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+    [0x08u8, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
+    0x0102030405060708u64
+  );
+  wr!(
+    put_i64,
+    put_i64_le,
+    put_i64_ne,
+    get_i64,
+    get_i64_le,
+    get_i64_ne,
+    [0xFFu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE],
+    [0xFEu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    -2i64
+  );
+  wr!(
+    put_u128,
+    put_u128_le,
+    put_u128_ne,
+    get_u128,
+    get_u128_le,
+    get_u128_ne,
+    [
+      0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+      0x10
+    ],
+    [
+      0x10u8, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02,
+      0x01
+    ],
+    0x0102030405060708090A0B0C0D0E0F10u128
+  );
+  wr!(
+    put_i128,
+    put_i128_le,
+    put_i128_ne,
+    get_i128,
+    get_i128_le,
+    get_i128_ne,
+    [
+      0xFFu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+      0xFE
+    ],
+    [
+      0xFEu8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+      0xFF
+    ],
+    -2i128
+  );
+  wr!(
+    put_f32,
+    put_f32_le,
+    put_f32_ne,
+    get_f32,
+    get_f32_le,
+    get_f32_ne,
+    [0x41u8, 0x48, 0x00, 0x00],
+    [0x00u8, 0x00, 0x48, 0x41],
+    12.5f32
+  );
+  wr!(
+    put_f64,
+    put_f64_le,
+    put_f64_ne,
+    get_f64,
+    get_f64_le,
+    get_f64_ne,
+    [0x40u8, 0x29, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x40],
+    12.5f64
+  );
+
+  // 8-bit writers.
+  let mut b = fresh();
+  b.put_u8(0xAB);
+  assert_eq!(b.chunk(), &[0xABu8][..]);
+  assert_eq!(b.get_u8(), 0xAB);
+  let mut b = fresh();
+  b.put_i8(-5);
+  assert_eq!(b.get_i8(), -5);
+
+  // Variable-width writers, nbytes 1..=8. `v` is chosen to fit in `nbytes`.
+  let full = 0x1122334455667788u64;
+  for nbytes in 1..=8usize {
+    let v = full.to_be_bytes()[8 - nbytes..]
+      .iter()
+      .fold(0u64, |acc, &b| (acc << 8) | b as u64);
+
+    let mut b = fresh();
+    b.put_uint(v, nbytes);
+    assert_eq!(b.get_uint(nbytes), v);
+    let mut b = fresh();
+    b.put_uint_le(v, nbytes);
+    assert_eq!(b.get_uint_le(nbytes), v);
+    let mut b = fresh();
+    b.put_uint_ne(v, nbytes);
+    assert_eq!(b.get_uint_ne(nbytes), v);
+
+    let mut b = fresh();
+    b.put_int(-1, nbytes);
+    assert_eq!(b.get_int(nbytes), -1);
+    let mut b = fresh();
+    b.put_int_le(-1, nbytes);
+    assert_eq!(b.get_int_le(nbytes), -1);
+    let mut b = fresh();
+    b.put_int_ne(-1, nbytes);
+    assert_eq!(b.get_int_ne(nbytes), -1);
+  }
+}
+
+#[test]
+fn forwarded_buf_mut_writes_buffer() {
+  check_writes(Buffer::new);
+}
+
+#[test]
+fn forwarded_buf_mut_writes_bytes_mut() {
+  check_writes(BytesMut::new);
+}
+
+#[test]
+fn buffer_try_put_capacity_and_length_errors() {
+  // Exactly at the boundary: 60 used, 2 free -> a u16 fits.
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(b.try_put_u16(0x0102).is_ok());
+  assert_eq!(b.len(), 62);
+
+  // One byte short: a u16 no longer fits.
+  let mut b = Buffer::try_from(&[0u8; 61][..]).unwrap();
+  assert_eq!(
+    b.try_put_u16(0x0102),
+    Err(smol_bytes::TryPutError {
+      requested: 2,
+      available: 1,
+    })
+  );
+
+  // A u32 needs four bytes; only two are free.
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(b.try_put_u32(0x01020304).is_err());
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(b.try_put_f64(1.0).is_err());
+
+  // try_put_uint: NotEnoughSpace vs InvalidLength.
+  let mut b = Buffer::new();
+  assert!(b.try_put_uint(0x010203, 3).is_ok());
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(matches!(
+    b.try_put_uint(0x010203, 3),
+    Err(smol_bytes::TryPutIntegerError::NotEnoughSpace(_))
+  ));
+  let mut b = Buffer::new();
+  assert!(matches!(
+    b.try_put_uint(0, 9),
+    Err(smol_bytes::TryPutIntegerError::InvalidLength(_))
+  ));
+
+  // try_put_int mirrors the unsigned behaviour.
+  let mut b = Buffer::new();
+  assert!(b.try_put_int(-1, 4).is_ok());
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(b.try_put_int(-1, 3).is_err());
+
+  // try_put_slice success and overflow.
+  let mut b = Buffer::new();
+  assert!(b.try_put_slice(b"hello").is_ok());
+  let mut b = Buffer::try_from(&[0u8; 60][..]).unwrap();
+  assert!(b.try_put_slice(b"hello").is_err());
+}
+
+#[test]
+fn write_str_grows_past_inline_capacity() {
+  let mut buf = BytesMut::new();
+  let first = "a".repeat(INLINE_CAP + 1);
+  write!(buf, "{}", first).unwrap();
+  assert_eq!(buf.as_slice(), first.as_bytes());
+
+  let second = "b".repeat(50);
+  write!(buf, "{}", second).unwrap();
+
+  let mut expected = first.into_bytes();
+  expected.extend_from_slice(second.as_bytes());
+  assert!(expected.len() > 100);
+  assert_eq!(buf.as_slice(), expected.as_slice());
 }

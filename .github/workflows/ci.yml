@@ -67,8 +67,8 @@ jobs:
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
-    - name: Apply clippy lints
-      run: cargo clippy --workspace --all-features --all-targets
+    - name: Apply portable clippy lints
+      run: cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
 
   feature-check:
     name: feature-check
@@ -93,8 +93,12 @@ jobs:
         uses: taiki-e/install-action@cargo-hack
       - name: Check featureless no_std rlib
         run: cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
-      - name: Check no_std feature powerset rlib
-        run: cargo hack --workspace --feature-powerset --include-features alloc,serde,borsh,arbitrary rustc --lib --crate-type rlib
+      - name: Check portable feature powerset rlib
+        run: cargo hack --package smol-bytes --feature-powerset --include-features alloc,std,serde,borsh,arbitrary,quickcheck --exclude-features pyo3,wasm rustc --lib --crate-type rlib
+      - name: Check isolated binding features
+        run: |
+          cargo check -p smol-bytes --no-default-features --features pyo3
+          cargo check -p smol-bytes --no-default-features --features pyo3,serde,borsh,arbitrary,quickcheck
       - name: Test alloc-only quickcheck
         run: cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
 
@@ -166,6 +170,33 @@ jobs:
       run: rustup update stable --no-self-update && rustup default stable
     - name: Run build
       run: cargo build --workspace
+
+  msrv-library:
+    name: msrv-library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Check supported library configurations only
+        run: |
+          # The package also produces a cdylib for bindings. Build the no_std
+          # library configurations as rlibs so they do not require an
+          # application panic handler.
+          cargo rustc -p smol-bytes --lib --no-default-features --crate-type rlib
+          cargo rustc -p smol-bytes --lib --no-default-features --features alloc --crate-type rlib
+          cargo check -p smol-bytes --lib --no-default-features --features std,serde,borsh,arbitrary,quickcheck
+          cargo check -p smol-bytes --lib --no-default-features --features pyo3
+          cargo check -p smol-bytes --lib --no-default-features --features wasm --target wasm32-unknown-unknown
+
+  rustdoc:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - run: RUSTDOCFLAGS=-Dwarnings cargo doc -p smol-bytes --no-deps --no-default-features --features std,serde,borsh,arbitrary,quickcheck
   
   test:
     name: test

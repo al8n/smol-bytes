@@ -2,7 +2,7 @@
 use core::borrow::Borrow;
 
 use core::{
-  mem::{transmute, MaybeUninit},
+  mem::{MaybeUninit, transmute},
   ops::RangeBounds,
   ptr::{copy_nonoverlapping, write_bytes},
   slice::from_raw_parts_mut,
@@ -18,7 +18,7 @@ mod iter;
 mod ops;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub(crate) use io::sign_extend;
+pub(crate) use io::{assert_uint_width, sign_extend};
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -108,16 +108,6 @@ pub(crate) enum InlineSize {
   _V60,
   _V61,
   _V62,
-}
-
-impl core::ops::Sub for InlineSize {
-  type Output = Self;
-
-  #[cfg_attr(not(coverage), inline(always))]
-  fn sub(self, rhs: Self) -> Self::Output {
-    // Safety: subtraction result is guaranteed to be less than or equal to INLINE_CAP
-    unsafe { InlineSize::from_u8(self.to_u8() - rhs.to_u8()) }
-  }
 }
 
 impl InlineSize {
@@ -1107,7 +1097,7 @@ impl Buffer {
 
 #[cfg(any(feature = "alloc", feature = "std"))]
 const _: () = {
-  use bytes::{buf::UninitSlice, Buf, BufMut};
+  use bytes::{Buf, BufMut, buf::UninitSlice};
 
   use crate::macros::{forward_buf, forward_buf_mut};
 

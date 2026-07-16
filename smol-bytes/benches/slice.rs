@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
@@ -10,33 +10,33 @@ struct SliceCase {
 
 fn slice_benchmarks(c: &mut Criterion) {
   let cases = [
-    // Original inline; slice remains inline.
+    // Inline source with a short interior range.
     SliceCase {
-      label: "inline_src_inline_slice",
+      label: "inline_source_short_range",
       total: 40,
       range: (8, 32),
     },
-    // Original heap; slice taken from prefix and becomes inline.
+    // Heap source with a short prefix range.
     SliceCase {
-      label: "heap_src_prefix_inline_slice",
+      label: "heap_source_short_prefix",
       total: 120,
       range: (0, 40),
     },
-    // Original heap; slice taken from suffix and becomes inline.
+    // Heap source with a short suffix range.
     SliceCase {
-      label: "heap_src_suffix_inline_slice",
+      label: "heap_source_short_suffix",
       total: 120,
       range: (80, 120),
     },
-    // Original heap; slice straddles middle and exceeds inline capacity, staying heap.
+    // Heap source with a medium interior range.
     SliceCase {
-      label: "heap_src_middle_heap_slice",
+      label: "heap_source_medium_range",
       total: 128,
       range: (32, 112),
     },
-    // Original heap; wide slice retains heap allocation.
+    // Heap source with a wide interior range.
     SliceCase {
-      label: "heap_src_wide_heap_slice",
+      label: "heap_source_wide_range",
       total: 256,
       range: (16, 208),
     },

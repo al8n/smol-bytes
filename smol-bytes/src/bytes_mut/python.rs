@@ -1,5 +1,5 @@
 use super::*;
-use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt};
+use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt, py_check_alloc};
 use bytes::BufMut;
 use pyo3::{
   basic::CompareOp,
@@ -60,6 +60,9 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: An empty buffer with the specified capacity.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.with_capacity(100)
   ///     >>> len(buf)
@@ -68,8 +71,9 @@ impl BytesMut {
   ///     100
   #[staticmethod]
   #[pyo3(name = "with_capacity")]
-  fn __python_with_capacity(capacity: usize) -> Self {
-    Self::with_capacity(capacity)
+  fn __python_with_capacity(capacity: usize) -> PyResult<Self> {
+    py_check_alloc(capacity)?;
+    Ok(Self::with_capacity(capacity))
   }
 
   /// Create a new buffer filled with zeros.
@@ -83,6 +87,9 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: A buffer containing `len` zero bytes.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.zeroed(5)
   ///     >>> bytes(buf)
@@ -91,8 +98,9 @@ impl BytesMut {
   ///     5
   #[staticmethod]
   #[pyo3(name = "zeroed")]
-  fn __python_zeroed(len: usize) -> Self {
-    Self::zeroed(len)
+  fn __python_zeroed(len: usize) -> PyResult<Self> {
+    py_check_alloc(len)?;
+    Ok(Self::zeroed(len))
   }
 
   /// Create a new buffer by copying from a bytes-like object.
@@ -103,14 +111,18 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: A new mutable buffer containing a copy of the data.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> Self {
-    Self::from(py_bytes)
+  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
+    py_check_alloc(py_bytes.len())?;
+    Ok(Self::from(py_bytes))
   }
 
   /// Create a new buffer from a UTF-8 string.
@@ -123,14 +135,18 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: A new buffer containing the UTF-8 encoded string.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_str("Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> Self {
-    Self::from(py_str)
+  fn __python_from_str(py_str: &str) -> PyResult<Self> {
+    py_check_alloc(py_str.len())?;
+    Ok(Self::from(py_str))
   }
 
   /// Return the mutable bytes as a Python `bytes` object.
@@ -143,13 +159,16 @@ impl BytesMut {
     !self.is_empty()
   }
 
+  #[allow(non_upper_case_globals)]
+  const __hash__: Option<Py<PyAny>> = None;
+
   /// Return the number of readable bytes.
   fn __len__(&self) -> usize {
     self.py_len()
   }
 
   /// Check membership of a byte or bytes-like object.
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
     self.py_contains(item)
   }
 
@@ -159,12 +178,28 @@ impl BytesMut {
   }
 
   /// Assign to individual items or slices.
-  fn __setitem__(&mut self, index: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-    self.py_setitem(index, value)
+  fn __setitem__(
+    mut slf: PyRefMut<'_, Self>,
+    index: &Bound<'_, PyAny>,
+    value: &Bound<'_, PyAny>,
+  ) -> PyResult<()> {
+    let self_object = (&slf)
+      .into_pyobject(slf.py())?
+      .to_owned()
+      .into_any()
+      .unbind();
+    let self_assignment = if value.is(&self_object) {
+      py_check_alloc(slf.as_ref().len())?;
+      Some(slf.as_ref().to_vec())
+    } else {
+      None
+    };
+    slf.py_setitem(index, value, self_assignment)
   }
 
   /// Iterate over the readable bytes.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Iter>> {
+    py_check_alloc(slf.len())?;
     let iter = Iter {
       inner: BytesMut::clone(&*slf).into_iter(),
     };
@@ -172,35 +207,39 @@ impl BytesMut {
   }
 
   /// Perform rich comparisons (`==`, `<`, etc.) with other byte sequences.
-  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
+  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
     self.py_richcmp(other, op)
   }
 
   /// Interpret the buffer as UTF-8, raising `UnicodeDecodeError` if invalid.
-  fn __str__(&self) -> PyResult<&str> {
-    core::str::from_utf8(self.as_slice()).map_err(|e| {
-      PyUnicodeDecodeError::new_err(format!(
-        "invalid utf-8 sequence at byte {}: {}",
-        e.valid_up_to(),
-        e
-      ))
-    })
+  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
+    core::str::from_utf8(self.as_slice())
+      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.as_slice(), err))
   }
 
-  fn __repr__(&self) -> String {
-    format!("{:?}", self)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(self.len().saturating_mul(6).saturating_add(64))?;
+    Ok(format!("{:?}", self))
   }
 
   /// Support `copy.copy`, returning a shallow copy.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__copy__")]
-  fn __python_copy(&self) -> Self {
-    self.clone()
+  fn __python_copy(&self) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Support `copy.deepcopy`, returning a new `BytesMut` clone.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__deepcopy__")]
-  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> Self {
-    self.clone()
+  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Return the buffer as a Python `bytes` object.
@@ -427,26 +466,26 @@ impl BytesMut {
 
   /// Read an unsigned integer spanning `nbytes` in big-endian order.
   #[pyo3(name = "get_uint")]
-  fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.py_get_uint(nbytes)
+  fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.py_get_uint_object(nbytes)
   }
 
   /// Read an unsigned integer spanning `nbytes` in little-endian order.
   #[pyo3(name = "get_uint_le")]
-  fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.py_get_uint_le(nbytes)
+  fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.py_get_uint_le_object(nbytes)
   }
 
   /// Read a signed integer spanning `nbytes` in big-endian order.
   #[pyo3(name = "get_int")]
-  fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.py_get_int(nbytes)
+  fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.py_get_int_object(nbytes)
   }
 
   /// Read a signed integer spanning `nbytes` in little-endian order.
   #[pyo3(name = "get_int_le")]
-  fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.py_get_int_le(nbytes)
+  fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.py_get_int_le_object(nbytes)
   }
 
   /// Clear the buffer while retaining capacity.
@@ -478,23 +517,33 @@ impl BytesMut {
   /// Args:
   ///     additional: Minimum number of additional bytes to reserve.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello")
   ///     >>> buf.reserve(100)
   ///     >>> buf.capacity() >= 105  # At least current len + additional
   ///     True
   #[pyo3(name = "reserve")]
-  fn __python_reserve(&mut self, additional: usize) {
+  fn __python_reserve(&mut self, additional: usize) -> PyResult<()> {
+    py_check_alloc(additional)?;
     self.reserve(additional);
+    Ok(())
   }
 
   /// Write a bytes-like object to the buffer.
   ///
   /// Args:
   ///    data: The bytes-like object to write.
+  ///
+  /// Raises:
+  ///    MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "put_slice")]
   fn __python_put_slice(&mut self, data: &Bound<'_, PyBytes>) -> PyResult<()> {
-    self.put_slice(data.as_ref());
+    let data: &[u8] = data.as_ref();
+    py_check_alloc(data.len())?;
+    self.put_slice(data);
     Ok(())
   }
 
@@ -503,9 +552,14 @@ impl BytesMut {
   /// Args:
   ///    val: The byte value to write.
   ///    cnt: Number of times to write the byte.
+  ///
+  /// Raises:
+  ///    MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "put_bytes")]
-  fn __python_put_bytes(&mut self, value: u8, count: usize) {
-    self.put_bytes(value, count)
+  fn __python_put_bytes(&mut self, value: u8, count: usize) -> PyResult<()> {
+    py_check_alloc(count)?;
+    self.put_bytes(value, count);
+    Ok(())
   }
 
   /// Write a signed 8-bit integer to the buffer.
@@ -746,13 +800,18 @@ impl BytesMut {
     self.try_put_int_le(value, nbytes).map_err(Into::into)
   }
 
-  /// Resize the buffer to the specified length, filling with zeros if expanding.
+  /// Resize the buffer to the specified length, filling with `value` if expanding.
   ///
   /// Args:
   ///     new_len: The new length of the buffer.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "resize")]
-  fn __python_resize(&mut self, new_len: usize, value: u8) {
+  fn __python_resize(&mut self, new_len: usize, value: u8) -> PyResult<()> {
+    py_check_alloc(new_len.saturating_sub(self.len()))?;
     self.resize(new_len, value);
+    Ok(())
   }
 
   /// Split off and return the first `at` bytes as a new buffer.

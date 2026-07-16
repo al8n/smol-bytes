@@ -7,7 +7,7 @@ name = "smol-bytes"
 dynamic = ["version"]
 requires-python = ">=3.11"
 description = "High-performance, clone-efficient byte buffers optimized for small data"
-license = { text = "MIT OR Apache-2.0" }
+license = "MIT OR Apache-2.0"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -15,7 +15,7 @@ classifiers = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["pyo3"]
 module-name = "smol_bytes._smol_bytes"
 python-source = "python"
-manifest-path = "crates/smol-bytes/Cargo.toml"
+manifest-path = "smol-bytes/Cargo.toml"

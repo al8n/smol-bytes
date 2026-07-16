@@ -1,5 +1,5 @@
 use bytes::Buf;
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use smol_bytes::{compact, shared};
 use std::hint::black_box;
 

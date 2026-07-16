@@ -4,7 +4,8 @@ use crate::wasm_iter::ByteIterator;
 
 /// Immutable byte buffer using the Compact strategy.
 ///
-/// Stores up to 62 bytes inline with unique ownership for larger data (no reference counting).
+/// Stores up to 62 bytes inline; larger data uses a reference-counted `bytes::Bytes`
+/// that clones share, and small results are inlined.
 /// Available as `CompactBytes` via `import { CompactBytes } from 'smol-bytes/compact'`.
 #[allow(missing_docs)]
 #[wasm_bindgen(js_name = "CompactBytes")]

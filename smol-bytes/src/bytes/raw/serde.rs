@@ -5,7 +5,7 @@ use bytes::BufMut;
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
-use crate::{strategy::ImmutableStorage, BytesMut};
+use crate::{BytesMut, strategy::ImmutableStorage};
 
 use super::RawBytes;
 
@@ -32,7 +32,7 @@ where
       A: serde_core::de::SeqAccess<'a>,
     {
       let mut values = match seq.size_hint() {
-        Some(hint) => BytesMut::with_capacity(hint),
+        Some(hint) => BytesMut::with_capacity(hint.min(4096)),
         None => BytesMut::new(),
       };
 

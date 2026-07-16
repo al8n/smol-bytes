@@ -1,5 +1,5 @@
 use bytes::Buf;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
@@ -217,35 +217,24 @@ fn clone_after_advance_benchmarks(c: &mut Criterion) {
   // Compact: converts to inline
   let data = vec![b'a'; 100];
 
+  let mut bytes = bytes::Bytes::from(data.clone());
+  bytes.advance(70);
   group.bench_function("bytes::Bytes (70 advanced, 30 remaining)", |b| {
-    b.iter(|| {
-      let mut bytes = bytes::Bytes::from(data.clone());
-      bytes.advance(70);
-      let cloned = black_box(bytes.clone());
-      black_box(cloned);
-    });
+    b.iter(|| black_box(bytes.clone()));
   });
 
+  let mut shared_bytes = shared::Bytes::from(data.clone());
+  shared_bytes.advance(70);
   group.bench_function("smol_bytes::Bytes (70 advanced, 30 remaining)", |b| {
-    b.iter(|| {
-      let mut smol = shared::Bytes::from(data.clone());
-      smol.advance(70);
-      // Still heap-allocated, should be as fast as bytes::Bytes
-      let cloned = black_box(smol.clone());
-      black_box(cloned);
-    });
+    b.iter(|| black_box(shared_bytes.clone()));
   });
 
+  let mut compact_bytes = compact::Bytes::from(data);
+  compact_bytes.advance(70);
   group.bench_function(
     "smol_bytes::compact::Bytes (70 advanced, 30 remaining)",
     |b| {
-      b.iter(|| {
-        let mut smol = compact::Bytes::from(data.clone());
-        smol.advance(70);
-        // Converted to inline, should be slower due to memcpy
-        let cloned = black_box(smol.clone());
-        black_box(cloned);
-      });
+      b.iter(|| black_box(compact_bytes.clone()));
     },
   );
 

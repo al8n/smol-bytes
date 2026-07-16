@@ -168,3 +168,43 @@ describe('Utf8BytesMut', () => {
     expect(buf.toString()).toBe('hello world');
   });
 });
+
+describe.each([
+  ['Utf8Buffer', () => new Utf8Buffer()],
+  ['Utf8BytesMut', () => new Utf8BytesMut()],
+])('%s Unicode scalar operations', (_name, make) => {
+  test('push accepts exactly one Unicode scalar value', () => {
+    const value = make();
+
+    value.push('a');
+    value.push('é');
+    value.push('🦀');
+
+    expect(value.toString()).toBe('aé🦀');
+  });
+
+  test.each(['', 'ab', 'éx', '🦀x', 'e\u0301', '\uD800', '\uDC00'])(
+    'push rejects %j without mutation',
+    (input) => {
+      const value = make();
+      value.pushStr('ok');
+
+      expect(() => value.push(input)).toThrow(
+        'push expects exactly one Unicode scalar value',
+      );
+      expect(value.toString()).toBe('ok');
+    },
+  );
+
+  test('truncate validates UTF-8 boundaries and preserves state on error', () => {
+    const value = make();
+    value.pushStr('éx');
+
+    expect(() => value.truncate(1)).toThrow();
+    expect(value.toString()).toBe('éx');
+    value.truncate(2);
+    expect(value.toString()).toBe('é');
+    value.truncate(99);
+    expect(value.toString()).toBe('é');
+  });
+});

@@ -1,4 +1,4 @@
-use std::string::{String, ToString};
+use std::string::String;
 
 use super::*;
 
@@ -45,7 +45,7 @@ impl From<Utf8BytesMut> for BytesMut {
 
 impl From<Utf8BytesMut> for String {
   fn from(value: Utf8BytesMut) -> Self {
-    value.as_str().to_string()
+    String::from_utf8(value.inner.into()).expect("Utf8Bytes invariant")
   }
 }
 

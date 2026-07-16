@@ -110,8 +110,8 @@ impl core::hash::Hash for Utf8Buffer {
 // `Utf8Bytes` and `Utf8BytesMut` require `std` or `alloc`.
 #[cfg(any(feature = "std", feature = "alloc"))]
 const _: () = {
-  use crate::bytes::{strategy::ImmutableStorage, RawBytes};
   use crate::Utf8BytesMut;
+  use crate::bytes::{RawBytes, strategy::ImmutableStorage};
 
   impl<S> PartialEq<crate::utf8_bytes::Utf8Bytes<S>> for Utf8Buffer
   where

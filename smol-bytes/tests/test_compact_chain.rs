@@ -1,6 +1,6 @@
 #![warn(rust_2018_idioms)]
 
-use smol_bytes::{compact::Bytes, Buf};
+use smol_bytes::{Buf, compact::Bytes};
 #[cfg(feature = "std")]
 use std::io::IoSlice;
 

@@ -90,7 +90,7 @@ impl Utf8Buffer {
 
   /// Creates a `Utf8Buffer` from a static string slice.
   ///
-  /// Unlike [`Utf8Bytes::from_static`](crate::Utf8Bytes::from_static),
+  /// Unlike the shared immutable UTF-8 wrapper's `from_static` constructor,
   /// this method **copies** the bytes into the inline buffer — `Utf8Buffer`
   /// has no heap variant. It exists as a const constructor for parity.
   ///
@@ -307,13 +307,14 @@ impl Utf8Buffer {
   ///
   /// Panics if `new_len` does not lie on a UTF-8 character boundary.
   pub fn truncate(&mut self, new_len: usize) {
-    if new_len < self.len() {
-      assert!(
-        self.as_str().is_char_boundary(new_len),
-        "new_len must lie on a UTF-8 character boundary"
-      );
-    }
-    self.inner.truncate(new_len);
+    self
+      .try_truncate(new_len)
+      .expect("new_len must lie on a UTF-8 character boundary");
+  }
+
+  /// Truncates the buffer at a UTF-8 character boundary.
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+    <Self as Utf8BufMut>::try_truncate(self, new_len)
   }
 
   /// Splits the buffer at `at`, returning the head `[0, at)` and leaving
@@ -471,6 +472,17 @@ impl Utf8Buf for Utf8Buffer {
 }
 
 impl Utf8BufMut for Utf8Buffer {
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+    if new_len >= self.len() {
+      return Ok(());
+    }
+    if !self.as_str().is_char_boundary(new_len) {
+      return Err(Utf8Error::InvalidCharBoundary { at: new_len });
+    }
+    self.inner.truncate(new_len);
+    Ok(())
+  }
+
   fn push(&mut self, ch: char) {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);

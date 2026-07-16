@@ -21,29 +21,31 @@ Small, clone-efficient byte buffer types.
 
 ## Introduction
 
-`smol-bytes` provides Rust byte buffers with inline storage for small values.
-For ordinary copying and static constructors, values up to 62 bytes start
-inline. Imported or owner-backed values, and retained shared heap views, can
-remain heap-backed even when their current length is 62 bytes or less. Larger
-or growable values can use `bytes`-backed heap storage. The crate also provides
-mutable buffers and wrappers that guarantee valid UTF-8.
+`smol-bytes` provides byte buffers that store up to 62 bytes inline — no heap
+allocation, and cloning an inline value is a plain 64-byte copy. Larger values
+use [`bytes`](https://crates.io/crates/bytes)-backed heap storage with
+reference-counted clones. Two strategies control what happens when a heap
+value shrinks back under the inline threshold, and UTF-8 wrappers layer
+`String`-like, boundary-checked APIs over the same storage.
 
-There are currently no published releases on crates.io, PyPI, or npm. All
-packages in this repository build from source.
+This is a good fit when most values are small and cloned often — tokens in a
+lexer, keys and field names, protocol headers — and allocation pressure
+matters.
 
-## Rust
+This repository is unpublished: Rust, Python, and JavaScript packages build
+from source. For production Rust use, pin a reviewed Git revision:
 
 ```toml
 [dependencies]
-smol-bytes = "0.1"
+smol-bytes = { git = "https://github.com/al8n/smol-bytes", rev = "<reviewed-revision>" }
 ```
 
-### Quick start
+## Quick start
 
-The root `Bytes` type is an alias for `shared::Bytes`. For ordinary copying and
-static constructors, values up to 62 bytes start inline; imported or
-owner-backed values and retained shared heap views may remain heap-backed below
-that threshold.
+The root `Bytes` type is an alias for `shared::Bytes`. Ordinary copies and
+static values of at most 62 bytes start inline; imported or owner-backed
+values and retained shared heap views can remain heap-backed below that
+threshold.
 
 ```rust
 use smol_bytes::Bytes;
@@ -51,7 +53,7 @@ use smol_bytes::Bytes;
 let small = Bytes::from_static(b"identifier");
 assert!(small.is_inline());
 
-let cloned = small.clone();
+let cloned = small.clone(); // 64-byte copy, no allocation
 assert_eq!(small, cloned);
 
 let heap = Bytes::copy_from_slice(&[0_u8; 63]);
@@ -59,12 +61,11 @@ assert!(heap.is_heap());
 assert_eq!(heap.len(), 63);
 ```
 
-### Storage strategies
+## Storage strategies
 
-`shared::Bytes` preserves retained heap-backed views when operations shrink a
-value. `compact::Bytes` may copy a shrinking view of 62 bytes or fewer into
-inline storage. Ordinary copying and static constructors in either strategy
-start values of up to 62 bytes inline.
+`shared::Bytes` preserves heap storage once a value lives there, keeping
+conversions with `bytes::Bytes` zero-copy. `compact::Bytes` copies a shrinking
+view of 62 bytes or fewer back into inline storage to release the allocation.
 
 ```rust
 use smol_bytes::{compact, shared, Buf};
@@ -77,11 +78,14 @@ compact.advance(70);
 
 assert_eq!(shared.len(), 30);
 assert_eq!(compact.len(), 30);
-assert!(shared.is_heap());
-assert!(compact.is_inline());
+assert!(shared.is_heap());   // stays shareable and zero-copy convertible
+assert!(compact.is_inline()); // allocation released, contents inlined
 ```
 
-### Types
+Rule of thumb: use `shared` (the default) for I/O and `bytes` interop; use
+`compact` when memory footprint matters more than conversion speed.
+
+## Types
 
 | Type | Storage | Mutable | Purpose |
 | --- | --- | :---: | --- |
@@ -93,47 +97,86 @@ assert!(compact.is_inline());
 | `Utf8Bytes` / `compact::Utf8Bytes` | Shared or compacting UTF-8 bytes | No | Immutable UTF-8 value |
 | `Utf8BytesMut` | Inline or growable valid UTF-8 bytes | Yes | Mutable UTF-8 value |
 
+Every handle is 64 bytes. All byte types implement `bytes::Buf`, and the
+mutable ones implement `bytes::BufMut`.
+
 `BytesMut::split_to` and `BytesMut::split_off` return `Ok(BytesMut)` when the
 output is growable heap storage and `Err(Buffer)` when the output is fixed
 inline storage. The `try_split_*` variants add an outer bounds `Result`, so
 their shape is `Result<Result<BytesMut, Buffer>, OutOfBounds>`.
 
-Rust UTF-8 split and slice indices are byte offsets, not character counts, and
-must be character boundaries. The fallible alternatives are `try_split_to`,
-`try_split_off`, and `try_slice`.
+Rust UTF-8 split and slice indices are byte offsets that must fall on
+character boundaries; offenders panic, and the `try_split_to`,
+`try_split_off`, and `try_slice` variants return errors instead. (The Python
+bindings differ deliberately — see below.)
 
-## Features
+## `bytes` interop
+
+Conversions with the `bytes` crate are zero-copy wherever the representation
+allows:
+
+- `bytes::Bytes -> shared::Bytes` shares the allocation (`From` impl).
+- `shared::Bytes -> bytes::Bytes` reuses heap backing; inline values copy.
+- `compact::Bytes::from(bytes::Bytes)` inlines payloads of at most 62 bytes
+  and shares larger ones.
+- `BytesMut::freeze_shared` / `freeze_compact` convert without copying heap
+  contents; `Bytes::try_into_mut` reclaims unique heap allocations.
+
+## Features and MSRV
 
 | Feature | Description |
 | --- | --- |
-| `std` (default) | Standard-library support and the normal heap-backed types |
+| `std` (default) | Standard-library support and the heap-backed types |
 | `alloc` | Heap-backed types without `std` |
 | `serde` | Serde support |
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
-| `pyo3` | Python bindings |
+| `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
-With no features, the crate is `no_std` and provides the fixed `Buffer` and
-`Utf8Buffer` types. `alloc` adds heap-backed types without requiring `std`.
+With no features enabled the crate is `no_std` and provides the fixed
+`Buffer` and `Utf8Buffer` types; `alloc` adds the heap-backed types without
+`std`.
+
+Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
+Development-only test and benchmark dependencies can require a newer
+compiler.
+
+## Verification
+
+The test and CI story is deliberately heavier than the crate's size:
+
+- Unit, integration, doc, and property tests (proptest state-machine
+  comparisons against `Vec`/`String`, plus `quickcheck` and `arbitrary`
+  generators that preserve type invariants).
+- Miri over the full suite under both stacked borrows and tree borrows with
+  strict provenance and symbolic alignment checks.
+- Address, leak, memory, and thread sanitizers in CI.
+- Deserialization is hardened: borsh reads length-prefixed payloads in
+  bounded chunks instead of trusting the length prefix, and serde sequence
+  hints are capped before preallocating.
 
 ## Python from source
 
-Python 3.11+, Rust, and `maturin` are required. From the repository root:
+Python 3.11+, Rust, and `maturin` are required:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install maturin pytest
-maturin develop --features pyo3 --manifest-path crates/smol-bytes/Cargo.toml
-pytest tests/python -v
+python -m pip install maturin pytest
+maturin develop --features pyo3 --manifest-path smol-bytes/Cargo.toml
+python -m pytest tests/python -v
 ```
 
-The root `smol_bytes` module contains `Buffer`, `BytesMut`, `Utf8Buffer`,
-`Utf8Bytes`, and `Utf8BytesMut`. The `smol_bytes.shared` and
-`smol_bytes.compact` modules expose immutable `Bytes` and `Utf8Bytes` types for
-the shared and compact strategies.
+The root `smol_bytes` module exposes `Buffer`, `BytesMut`, `Utf8Buffer`,
+`Utf8Bytes`, and `Utf8BytesMut`; `smol_bytes.shared` and `smol_bytes.compact`
+expose the immutable `Bytes` and `Utf8Bytes` strategy types.
+
+The UTF-8 classes are string-like from Python: `len()`, indexing, and the
+`truncate`/`split_to`/`split_off`/`slice` methods all work in Unicode
+characters, while `byte_len()` and the explicitly byte-oriented `Buf`-style
+methods (`advance`, `get_*`) work in bytes.
 
 ```python
 from smol_bytes import Utf8Bytes
@@ -144,13 +187,27 @@ assert raw.is_inline()
 assert bytes(raw) == b"abc"
 
 text = Utf8Bytes.from_str("café")
-assert len(text) == 5
+assert len(text) == 4        # Unicode characters
+assert text.byte_len() == 5  # UTF-8 bytes
 assert str(text) == "café"
+assert str(text.split_to(3)) == "caf"
 ```
 
-## JavaScript, TypeScript, and WebAssembly from source
+Binding behavior worth knowing:
 
-Use Node.js 20, `wasm-pack`, and the `wasm32-unknown-unknown` Rust target:
+- Methods that allocate proportionally to caller data raise `MemoryError`
+  on absurd or failing requests instead of aborting the interpreter, like
+  CPython containers.
+- `memoryview(...)` over the shared and compact `Bytes` classes exports a
+  snapshot copy, not a live view.
+- Slice assignment on the mutable classes requires matching lengths, and
+  contiguous assignments take a direct copy fast path.
+
+## JavaScript / WebAssembly from source
+
+Install Node.js 20, `wasm-pack` 0.13.1, and the `wasm32-unknown-unknown`
+target. The generated package is pinned to wasm-bindgen 0.2.126 for
+reproducibility:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -160,10 +217,17 @@ npm run build
 npm test
 ```
 
-The root export contains the core, mutable, and shared UTF-8 types. The
-`smol-bytes/shared` and `smol-bytes/compact` exports provide the corresponding
-`Bytes` and `Utf8Bytes` strategy types. Byte conversions at the Wasm boundary
-return copies.
+The Wasm build entry point is:
+
+```bash
+wasm-pack build smol-bytes --target bundler --out-dir ../js/pkg -- --features wasm
+```
+
+The root export contains the core, mutable, and shared UTF-8 types; the
+`smol-bytes/shared` and `smol-bytes/compact` exports provide the strategy
+types. Byte conversions at the Wasm boundary return copies, offsets are byte
+offsets, and fallible operations throw catchable errors rather than trapping
+the instance.
 
 ```typescript
 import { Utf8Bytes } from "smol-bytes";
@@ -174,24 +238,24 @@ console.assert(raw.isInline());
 console.assert(raw.toBytes()[2] === 3);
 
 const text = Utf8Bytes.fromString("café");
-console.assert(text.len() === 5);
+console.assert(text.len() === 5); // byte length
 console.assert(text.toString() === "café");
 ```
 
 ## Performance characteristics
 
-These are structural properties of the representations:
+Structural properties of the representations:
 
-- Supported inline constructors avoid a separate backing allocation for inline values.
-- The inline-capable handle is 64 bytes.
-- Cloning an inline value copies its fixed value.
-- Cloning an immutable non-inline `Bytes` or `Utf8Bytes` copies the underlying
-  `bytes::Bytes` handle, usually incrementing a reference count; static backing
-  does not. Cloning `BytesMut` or `Utf8BytesMut` copies contents.
-- A shared heap-backed outbound conversion to `bytes::Bytes` may reuse its backing.
-- Compact storage may copy up to 62 bytes when inlining a shrinking view.
+- Values of at most 62 bytes construct inline with no backing allocation.
+- Every handle is 64 bytes; `Option<Bytes>` is the same size as `Bytes`.
+- Cloning an inline value copies 64 bytes; cloning a heap-backed immutable
+  value bumps a reference count; cloning `BytesMut`/`Utf8BytesMut` copies
+  contents.
+- Shared heap-backed conversions to and from `bytes::Bytes` reuse the
+  backing allocation.
+- Compact storage copies at most 62 bytes when inlining a shrinking view.
 
-Run the benchmark suite locally when investigating a change:
+Run the benchmark suite when investigating a change:
 
 ```bash
 cargo bench
@@ -201,37 +265,24 @@ cargo bench --bench split_to
 
 ## Development
 
-The following commands match the main CI checks:
-
-The final command requires `cargo-hack`; install it with `cargo install cargo-hack`.
+These commands match the main CI checks:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --all-features --all-targets
+cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
 cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
-cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
 cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
-cargo hack --workspace --feature-powerset --include-features alloc,serde,borsh,arbitrary rustc --lib --crate-type rlib
+cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
+cargo doc --package smol-bytes --no-deps
 ```
 
-## Contributing and links
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance. Build and
-open the local API documentation with:
-
-```bash
-cargo doc --package smol-bytes --open
-```
-
-- Repository: <https://github.com/al8n/smol-bytes>
-- Issues: <https://github.com/al8n/smol-bytes/issues>
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
 
 ## License
 
-`smol-bytes` is under the terms of both the MIT license and the
-Apache License (Version 2.0).
-
-See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
+`smol-bytes` is available under either the MIT license or the Apache License,
+Version 2.0, at your option. See [LICENSE-MIT](LICENSE-MIT) and
+[LICENSE-APACHE](LICENSE-APACHE).
 
 Copyright (c) 2026 Al Liu.
 

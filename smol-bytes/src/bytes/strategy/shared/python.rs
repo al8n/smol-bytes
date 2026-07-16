@@ -1,6 +1,6 @@
 use crate::{
-  python::{PyBufCmp, PyBufCommon, PyBufExt},
-  Buf, DefaultHasher, OutOfBounds, RangeOutOfBounds,
+  Buf, OutOfBounds, RangeOutOfBounds,
+  python::{PyBufCmp, PyBufCommon, PyBufExt, py_check_alloc},
 };
 use pyo3::{
   basic::CompareOp,
@@ -123,16 +123,20 @@ impl PySharedBytes {
   /// Returns:
   ///     Bytes: A new immutable bytes object containing a copy of the data.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> b = Bytes.from_bytes(b"Hello")
   ///     >>> bytes(b)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> Self {
-    Self {
+  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
+    py_check_alloc(py_bytes.len())?;
+    Ok(Self {
       inner: super::Bytes::copy_from_slice(py_bytes),
-    }
+    })
   }
 
   /// Create a new immutable bytes object from a UTF-8 string.
@@ -145,16 +149,20 @@ impl PySharedBytes {
   /// Returns:
   ///     Bytes: A new immutable bytes object containing the UTF-8 encoded string.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> b = Bytes.from_str("Hello")
   ///     >>> bytes(b)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> Self {
-    Self {
+  fn __python_from_str(py_str: &str) -> PyResult<Self> {
+    py_check_alloc(py_str.len())?;
+    Ok(Self {
       inner: super::Bytes::from(py_str),
-    }
+    })
   }
 
   /// Return the contents as a Python `bytes` object.
@@ -167,14 +175,8 @@ impl PySharedBytes {
     !self.inner.is_empty()
   }
 
-  /// Compute a hash identical to Rust's `Bytes` implementation.
-  fn __hash__(&self) -> u64 {
-    use ::core::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    self.inner.hash(&mut hasher);
-    hasher.finish()
-  }
+  #[allow(non_upper_case_globals)]
+  const __hash__: Option<Py<PyAny>> = None;
 
   /// Return the number of remaining readable bytes.
   fn __len__(&self) -> usize {
@@ -182,7 +184,7 @@ impl PySharedBytes {
   }
 
   /// Check membership of a byte or bytes-like object.
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
     self.py_contains(item)
   }
 
@@ -200,24 +202,20 @@ impl PySharedBytes {
   }
 
   /// Perform rich comparisons (`==`, `<`, etc.) with other byte sequences.
-  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
+  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
     self.py_richcmp(other, op)
   }
 
   /// Interpret the bytes as UTF-8, raising `UnicodeDecodeError` on failure.
-  fn __str__(&self) -> PyResult<&str> {
-    ::core::str::from_utf8(self.inner.as_ref()).map_err(|e| {
-      PyUnicodeDecodeError::new_err(format!(
-        "invalid utf-8 sequence at byte {}: {}",
-        e.valid_up_to(),
-        e
-      ))
-    })
+  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
+    ::core::str::from_utf8(self.inner.as_ref())
+      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.inner.as_ref(), err))
   }
 
   /// Debug representation mirroring Rust's `Debug` output.
-  fn __repr__(&self) -> String {
-    format!("{:?}", self.inner)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(self.inner.len().saturating_mul(6).saturating_add(64))?;
+    Ok(format!("{:?}", self.inner))
   }
 
   /// Return the buffer contents as Python bytes.
@@ -668,13 +666,13 @@ impl PySharedBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint")]
-  fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.inner.py_get_uint(nbytes)
+  fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.inner.py_get_uint_object(nbytes)
   }
 
   /// Read an unsigned n-byte integer in little-endian byte order.
@@ -682,13 +680,13 @@ impl PySharedBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint_le")]
-  fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.inner.py_get_uint_le(nbytes)
+  fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.inner.py_get_uint_le_object(nbytes)
   }
 
   /// Read a signed n-byte integer in big-endian byte order.
@@ -696,13 +694,13 @@ impl PySharedBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int")]
-  fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.inner.py_get_int(nbytes)
+  fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.inner.py_get_int_object(nbytes)
   }
 
   /// Read a signed n-byte integer in little-endian byte order.
@@ -710,16 +708,17 @@ impl PySharedBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int_le")]
-  fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.inner.py_get_int_le(nbytes)
+  fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.inner.py_get_int_le_object(nbytes)
   }
 
-  /// Expose a read-only buffer view (enables `memoryview`).
+  /// Expose a snapshot copy as a buffer (enables `memoryview`); later mutations
+  /// of this object are not reflected in the view.
   unsafe fn __getbuffer__(
     slf: PyRef<'_, Self>,
     view: *mut pyo3::ffi::Py_buffer,

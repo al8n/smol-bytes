@@ -1,6 +1,6 @@
 #![warn(rust_2018_idioms)]
 
-use smol_bytes::{compact::Bytes, Buf, BufMut, BytesMut, INLINE_CAP};
+use smol_bytes::{Buf, BufMut, BytesMut, INLINE_CAP, compact::Bytes};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -350,15 +350,19 @@ fn split_off_to_at_gt_len() {
   let _ = make_bytes().split_to(4);
   let _ = make_bytes().split_off(4);
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_to(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_to(5);
+    })
+    .is_err()
+  );
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_off(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_off(5);
+    })
+    .is_err()
+  );
 }
 
 #[test]
@@ -375,15 +379,16 @@ fn truncate() {
 
 #[test]
 fn compact_heap_truncate_at_or_above_len_is_a_representation_preserving_noop() {
-  let mut bytes = Bytes::from(bytes::Bytes::from_static(b"hello"));
+  let payload = vec![b'h'; 100];
+  let mut bytes = Bytes::from(bytes::Bytes::from(payload.clone()));
   assert!(bytes.is_heap());
 
-  bytes.truncate(6);
-  assert_eq!(bytes, b"hello"[..]);
+  bytes.truncate(101);
+  assert_eq!(bytes, payload[..]);
   assert!(bytes.is_heap());
 
-  bytes.truncate(5);
-  assert_eq!(bytes, b"hello"[..]);
+  bytes.truncate(100);
+  assert_eq!(bytes, payload[..]);
   assert!(bytes.is_heap());
 }
 
@@ -400,9 +405,11 @@ fn fallible_slicing_is_checked_for_inline_and_compact_heap() {
   assert!(heap.is_heap());
   assert!(heap.try_slice(80..20).is_err());
   assert!(heap.try_slice(..=usize::MAX).is_err());
-  assert!(heap
-    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
-    .is_err());
+  assert!(
+    heap
+      .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+      .is_err()
+  );
 }
 
 #[test]
@@ -1569,3 +1576,28 @@ fn split_to_empty_addr_mut() {
 
 //   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
 // }
+
+#[test]
+fn from_bytes_crate_small_is_inlined() {
+  let b = Bytes::from(bytes::Bytes::from_static(b"hi"));
+  assert!(b.is_inline());
+  assert_eq!(b.as_slice(), b"hi");
+}
+
+#[test]
+fn from_bytes_crate_large_is_zero_copy_heap() {
+  let b = bytes::Bytes::from(vec![7u8; 100]);
+  let p = b.as_ptr();
+  let c = Bytes::from(b);
+  assert!(c.is_heap());
+  assert_eq!(c.as_slice().as_ptr(), p);
+}
+
+#[test]
+fn clear_releases_heap_allocation() {
+  let mut b = Bytes::from(vec![7u8; 100]);
+  assert!(b.is_heap());
+  b.clear();
+  assert!(b.is_inline());
+  assert!(b.is_empty());
+}

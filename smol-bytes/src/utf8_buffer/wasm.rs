@@ -60,14 +60,12 @@ impl Utf8Buffer {
 
   /// Append a single character.
   ///
-  /// @param ch - A single-character string.
-  /// @throws {Error} If the string is empty or the character would exceed inline capacity.
+  /// @param ch - A string containing exactly one Unicode scalar value.
+  /// @throws {Error} If `ch` is not exactly one scalar value, contains an
+  /// unpaired surrogate, or the character would exceed inline capacity.
   #[wasm_bindgen(js_name = "push")]
-  pub fn push_wasm(&mut self, ch: &str) -> Result<(), JsError> {
-    let c = ch
-      .chars()
-      .next()
-      .ok_or_else(|| JsError::new("empty string"))?;
+  pub fn push_wasm(&mut self, ch: js_sys::JsString) -> Result<(), JsError> {
+    let c = crate::wasm::js_string_to_char(&ch)?;
     self.try_push(c).map_err(|e| JsError::new(&e.to_string()))
   }
 
@@ -89,9 +87,14 @@ impl Utf8Buffer {
   }
 
   /// Truncate the buffer to `new_len` bytes, discarding any data beyond that point.
+  ///
+  /// Throws if `new_len` is inside a UTF-8 scalar. Lengths beyond the current
+  /// byte length leave the value unchanged.
   #[wasm_bindgen(js_name = "truncate")]
-  pub fn truncate_wasm(&mut self, new_len: usize) {
-    self.truncate(new_len);
+  pub fn truncate_wasm(&mut self, new_len: usize) -> Result<(), JsError> {
+    self
+      .try_truncate(new_len)
+      .map_err(|error| JsError::new(&error.to_string()))
   }
 
   /// Split the buffer at position `at`, returning bytes `[0, at)`.

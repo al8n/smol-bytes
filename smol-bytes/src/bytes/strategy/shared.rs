@@ -1,6 +1,7 @@
 //! The **Shared** strategy for `Bytes`.
 //!
-//! This module provides the [`Bytes`] type alias configured with the [`Shared`] strategy,
+//! This module provides the [`Bytes`](crate::shared::Bytes) type alias configured with the
+//! [`Shared`](crate::shared::Shared) strategy,
 //! which prioritizes **fast conversions** and **allocation sharing** with [`bytes::Bytes`].
 //!
 //! # Key Characteristics
@@ -85,7 +86,7 @@
 //! | `truncate()` | Heap (100 bytes) | Heap (30 bytes) | Stays heap |
 //! | `split_to()` | Heap (100 bytes) | Heap (70 bytes) | Both parts may be heap |
 //! | `split_off()` | Heap (100 bytes) | Heap (30 bytes) | Both parts may be heap |
-//! | `slice()` | Heap | Inline or Heap | Result inline if ≤62 bytes |
+//! | `slice()` | Heap | Heap | Non-empty slices retain shared heap backing, even if ≤62 bytes |
 //!
 //! # Performance Characteristics
 //!
@@ -98,9 +99,8 @@
 //!
 //! ## Linear Operations (O(62) - copies up to 62 bytes)
 //!
-//! - Creating inline from slice
-//! - `slice()` when result fits inline
-//! - Operations producing inline results
+//! - Creating inline values from inline sources
+//! - Operations on inline values
 //!
 //! # Examples
 //!
@@ -129,7 +129,7 @@
 //! ```rust
 //! use smol_bytes::shared::Bytes;
 //!
-//! let data = Bytes::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+//! let data = Bytes::from(vec![1_u8; 128]);
 //!
 //! // Extract different segments
 //! let header = data.slice(0..2);
@@ -182,8 +182,9 @@ use core::ops::RangeBounds;
 ///
 /// # Behavior
 ///
-/// - **Inline → Inline**: Small data stays inline (≤62 bytes)
-/// - **Heap → Heap**: Large data stays on heap, **even if it shrinks** below inline capacity
+/// - **Inline → Inline**: Inline source slices stay inline
+/// - **Heap → Heap**: Every non-empty heap source slice stays shared and heap-allocated,
+///   even at or below the inline capacity; empty slices use the canonical empty value
 /// - **Conversions**: Zero-cost `From`/`Into` with `Bytes` when heap-allocated
 ///
 /// ## Example
@@ -271,6 +272,14 @@ impl RawBytes<Shared> {
     T: AsRef<[u8]> + Send + 'static,
   {
     Self::heap(bytes::Bytes::from_owner(owner))
+  }
+}
+
+/// Zero-copy conversion from [`bytes::Bytes`]: the heap allocation is retained
+/// and shared, the direction promised by this module's docs.
+impl From<bytes::Bytes> for RawBytes<Shared> {
+  fn from(bytes: bytes::Bytes) -> Self {
+    Self::heap(bytes)
   }
 }
 
@@ -389,7 +398,7 @@ mod wasm;
 
 /// A space-efficient byte buffer that shares heap allocations with [`bytes::Bytes`].
 ///
-/// This is a type alias for [`RawBytes<Shared>`](crate::smol_bytes::RawBytes) using the [`Shared`] strategy.
+/// This type alias uses the [`Shared`] strategy.
 ///
 /// # When to use
 ///
@@ -415,5 +424,5 @@ pub type Bytes = RawBytes<Shared>;
 
 /// A shared, immutable UTF-8 string type alias using the [`Shared`] strategy.
 ///
-/// See [`crate::utf8_bytes::Utf8Bytes`] for the generic type documentation.
+/// This is the shared-strategy immutable UTF-8 wrapper.
 pub type Utf8Bytes = crate::utf8_bytes::Utf8Bytes<Shared>;

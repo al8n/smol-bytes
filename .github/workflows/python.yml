@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  SMOL_BYTES_MANIFEST: smol-bytes/Cargo.toml
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -44,7 +47,8 @@ jobs:
           "VIRTUAL_ENV=$venv" >> $env:GITHUB_ENV
           (Join-Path $venv 'Scripts') >> $env:GITHUB_PATH
       - run: python -m pip install maturin pytest
-      - run: maturin develop --features pyo3 --manifest-path crates/smol-bytes/Cargo.toml
+      - run: cargo check --manifest-path ${{ env.SMOL_BYTES_MANIFEST }} --no-default-features --features pyo3
+      - run: maturin develop --features pyo3 --manifest-path ${{ env.SMOL_BYTES_MANIFEST }}
       - run: python -m pytest tests/python/ -v
 
   wheels:
@@ -59,7 +63,10 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --features pyo3 --manifest-path crates/smol-bytes/Cargo.toml
+          args: --release --features pyo3 --manifest-path ${{ env.SMOL_BYTES_MANIFEST }}
+      - name: Verify abi3 wheel tag
+        shell: bash
+        run: ls target/wheels/*cp311-abi3*.whl
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}

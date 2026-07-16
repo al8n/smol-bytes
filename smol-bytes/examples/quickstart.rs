@@ -1,4 +1,4 @@
-use smol_bytes::{shared::Bytes, INLINE_CAP};
+use smol_bytes::{INLINE_CAP, shared::Bytes};
 
 fn main() {
   let inline: Bytes = Bytes::from_static(b"hello");
