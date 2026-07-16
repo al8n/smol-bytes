@@ -60,6 +60,9 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: An empty buffer with the specified capacity.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.with_capacity(100)
   ///     >>> len(buf)
@@ -83,6 +86,9 @@ impl BytesMut {
   ///
   /// Returns:
   ///     BytesMut: A buffer containing `len` zero bytes.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   ///
   /// Example:
   ///     >>> buf = BytesMut.zeroed(5)
@@ -488,6 +494,9 @@ impl BytesMut {
   /// Args:
   ///     additional: Minimum number of additional bytes to reserve.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello")
   ///     >>> buf.reserve(100)
@@ -515,6 +524,9 @@ impl BytesMut {
   /// Args:
   ///    val: The byte value to write.
   ///    cnt: Number of times to write the byte.
+  ///
+  /// Raises:
+  ///    MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "put_bytes")]
   fn __python_put_bytes(&mut self, value: u8, count: usize) -> PyResult<()> {
     py_check_alloc(count)?;
@@ -764,6 +776,9 @@ impl BytesMut {
   ///
   /// Args:
   ///     new_len: The new length of the buffer.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "resize")]
   fn __python_resize(&mut self, new_len: usize, value: u8) -> PyResult<()> {
     py_check_alloc(new_len.saturating_sub(self.len()))?;

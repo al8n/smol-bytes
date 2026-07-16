@@ -46,6 +46,8 @@ where
 
 #[cfg(test)]
 mod tests {
+  use std::vec;
+
   #[test]
   fn hostile_length_prefix_does_not_preallocate() {
     // A ~2 GiB length prefix with no payload must fail on the first read

@@ -40,6 +40,11 @@ pub(crate) fn validate_utf8_advance(value: &impl AsRef<str>, cnt: usize) -> PyRe
 /// Preflight an allocation of `additional` bytes so absurd or hostile sizes
 /// raise `MemoryError` like CPython containers instead of aborting the
 /// process inside the infallible Rust allocator path.
+///
+/// This is a best-effort guard: it probes exactly `additional` bytes, so
+/// reserve-style callers (whose underlying reservation may allocate
+/// `len + additional` plus growth slack) are protected against absurd or
+/// hostile sizes, not byte-exact OOM boundaries.
 pub(crate) fn py_check_alloc(additional: usize) -> PyResult<()> {
   let mut probe: Vec<u8> = Vec::new();
   probe

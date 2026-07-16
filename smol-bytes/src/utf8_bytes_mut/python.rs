@@ -40,6 +40,9 @@ impl Utf8BytesMut {
   ///
   /// Returns:
   ///     Utf8BytesMut: A new mutable UTF-8 buffer.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[staticmethod]
   #[pyo3(name = "with_capacity")]
   fn __python_with_capacity(capacity: usize) -> PyResult<Self> {
@@ -200,6 +203,9 @@ impl Utf8BytesMut {
   ///
   /// Args:
   ///     additional: Additional capacity to reserve.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "reserve")]
   fn __python_reserve(&mut self, additional: usize) -> PyResult<()> {
     py_check_alloc(additional)?;

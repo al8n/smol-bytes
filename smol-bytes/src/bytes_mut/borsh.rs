@@ -41,6 +41,7 @@ impl BorshDeserialize for BytesMut {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::vec;
 
   #[test]
   fn hostile_length_prefix_does_not_preallocate() {
