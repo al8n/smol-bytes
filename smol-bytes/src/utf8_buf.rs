@@ -1,6 +1,6 @@
 use core::ops::RangeBounds;
 
-use super::error::{normalize_range, Utf8Error};
+use super::error::{Utf8Error, normalize_range};
 
 /// Extension trait for UTF-8 validated buffer types.
 ///
@@ -142,6 +142,12 @@ pub trait Utf8Buf: AsRef<str> + Sized {
 /// This trait provides common mutable operations for buffer types that can be
 /// modified while maintaining UTF-8 validity.
 pub trait Utf8BufMut: Utf8Buf {
+  /// Truncates at a UTF-8 character boundary.
+  ///
+  /// A length at or beyond the current byte length is a no-op. On failure the
+  /// buffer is unchanged.
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error>;
+
   /// Appends a character to the buffer.
   ///
   /// # Examples

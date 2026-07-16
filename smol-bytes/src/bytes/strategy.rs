@@ -115,8 +115,8 @@
 //! The strategy is selected at compile-time via a zero-sized type parameter, resulting in
 //! **zero runtime overhead**.
 //!
-//! Both strategies store data in the same [`RawBytes<S>`](crate::smol_bytes::raw::RawBytes)
-//! type, with only the behavior differing based on the strategy parameter.
+//! Both strategies use the same internal storage type, with only the behavior
+//! differing based on the strategy parameter.
 
 pub(crate) use sealed::ImmutableStorage;
 

@@ -1,9 +1,9 @@
 use wasm_bindgen::prelude::*;
 
+use crate::Utf8Buf as _;
 use crate::bytes::strategy::compact::Compact;
 use crate::bytes::strategy::shared::Shared;
 use crate::wasm_iter::CharIterator;
-use crate::Utf8Buf as _;
 
 /// Concrete shared Utf8Bytes type for WASM bindings.
 type SharedUtf8Bytes = super::Utf8Bytes<Shared>;

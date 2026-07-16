@@ -128,7 +128,7 @@ All changes must include:
 - Note performance characteristics
 - Mention FFI considerations
 
-## FFI Bindings (Future)
+## FFI Bindings
 
 ### Python (pyo3)
 When implementing Python bindings:
@@ -211,7 +211,7 @@ When making significant changes:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0).
+By contributing, you agree that your contributions will be licensed under the same terms as the project: either MIT or Apache-2.0, at your option.
 
 ## Questions?
 

@@ -1,7 +1,7 @@
 #![warn(rust_2018_idioms)]
 
 use core::ops::Bound;
-use smol_bytes::{Buffer, OutOfBounds, INLINE_CAP};
+use smol_bytes::{Buffer, INLINE_CAP, OutOfBounds};
 
 #[test]
 fn buffer_layout_is_unchanged() {
@@ -42,9 +42,11 @@ fn fallible_slice_uses_visible_checked_ranges() {
   assert!(buffer.try_slice(4..5).is_err());
   assert!(buffer.try_slice(3..2).is_err());
   assert!(buffer.try_slice(..=usize::MAX).is_err());
-  assert!(buffer
-    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
-    .is_err());
+  assert!(
+    buffer
+      .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+      .is_err()
+  );
 }
 
 #[test]

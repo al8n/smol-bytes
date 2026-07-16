@@ -95,14 +95,14 @@
 //! Splitting in the middle of a multi-byte character panics (or returns
 //! `Utf8Error::InvalidCharBoundary` for the `try_*` variants).
 //!
-//! # FFI-Friendly
+//! # Bindings and no-std
 //!
-//! Minimal allocations make this crate ideal for FFI boundaries:
-//! - Python bindings via `pyo3` (coming soon)
-//! - WebAssembly support via `wasm-bindgen` (coming soon)
-//! - `no_std` compatible with optional `alloc`
+//! Source-built Python bindings are available through the `pyo3` feature and
+//! WebAssembly bindings through `wasm`. The fixed buffer types remain usable
+//! in `no_std`; `alloc` enables the heap-backed types.
 //!
-//! See the [`strategy`] module for detailed comparison and usage examples.
+//! See the [`shared`] and [`compact`] modules for detailed comparison and usage
+//! examples.
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 extern crate alloc as std;
@@ -154,6 +154,8 @@ mod bytes_mut;
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
 mod python;
 
+#[cfg(feature = "wasm")]
+mod wasm;
 #[cfg(feature = "wasm")]
 mod wasm_iter;
 

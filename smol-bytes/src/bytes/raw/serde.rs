@@ -5,7 +5,7 @@ use bytes::BufMut;
 use serde::de::{Deserializer, Error, Visitor};
 use serde_core as serde;
 
-use crate::{strategy::ImmutableStorage, BytesMut};
+use crate::{BytesMut, strategy::ImmutableStorage};
 
 use super::RawBytes;
 

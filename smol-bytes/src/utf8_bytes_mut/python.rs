@@ -1,10 +1,6 @@
 use super::*;
-use pyo3::{
-  basic::CompareOp,
-  exceptions::{PyIndexError, PyTypeError, PyValueError},
-  prelude::*,
-  types::{PyBytes, PyString},
-};
+use crate::python::{py_str_contains, py_str_getitem, py_str_richcmp};
+use pyo3::{basic::CompareOp, exceptions::PyValueError, prelude::*, types::PyBytes};
 
 #[derive(Debug)]
 #[pyclass]
@@ -73,9 +69,9 @@ impl Utf8BytesMut {
     format!("{:?}", self)
   }
 
-  /// Return the number of bytes.
+  /// Return the number of Unicode scalar values.
   fn __len__(&self) -> usize {
-    self.len()
+    self.as_str().chars().count()
   }
 
   /// Return whether the buffer is non-empty.
@@ -85,108 +81,21 @@ impl Utf8BytesMut {
 
   /// Check if a substring is contained.
   fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
-    if let Ok(s) = item.extract::<String>() {
-      return Ok(self.as_str().contains(s.as_str()));
-    }
-    Err(PyTypeError::new_err("argument must be a string"))
+    py_str_contains(self.as_str(), item)
   }
 
-  /// Support indexing and slicing.
+  /// Support Unicode-character indexing and slicing.
   fn __getitem__(&self, index: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-    let py = index.py();
-
-    if let Ok(i) = index.extract::<isize>() {
-      let chars: Vec<char> = self.as_str().chars().collect();
-      let len = chars.len() as isize;
-      let idx = if i < 0 { len + i } else { i };
-
-      if idx < 0 || idx >= len {
-        return Err(PyIndexError::new_err(format!(
-          "string index out of range: {} (len={})",
-          i, len
-        )));
-      }
-
-      return Ok(
-        chars[idx as usize]
-          .to_string()
-          .into_pyobject(py)?
-          .into_any()
-          .unbind(),
-      );
-    }
-
-    if let Ok(slice) = index.cast::<pyo3::types::PySlice>() {
-      let s = self.as_str();
-      let indices = slice.indices(s.len() as isize)?;
-
-      let start = indices.start.max(0) as usize;
-      let stop = indices.stop.max(0).min(s.len() as isize) as usize;
-
-      if indices.step == 1 {
-        return Ok(PyString::new(py, &s[start..stop]).into());
-      }
-
-      let chars: Vec<char> = s.chars().collect();
-      let mut result = String::new();
-
-      if indices.step > 0 {
-        let mut i = start;
-        while i < stop && i < chars.len() {
-          result.push(chars[i]);
-          i += indices.step as usize;
-        }
-      } else if indices.step < 0 {
-        let mut i = start.min(chars.len().saturating_sub(1));
-        loop {
-          result.push(chars[i]);
-          if i == 0 || i < stop {
-            break;
-          }
-          i = i.saturating_sub((-indices.step) as usize);
-        }
-      }
-
-      return Ok(PyString::new(py, &result).into());
-    }
-
-    Err(PyTypeError::new_err("indices must be integers or slices"))
+    py_str_getitem(self.as_str(), index)
   }
 
-  /// Perform rich comparisons.
-  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
-    if let Ok(other_self) = other.extract::<PyRef<'_, Self>>() {
-      return Ok(match op {
-        CompareOp::Lt => self < &*other_self,
-        CompareOp::Le => self <= &*other_self,
-        CompareOp::Eq => self == &*other_self,
-        CompareOp::Ne => self != &*other_self,
-        CompareOp::Gt => self > &*other_self,
-        CompareOp::Ge => self >= &*other_self,
-      });
-    }
-
-    if let Ok(s) = other.extract::<String>() {
-      let s = s.as_str();
-      return Ok(match op {
-        CompareOp::Lt => self.as_str() < s,
-        CompareOp::Le => self.as_str() <= s,
-        CompareOp::Eq => self.as_str() == s,
-        CompareOp::Ne => self.as_str() != s,
-        CompareOp::Gt => self.as_str() > s,
-        CompareOp::Ge => self.as_str() >= s,
-      });
-    }
-
-    match op {
-      CompareOp::Eq => Ok(false),
-      CompareOp::Ne => Ok(true),
-      _ => Err(PyTypeError::new_err(format!(
-        "'>=' not supported between instances of 'Utf8BytesMut' and '{}'",
-        other.get_type().name()?
-      ))),
-    }
+  /// Perform rich comparisons with native string semantics.
+  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
+    py_str_richcmp(self.as_str(), other, op)
   }
+
+  #[allow(non_upper_case_globals)]
+  const __hash__: Option<Py<PyAny>> = None;
 
   /// Iterate over the characters of the buffer.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Utf8CharIter>> {
@@ -221,6 +130,14 @@ impl Utf8BytesMut {
   #[pyo3(name = "clear")]
   fn __python_clear(&mut self) {
     self.clear();
+  }
+
+  /// Truncate at a UTF-8 character boundary.
+  #[pyo3(name = "truncate")]
+  fn __python_truncate(&mut self, new_len: usize) -> PyResult<()> {
+    self
+      .try_truncate(new_len)
+      .map_err(|error| PyValueError::new_err(error.to_string()))
   }
 
   /// Split at the given index.
@@ -823,20 +740,20 @@ impl Utf8BytesMut {
   /// Advances the read cursor by `nbytes` bytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Returns:
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
+  ///     ValueError: If `nbytes` is outside 0-8.
+  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint")]
-  fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
+  fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
     use bytes::Buf;
-    if nbytes > 8 || self.inner.remaining() < nbytes {
-      return Err(pyo3::exceptions::PyBufferError::new_err(
-        "not enough data or nbytes > 8",
-      ));
+    let nbytes = crate::python::py_integer_width(nbytes)?;
+    if self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err("not enough data"));
     }
     crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.get_uint(nbytes))
@@ -847,20 +764,20 @@ impl Utf8BytesMut {
   /// Advances the read cursor by `nbytes` bytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Returns:
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
+  ///     ValueError: If `nbytes` is outside 0-8.
+  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint_le")]
-  fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
+  fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
     use bytes::Buf;
-    if nbytes > 8 || self.inner.remaining() < nbytes {
-      return Err(pyo3::exceptions::PyBufferError::new_err(
-        "not enough data or nbytes > 8",
-      ));
+    let nbytes = crate::python::py_integer_width(nbytes)?;
+    if self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err("not enough data"));
     }
     crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.get_uint_le(nbytes))
@@ -871,20 +788,20 @@ impl Utf8BytesMut {
   /// Advances the read cursor by `nbytes` bytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Returns:
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
+  ///     ValueError: If `nbytes` is outside 0-8.
+  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int")]
-  fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
+  fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
     use bytes::Buf;
-    if nbytes > 8 || self.inner.remaining() < nbytes {
-      return Err(pyo3::exceptions::PyBufferError::new_err(
-        "not enough data or nbytes > 8",
-      ));
+    let nbytes = crate::python::py_integer_width(nbytes)?;
+    if self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err("not enough data"));
     }
     crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.get_int(nbytes))
@@ -895,20 +812,20 @@ impl Utf8BytesMut {
   /// Advances the read cursor by `nbytes` bytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Returns:
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than `nbytes` bytes remain, `nbytes` > 8, or consuming them would end inside a UTF-8 character.
+  ///     ValueError: If `nbytes` is outside 0-8.
+  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int_le")]
-  fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
+  fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
     use bytes::Buf;
-    if nbytes > 8 || self.inner.remaining() < nbytes {
-      return Err(pyo3::exceptions::PyBufferError::new_err(
-        "not enough data or nbytes > 8",
-      ));
+    let nbytes = crate::python::py_integer_width(nbytes)?;
+    if self.inner.remaining() < nbytes {
+      return Err(pyo3::exceptions::PyBufferError::new_err("not enough data"));
     }
     crate::python::validate_utf8_advance(self, nbytes)?;
     Ok(self.inner.get_int_le(nbytes))

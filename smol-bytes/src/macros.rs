@@ -48,27 +48,77 @@ macro_rules! forward_buf {
         fn try_get_i8() -> Result<i8, $crate::TryGetError>;
         fn try_get_u8() -> Result<u8, $crate::TryGetError>;
 
-        fn get_uint(nbytes: usize) -> u64;
-        fn get_uint_le(nbytes: usize) -> u64;
-        fn get_uint_ne(nbytes: usize) -> u64;
-
-        fn try_get_uint(nbytes: usize) -> Result<u64, $crate::TryGetError>;
-        fn try_get_uint_le(nbytes: usize) -> Result<u64, $crate::TryGetError>;
-        fn try_get_uint_ne(nbytes: usize) -> Result<u64, $crate::TryGetError>;
       }}
 
       #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.get_uint(nbytes),
+          Repr::Heap(bytes) => bytes.get_uint(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint_le(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.get_uint_le(nbytes),
+          Repr::Heap(bytes) => bytes.get_uint_le(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint_ne(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.get_uint_ne(nbytes),
+          Repr::Heap(bytes) => bytes.get_uint_ne(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.try_get_uint(nbytes),
+          Repr::Heap(bytes) => bytes.try_get_uint(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint_le(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.try_get_uint_le(nbytes),
+          Repr::Heap(bytes) => bytes.try_get_uint_le(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint_ne(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        match &mut self.$repr {
+          Repr::Inline(buffer) => buffer.try_get_uint_ne(nbytes),
+          Repr::Heap(bytes) => bytes.try_get_uint_ne(nbytes),
+        }
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
       fn get_int(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         $crate::buffer::sign_extend(self.get_uint(nbytes), nbytes)
       }
 
       #[cfg_attr(not(coverage), inline(always))]
       fn get_int_le(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         $crate::buffer::sign_extend(self.get_uint_le(nbytes), nbytes)
       }
 
       #[cfg_attr(not(coverage), inline(always))]
       fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         if cfg!(target_endian = "big") {
           self.get_int(nbytes)
         } else {
@@ -78,6 +128,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         self
           .try_get_uint(nbytes)
           .map(|value| $crate::buffer::sign_extend(value, nbytes))
@@ -85,6 +136,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         self
           .try_get_uint_le(nbytes)
           .map(|value| $crate::buffer::sign_extend(value, nbytes))
@@ -92,6 +144,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         if cfg!(target_endian = "big") {
           self.try_get_int(nbytes)
         } else {
@@ -119,27 +172,59 @@ macro_rules! forward_buf {
         fn try_get_i8() -> Result<i8, $crate::TryGetError>;
         fn try_get_u8() -> Result<u8, $crate::TryGetError>;
 
-        fn get_uint(nbytes: usize) -> u64;
-        fn get_uint_le(nbytes: usize) -> u64;
-        fn get_uint_ne(nbytes: usize) -> u64;
+      }
 
-        fn try_get_uint(nbytes: usize) -> Result<u64, $crate::TryGetError>;
-        fn try_get_uint_le(nbytes: usize) -> Result<u64, $crate::TryGetError>;
-        fn try_get_uint_ne(nbytes: usize) -> Result<u64, $crate::TryGetError>;
+      #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::get_uint(self, nbytes)
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint_le(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::get_uint_le(self, nbytes)
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn get_uint_ne(&mut self, nbytes: usize) -> u64 {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::get_uint_ne(self, nbytes)
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::try_get_uint(self, nbytes)
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint_le(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::try_get_uint_le(self, nbytes)
+      }
+
+      #[cfg_attr(not(coverage), inline(always))]
+      fn try_get_uint_ne(&mut self, nbytes: usize) -> Result<u64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
+        Self::try_get_uint_ne(self, nbytes)
       }
 
       #[cfg_attr(not(coverage), inline(always))]
       fn get_int(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         $crate::buffer::sign_extend(self.get_uint(nbytes), nbytes)
       }
 
       #[cfg_attr(not(coverage), inline(always))]
       fn get_int_le(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         $crate::buffer::sign_extend(self.get_uint_le(nbytes), nbytes)
       }
 
       #[cfg_attr(not(coverage), inline(always))]
       fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+        $crate::buffer::assert_uint_width(nbytes);
         if cfg!(target_endian = "big") {
           self.get_int(nbytes)
         } else {
@@ -149,6 +234,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         self
           .try_get_uint(nbytes)
           .map(|value| $crate::buffer::sign_extend(value, nbytes))
@@ -156,6 +242,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         self
           .try_get_uint_le(nbytes)
           .map(|value| $crate::buffer::sign_extend(value, nbytes))
@@ -163,6 +250,7 @@ macro_rules! forward_buf {
 
       #[cfg_attr(not(coverage), inline(always))]
       fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, $crate::TryGetError> {
+        $crate::buffer::assert_uint_width(nbytes);
         if cfg!(target_endian = "big") {
           self.try_get_int(nbytes)
         } else {

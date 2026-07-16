@@ -1,6 +1,7 @@
 //! The **Compact** strategy for `Bytes`.
 //!
-//! This module provides the [`Bytes`] type alias configured with the [`Compact`] strategy,
+//! This module provides the [`Bytes`](crate::compact::Bytes) type alias configured with the
+//! [`Compact`](crate::compact::Compact) strategy,
 //! which prioritizes **memory efficiency** by aggressively converting heap allocations back
 //! to inline storage whenever possible.
 //!
@@ -500,7 +501,7 @@ impl ImmutableStorage for RawBytes<Compact> {
 
 /// A memory-efficient byte buffer that aggressively inlines data to minimize heap usage.
 ///
-/// This is a type alias for [`RawBytes<Compact>`](crate::smol_bytes::RawBytes) using the [`Compact`] strategy.
+/// This type alias uses the [`Compact`] strategy.
 ///
 /// # When to use
 ///
@@ -529,5 +530,5 @@ pub type Bytes = RawBytes<Compact>;
 
 /// A compact, memory-efficient UTF-8 string type alias using the [`Compact`] strategy.
 ///
-/// See [`crate::utf8_bytes::Utf8Bytes`] for the generic type documentation.
+/// This is the compact-strategy immutable UTF-8 wrapper.
 pub type Utf8Bytes = crate::utf8_bytes::Utf8Bytes<Compact>;

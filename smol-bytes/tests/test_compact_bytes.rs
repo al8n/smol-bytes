@@ -1,6 +1,6 @@
 #![warn(rust_2018_idioms)]
 
-use smol_bytes::{compact::Bytes, Buf, BufMut, BytesMut, INLINE_CAP};
+use smol_bytes::{Buf, BufMut, BytesMut, INLINE_CAP, compact::Bytes};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -350,15 +350,19 @@ fn split_off_to_at_gt_len() {
   let _ = make_bytes().split_to(4);
   let _ = make_bytes().split_off(4);
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_to(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_to(5);
+    })
+    .is_err()
+  );
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_off(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_off(5);
+    })
+    .is_err()
+  );
 }
 
 #[test]
@@ -400,9 +404,11 @@ fn fallible_slicing_is_checked_for_inline_and_compact_heap() {
   assert!(heap.is_heap());
   assert!(heap.try_slice(80..20).is_err());
   assert!(heap.try_slice(..=usize::MAX).is_err());
-  assert!(heap
-    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
-    .is_err());
+  assert!(
+    heap
+      .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+      .is_err()
+  );
 }
 
 #[test]

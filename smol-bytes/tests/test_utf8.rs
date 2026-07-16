@@ -198,6 +198,20 @@ fn utf8_buffer_roundtrip_via_string() {
   assert_eq!(back.as_str(), MIXED);
 }
 
+#[test]
+fn utf8_buffer_try_truncate_checks_boundaries_and_preserves_errors() {
+  let mut value = Utf8Buffer::from("éx");
+  assert_eq!(
+    value.try_truncate(1),
+    Err(Utf8Error::InvalidCharBoundary { at: 1 })
+  );
+  assert_eq!(value.as_str(), "éx");
+  value.try_truncate(2).unwrap();
+  assert_eq!(value.as_str(), "é");
+  value.try_truncate(99).unwrap();
+  assert_eq!(value.as_str(), "é");
+}
+
 // ============================================================================
 // Utf8Bytes — immutable, inline+heap
 // ============================================================================
@@ -329,6 +343,26 @@ fn utf8_bytes_mut_push_str_grows_past_inline() {
   b.push_str("ef"); // 64 bytes — must go heap
   assert_eq!(b.len(), 64);
   assert!(b.is_heap());
+}
+
+#[test]
+fn utf8_bytes_mut_try_truncate_and_freeze_preserve_representation() {
+  let mut inline = Utf8BytesMut::from("éx");
+  assert_eq!(
+    inline.try_truncate(1),
+    Err(Utf8Error::InvalidCharBoundary { at: 1 })
+  );
+  assert_eq!(inline.as_str(), "éx");
+  inline.try_truncate(2).unwrap();
+  let shared = inline.freeze_shared();
+  assert!(shared.is_inline());
+  assert_eq!(shared.as_str(), "é");
+
+  let mut heap = Utf8BytesMut::with_capacity(128);
+  heap.push_str("short");
+  let compact = heap.freeze_compact();
+  assert!(compact.is_heap());
+  assert_eq!(compact.as_str(), "short");
 }
 
 #[test]

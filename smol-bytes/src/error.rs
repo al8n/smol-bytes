@@ -3,10 +3,10 @@ use core::ops::{Bound, RangeBounds};
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use bytes::TryGetError;
 
-/// Error type for the `try_get_` methods of [`Buffer`].
+/// Error type for the `try_get_` methods of [`crate::Buffer`].
 /// Indicates that there were not enough remaining
 /// bytes in the buffer while attempting
-/// to get a value from a [`Buffer`] with one
+/// to get a value from a [`crate::Buffer`] with one
 /// of the `try_get_` methods.
 #[derive(Debug, PartialEq, Eq)]
 #[cfg(not(any(feature = "std", feature = "alloc")))]
@@ -33,10 +33,10 @@ const _: () = {
   impl core::error::Error for TryGetError {}
 };
 
-/// Error type for the `try_put_` methods of [`Buffer`].
+/// Error type for the `try_put_` methods of [`crate::Buffer`].
 /// Indicates that there were not enough remaining
 /// capacity in the buffer while attempting
-/// to put a value to a [`Buffer`] with one
+/// to put a value to a [`crate::Buffer`] with one
 /// of the `try_put_` methods.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TryPutError {
@@ -97,10 +97,10 @@ impl From<InvalidIntegerLength> for TryPutIntegerError {
   }
 }
 
-/// Error type for the `try_put_` methods of [`Buffer`].
+/// Error type for the `try_put_` methods of [`crate::Buffer`].
 /// Indicates that there were not enough remaining
 /// capacity in the buffer while attempting
-/// to put a value to a [`Buffer`] with one
+/// to put a value to a [`crate::Buffer`] with one
 /// of the `try_put_` methods.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TryPutIntegerError {

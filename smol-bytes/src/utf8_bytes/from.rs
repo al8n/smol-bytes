@@ -1,4 +1,4 @@
-use std::string::{String, ToString};
+use std::string::String;
 
 use super::*;
 
@@ -60,7 +60,7 @@ where
   RawBytes<S>: ImmutableStorage,
 {
   fn from(value: Utf8Bytes<S>) -> Self {
-    value.as_str().to_string()
+    String::from_utf8(value.inner.into()).expect("Utf8Bytes invariant")
   }
 }
 

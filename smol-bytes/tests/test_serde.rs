@@ -1,7 +1,7 @@
 #![cfg(feature = "serde")]
 #![warn(rust_2018_idioms)]
 
-use serde_test::{assert_tokens, Token};
+use serde_test::{Token, assert_tokens};
 
 #[test]
 fn test_ser_de_empty() {
@@ -25,7 +25,7 @@ fn test_ser_de() {
 
 #[test]
 fn test_compact_ser_de_empty() {
-  use smol_bytes::{compact::Bytes, BytesMut};
+  use smol_bytes::{BytesMut, compact::Bytes};
 
   let b = Bytes::new();
   assert_tokens(&b, &[Token::Bytes(b"")]);
@@ -35,7 +35,7 @@ fn test_compact_ser_de_empty() {
 
 #[test]
 fn test_compact_ser_de() {
-  use smol_bytes::{compact::Bytes, BytesMut};
+  use smol_bytes::{BytesMut, compact::Bytes};
 
   let b = Bytes::from(&b"bytes"[..]);
   assert_tokens(&b, &[Token::Bytes(b"bytes")]);

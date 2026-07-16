@@ -5,8 +5,8 @@ use std::cmp::Ordering as CmpOrdering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::Bound;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::panic::{self, AssertUnwindSafe};
 
@@ -570,15 +570,19 @@ fn split_off_to_at_gt_len() {
   let _ = make_bytes().split_to(4);
   let _ = make_bytes().split_off(4);
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_to(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_to(5);
+    })
+    .is_err()
+  );
 
-  assert!(panic::catch_unwind(move || {
-    let _ = make_bytes().split_off(5);
-  })
-  .is_err());
+  assert!(
+    panic::catch_unwind(move || {
+      let _ = make_bytes().split_off(5);
+    })
+    .is_err()
+  );
 }
 
 #[test]
@@ -606,9 +610,11 @@ fn fallible_slicing_is_checked_for_inline_and_shared_heap() {
   assert!(heap.is_heap());
   assert!(heap.try_slice(80..20).is_err());
   assert!(heap.try_slice(..=usize::MAX).is_err());
-  assert!(heap
-    .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
-    .is_err());
+  assert!(
+    heap
+      .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+      .is_err()
+  );
 }
 
 #[test]

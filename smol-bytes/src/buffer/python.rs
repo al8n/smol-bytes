@@ -106,14 +106,8 @@ impl Buffer {
     !self.is_empty()
   }
 
-  /// Compute a hash of the buffer contents.
-  fn __hash__(&self) -> u64 {
-    use ::core::hash::{Hash, Hasher};
-
-    let mut hasher = crate::DefaultHasher::new();
-    self.hash(&mut hasher);
-    hasher.finish()
-  }
+  #[allow(non_upper_case_globals)]
+  const __hash__: Option<Py<PyAny>> = None;
 
   /// Iterate over the readable bytes, yielding one `int` per byte.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Iter>> {
@@ -124,19 +118,14 @@ impl Buffer {
   }
 
   /// Perform rich comparisons (`==`, `<`, etc.) with other byte sequences.
-  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
+  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
     self.py_richcmp(other, op)
   }
 
   /// Interpret the buffer as UTF-8, raising `UnicodeDecodeError` if invalid.
-  fn __str__(&self) -> PyResult<&str> {
-    <&str>::try_from(self).map_err(|e| {
-      PyUnicodeDecodeError::new_err(format!(
-        "invalid utf-8 sequence at byte {}: {}",
-        e.valid_up_to(),
-        e
-      ))
-    })
+  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
+    <&str>::try_from(self)
+      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.as_ref(), err))
   }
 
   /// Return a debug representation of the buffer.
@@ -150,7 +139,7 @@ impl Buffer {
   }
 
   /// Check membership of a byte or bytes-like object.
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
     self.py_contains(item)
   }
 
@@ -160,8 +149,18 @@ impl Buffer {
   }
 
   /// Assign to individual items or slices.
-  fn __setitem__(&mut self, index: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-    self.py_setitem(index, value)
+  fn __setitem__(
+    mut slf: PyRefMut<'_, Self>,
+    index: &Bound<'_, PyAny>,
+    value: &Bound<'_, PyAny>,
+  ) -> PyResult<()> {
+    let self_object = (&slf)
+      .into_pyobject(slf.py())?
+      .to_owned()
+      .into_any()
+      .unbind();
+    let self_assignment = value.is(&self_object).then(|| slf.as_ref().to_vec());
+    slf.py_setitem(index, value, self_assignment)
   }
 
   /// Return the buffer contents as Python bytes.
@@ -448,13 +447,13 @@ impl Buffer {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint")]
-  fn __python_get_uint(&mut self, nbytes: usize) -> ::pyo3::PyResult<u64> {
-    self.py_get_uint(nbytes)
+  fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> ::pyo3::PyResult<u64> {
+    self.py_get_uint_object(nbytes)
   }
 
   /// Read an unsigned n-byte integer in little-endian byte order.
@@ -462,13 +461,13 @@ impl Buffer {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint_le")]
-  fn __python_get_uint_le(&mut self, nbytes: usize) -> ::pyo3::PyResult<u64> {
-    self.py_get_uint_le(nbytes)
+  fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> ::pyo3::PyResult<u64> {
+    self.py_get_uint_le_object(nbytes)
   }
 
   /// Read a signed n-byte integer in big-endian byte order.
@@ -476,13 +475,13 @@ impl Buffer {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int")]
-  fn __python_get_int(&mut self, nbytes: usize) -> ::pyo3::PyResult<i64> {
-    self.py_get_int(nbytes)
+  fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> ::pyo3::PyResult<i64> {
+    self.py_get_int_object(nbytes)
   }
 
   /// Read a signed n-byte integer in little-endian byte order.
@@ -490,13 +489,13 @@ impl Buffer {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int_le")]
-  fn __python_get_int_le(&mut self, nbytes: usize) -> ::pyo3::PyResult<i64> {
-    self.py_get_int_le(nbytes)
+  fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> ::pyo3::PyResult<i64> {
+    self.py_get_int_le_object(nbytes)
   }
 
   // ==================== Buffer control methods ====================

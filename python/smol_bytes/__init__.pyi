@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterator, overload
+from typing import ClassVar, Iterator, overload
 
 class Buffer:
     """Fixed-size inline byte buffer (max 62 bytes).
@@ -47,9 +47,7 @@ class Buffer:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    def __hash__(self) -> int:
-        """Compute hash of the buffer contents."""
-        ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -145,16 +143,16 @@ class Buffer:
         """Read a signed 128-bit integer (little-endian). Advances cursor by 16."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def remaining(self) -> int:
         """Return the number of bytes available for reading."""
@@ -238,16 +236,16 @@ class Buffer:
         """Write a signed 128-bit integer (little-endian)."""
         ...
     def put_uint(self, val: int, nbytes: int) -> None:
-        """Write an unsigned integer as ``nbytes`` bytes (big-endian, max 8)."""
+        """Write an unsigned integer as ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def put_uint_le(self, val: int, nbytes: int) -> None:
-        """Write an unsigned integer as ``nbytes`` bytes (little-endian, max 8)."""
+        """Write an unsigned integer as ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def put_int(self, val: int, nbytes: int) -> None:
-        """Write a signed integer as ``nbytes`` bytes (big-endian, max 8)."""
+        """Write a signed integer as ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def put_int_le(self, val: int, nbytes: int) -> None:
-        """Write a signed integer as ``nbytes`` bytes (little-endian, max 8)."""
+        """Write a signed integer as ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def clear(self) -> None:
         """Remove all data, preserving capacity."""
@@ -308,6 +306,7 @@ class BytesMut:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -430,16 +429,16 @@ class BytesMut:
         """Read a signed 128-bit integer (little-endian). Advances cursor by 16."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read an unsigned integer of ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8)."""
+        """Read a signed integer of ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def clear(self) -> None:
         """Remove all data, preserving capacity."""
@@ -523,16 +522,16 @@ class BytesMut:
         """Write a signed 128-bit integer (little-endian)."""
         ...
     def put_uint(self, val: int, nbytes: int) -> None:
-        """Write an unsigned integer as ``nbytes`` bytes (big-endian, max 8)."""
+        """Write an unsigned integer as ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def put_uint_le(self, val: int, nbytes: int) -> None:
-        """Write an unsigned integer as ``nbytes`` bytes (little-endian, max 8)."""
+        """Write an unsigned integer as ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def put_int(self, val: int, nbytes: int) -> None:
-        """Write a signed integer as ``nbytes`` bytes (big-endian, max 8)."""
+        """Write a signed integer as ``nbytes`` bytes (big-endian, 0 through 8)."""
         ...
     def put_int_le(self, val: int, nbytes: int) -> None:
-        """Write a signed integer as ``nbytes`` bytes (little-endian, max 8)."""
+        """Write a signed integer as ``nbytes`` bytes (little-endian, 0 through 8)."""
         ...
     def resize(self, new_len: int, value: int) -> None:
         """Resize the buffer, filling new bytes with ``value``."""
@@ -567,7 +566,7 @@ class Utf8Buffer:
         """Create from a string. Raises if encoded bytes exceed 62."""
         ...
     def __len__(self) -> int:
-        """Return byte length."""
+        """Return the number of Unicode scalar values."""
         ...
     def __bool__(self) -> bool:
         """Return True if non-empty."""
@@ -581,6 +580,7 @@ class Utf8Buffer:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -614,6 +614,9 @@ class Utf8Buffer:
         ...
     def clear(self) -> None:
         """Remove all contents."""
+        ...
+    def truncate(self, new_len: int) -> None:
+        """Shorten at a UTF-8 character boundary or raise ValueError."""
         ...
     def split_to(self, at: int) -> Utf8Buffer:
         """Split at byte position ``at`` (must be a char boundary)."""
@@ -706,16 +709,16 @@ class Utf8Buffer:
         """Read a signed 128-bit integer (little-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
 
 class Utf8Bytes:
@@ -732,7 +735,7 @@ class Utf8Bytes:
         """Create from a string."""
         ...
     def __len__(self) -> int:
-        """Return byte length."""
+        """Return the number of Unicode scalar values."""
         ...
     def __bool__(self) -> bool:
         """Return True if non-empty."""
@@ -746,9 +749,7 @@ class Utf8Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    def __hash__(self) -> int:
-        """Compute hash of the string contents."""
-        ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -862,16 +863,16 @@ class Utf8Bytes:
         """Read a signed 128-bit integer (little-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
 
 class Utf8BytesMut:
@@ -892,7 +893,7 @@ class Utf8BytesMut:
         """Create from a string."""
         ...
     def __len__(self) -> int:
-        """Return byte length."""
+        """Return the number of Unicode scalar values."""
         ...
     def __bool__(self) -> bool:
         """Return True if non-empty."""
@@ -906,6 +907,7 @@ class Utf8BytesMut:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
+    __hash__: ClassVar[None]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -939,6 +941,9 @@ class Utf8BytesMut:
         ...
     def clear(self) -> None:
         """Remove all contents."""
+        ...
+    def truncate(self, new_len: int) -> None:
+        """Shorten at a UTF-8 character boundary or raise ValueError."""
         ...
     def split_to(self, at: int) -> Utf8BytesMut:
         """Split at byte position ``at`` (must be a char boundary)."""
@@ -1037,14 +1042,14 @@ class Utf8BytesMut:
         """Read a signed 128-bit integer (little-endian). Advances cursor by 16. Raises BufferError if there are insufficient bytes or consumption ends inside a UTF-8 character."""
         ...
     def get_uint(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_uint_le(self, nbytes: int) -> int:
-        """Read an unsigned integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read an unsigned integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (big-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (big-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...
     def get_int_le(self, nbytes: int) -> int:
-        """Read a signed integer of ``nbytes`` bytes (little-endian, max 8). Raises BufferError if ``nbytes`` > 8, there are insufficient bytes, or consumption ends inside a UTF-8 character."""
+        """Read a signed integer of 0 through 8 bytes (little-endian). Raises ValueError for an invalid width and BufferError for insufficient bytes or a UTF-8 boundary."""
         ...

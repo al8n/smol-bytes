@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{buffer::Buffer, bytes::RawBytes, InvalidIntegerLength, OutOfBounds, INLINE_CAP};
+use crate::{INLINE_CAP, InvalidIntegerLength, OutOfBounds, buffer::Buffer, bytes::RawBytes};
 
 mod cmp;
 mod fmt;

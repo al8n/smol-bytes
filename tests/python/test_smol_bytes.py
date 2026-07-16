@@ -2,8 +2,10 @@
 
 import copy
 import gc
+import operator
 import pickle
 import struct
+import sys
 
 import pytest
 
@@ -13,6 +15,7 @@ import pytest
 
 from smol_bytes import Buffer, BytesMut, Utf8Buffer, Utf8Bytes, Utf8BytesMut
 from smol_bytes.shared import Bytes as SharedBytes
+from smol_bytes.shared import Utf8Bytes as SharedUtf8Bytes
 from smol_bytes.compact import Bytes as CompactBytes
 from smol_bytes.compact import Utf8Bytes as CompactUtf8Bytes
 
@@ -167,6 +170,30 @@ class TestBasicOperations:
     )
     def test_bytes_returns_bytes(self, make_buf):
         assert bytes(make_buf()) == b"hi"
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Buffer.from_bytes(b"fo\xd8o"),
+            lambda: BytesMut.from_bytes(b"fo\xd8o"),
+            lambda: SharedBytes.from_bytes(b"fo\xd8o"),
+            lambda: CompactBytes.from_bytes(b"fo\xd8o"),
+        ],
+        ids=["Buffer", "BytesMut", "SharedBytes", "CompactBytes"],
+    )
+    @pytest.mark.parametrize("to_string", [False, True], ids=["str", "to_string"])
+    def test_invalid_utf8_decode_error(self, make_buf, to_string):
+        value = make_buf()
+
+        with pytest.raises(UnicodeDecodeError) as exc_info:
+            value.to_string() if to_string else str(value)
+
+        error = exc_info.value
+        assert error.encoding == "utf-8"
+        assert error.object == b"fo\xd8o"
+        assert error.start == 2
+        assert error.end == 3
+        assert error.reason == "invalid utf-8"
 
     @pytest.mark.parametrize(
         "make_buf",
@@ -350,50 +377,34 @@ class TestPickle:
 
 
 class TestHash:
-    """Test __hash__ on immutable types and TypeError on mutable types."""
+    """Every exposed wrapper can change its observable value and is unhashable."""
 
     @pytest.mark.parametrize(
         "make_buf",
         [
+            lambda: Buffer.from_bytes(b"hello"),
+            lambda: BytesMut.from_bytes(b"hello"),
             lambda: SharedBytes.from_bytes(b"hello"),
             lambda: CompactBytes.from_bytes(b"hello"),
-            lambda: Utf8Bytes.from_str("hello"),
-        ],
-        ids=["SharedBytes", "CompactBytes", "Utf8Bytes"],
-    )
-    def test_hash_works_on_immutable(self, make_buf):
-        obj = make_buf()
-        h = hash(obj)
-        assert isinstance(h, int)
-
-    def test_hash_consistent_for_same_content(self):
-        a = SharedBytes.from_bytes(b"test")
-        b = SharedBytes.from_bytes(b"test")
-        assert hash(a) == hash(b)
-
-    def test_hash_consistent_utf8(self):
-        a = Utf8Bytes.from_str("test")
-        b = Utf8Bytes.from_str("test")
-        assert hash(a) == hash(b)
-
-    @pytest.mark.parametrize(
-        "make_buf",
-        [
-            lambda: BytesMut.from_bytes(b"hello"),
             lambda: Utf8Buffer.from_str("hello"),
+            lambda: Utf8Bytes.from_str("hello"),
+            lambda: CompactUtf8Bytes.from_str("hello"),
             lambda: Utf8BytesMut.from_str("hello"),
         ],
-        ids=["BytesMut", "Utf8Buffer", "Utf8BytesMut"],
+        ids=[
+            "Buffer",
+            "BytesMut",
+            "SharedBytes",
+            "CompactBytes",
+            "Utf8Buffer",
+            "Utf8Bytes",
+            "CompactUtf8Bytes",
+            "Utf8BytesMut",
+        ],
     )
-    def test_hash_raises_on_mutable(self, make_buf):
+    def test_value_changing_wrapper_is_unhashable(self, make_buf):
         with pytest.raises(TypeError):
             hash(make_buf())
-
-    def test_buffer_has_hash(self):
-        """Buffer is a special case -- it implements __hash__ despite being mutable."""
-        buf = Buffer.from_bytes(b"hello")
-        h = hash(buf)
-        assert isinstance(h, int)
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +537,672 @@ class TestSlicing:
     def test_utf8_getitem_slice(self, make_buf):
         buf = make_buf()
         assert buf[1:4] == "ell"
+
+
+class TestNativeProtocolDifferential:
+    """Cross-wrapper Python sequence and comparison contracts."""
+
+    RAW = [
+        lambda value: Buffer.from_bytes(value),
+        lambda value: BytesMut.from_bytes(value),
+        lambda value: SharedBytes.from_bytes(value),
+        lambda value: CompactBytes.from_bytes(value),
+    ]
+    UTF8 = [
+        lambda value: Utf8Buffer.from_str(value),
+        lambda value: Utf8Bytes.from_str(value),
+        lambda value: SharedUtf8Bytes.from_str(value),
+        lambda value: CompactUtf8Bytes.from_str(value),
+        lambda value: Utf8BytesMut.from_str(value),
+    ]
+
+    @staticmethod
+    def _value(make, raw):
+        return make(b"abcdef") if raw else make("aé€🦀e\u0301z")
+
+    @staticmethod
+    def _snapshot(value, raw):
+        return bytes(value) if raw else str(value)
+
+    @pytest.mark.parametrize(
+        "subscript",
+        [
+            0,
+            -1,
+            slice(None),
+            slice(None, None, -1),
+            slice(-99, 99, 2),
+            slice(None, None, -2),
+            slice(5, None, sys.maxsize),
+            slice(5, None, -sys.maxsize),
+            slice(4, 1, -2),
+            slice(2, 0, -1),
+            slice(4, 1, 2),
+        ],
+    )
+    def test_raw_indexing_matches_bytes(self, subscript):
+        value = b"abcdef"
+        for make in self.RAW:
+            assert make(value)[subscript] == value[subscript]
+
+    @pytest.mark.parametrize(
+        "subscript",
+        [
+            0,
+            -1,
+            slice(None),
+            slice(None, None, -1),
+            slice(-99, 99, 2),
+            slice(None, None, -2),
+            slice(5, None, sys.maxsize),
+            slice(5, None, -sys.maxsize),
+            slice(4, 1, -2),
+            slice(2, 0, -1),
+            slice(4, 1, 2),
+        ],
+    )
+    def test_utf8_indexing_matches_str_char_semantics(self, subscript):
+        value = "aé€🦀e\u0301z"
+        for make in self.UTF8:
+            assert make(value)[subscript] == value[subscript]
+
+    def test_empty_positive_step_slice_is_empty_for_every_wrapper(self):
+        for raw, wrappers in ((True, self.RAW), (False, self.UTF8)):
+            native = b"abcdef" if raw else "aé€🦀e\u0301z"
+            subscript = slice(-1, -100)
+            assert native[subscript] == (b"" if raw else "")
+            for make in wrappers:
+                assert self._value(make, raw)[subscript] == native[subscript]
+
+    def test_slice_differential_covers_extreme_bounds_and_steps(self):
+        bounds = (None, -sys.maxsize, -100, -1, 0, 1, 100, sys.maxsize)
+        steps = (1, 2, sys.maxsize, -1, -2, -sys.maxsize)
+
+        for raw, wrappers in ((True, self.RAW), (False, self.UTF8)):
+            native = b"abcdef" if raw else "aé€🦀e\u0301z"
+            for start in bounds:
+                for stop in bounds:
+                    for step in steps:
+                        subscript = slice(start, stop, step)
+                        expected = native[subscript]
+                        for make in wrappers:
+                            assert self._value(make, raw)[subscript] == expected
+
+    @pytest.mark.parametrize("make", RAW)
+    def test_raw_index_errors_match_bytes(self, make):
+        value = make(b"a")
+        for subscript, error in [(2, IndexError), (10**100, IndexError), (object(), TypeError), (slice(None, None, 0), ValueError)]:
+            with pytest.raises(error):
+                _ = value[subscript]
+
+    @pytest.mark.parametrize("make", UTF8)
+    def test_utf8_index_errors_match_str(self, make):
+        value = make("é")
+        for subscript, error in [(2, IndexError), (10**100, IndexError), (object(), TypeError), (slice(None, None, 0), ValueError)]:
+            with pytest.raises(error):
+                _ = value[subscript]
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_index_protocol_values_match_native_sequences(self, make):
+        class Index:
+            def __init__(self, value):
+                self.value = value
+
+            def __index__(self):
+                return self.value
+
+        native = b"abc" if make in self.RAW else "aé🦀"
+        value = make(native)
+        assert value[Index(-1)] == native[-1]
+        with pytest.raises(IndexError):
+            _ = native[10**100]
+        with pytest.raises(IndexError):
+            _ = native[Index(10**100)]
+        with pytest.raises(IndexError):
+            _ = value[Index(10**100)]
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_builtin_integer_index_fast_path_matches_native_sequences(self, make):
+        class IntSubclass(int):
+            def __index__(self):
+                raise RuntimeError("int subclasses use their integer value")
+
+        native = b"abc" if make in self.RAW else "aé🦀"
+        value = make(native)
+        for index in (False, True, IntSubclass(0), IntSubclass(-1)):
+            assert value[index] == native[index]
+        with pytest.raises(IndexError):
+            _ = value[IntSubclass(10**100)]
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_index_protocol_ignores_operator_index_monkeypatch(self, make, monkeypatch):
+        calls = []
+
+        class Index:
+            def __index__(self):
+                calls.append(None)
+                return -1
+
+        def unexpected_operator_index(value):
+            raise AssertionError(f"operator.index called for {value!r}")
+
+        monkeypatch.setattr(operator, "index", unexpected_operator_index)
+        native = b"abc" if make in self.RAW else "aé🦀"
+        value = make(native)
+        assert value[0] == native[0]
+        assert value[Index()] == native[-1]
+        assert calls == [None]
+
+    @pytest.mark.parametrize(
+        "error_type, message",
+        [
+            (RuntimeError, "runtime-boom"),
+            (TypeError, "type-boom"),
+            (OverflowError, "overflow-boom"),
+        ],
+    )
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_index_protocol_exceptions_match_native_sequences(self, make, error_type, message):
+        class RaisingIndex:
+            def __index__(self):
+                raise error_type(message)
+
+        native = b"abc" if make in self.RAW else "aé🦀"
+        with pytest.raises(error_type) as native_error:
+            _ = native[RaisingIndex()]
+        with pytest.raises(error_type) as wrapper_error:
+            _ = make(native)[RaisingIndex()]
+        assert str(wrapper_error.value) == str(native_error.value) == message
+
+    @pytest.mark.parametrize(
+        "error_type, message",
+        [
+            (RuntimeError, "runtime-boom"),
+            (TypeError, "type-boom"),
+            (OverflowError, "overflow-boom"),
+        ],
+    )
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_setitem_propagates_index_protocol_exception_without_mutation(
+        self, make, error_type, message
+    ):
+        class RaisingIndex:
+            def __index__(self):
+                raise error_type(message)
+
+        native = bytearray(b"abc")
+        with pytest.raises(error_type) as native_error:
+            native[RaisingIndex()] = 0
+        value = make(b"abc")
+        with pytest.raises(error_type) as wrapper_error:
+            value[RaisingIndex()] = 0
+        assert str(wrapper_error.value) == str(native_error.value) == message
+        assert bytes(value) == b"abc"
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_invalid_index_protocol_result_remains_type_error(self, make):
+        class InvalidIndex:
+            def __index__(self):
+                return "not an integer"
+
+        native = b"abc" if make in self.RAW else "aé🦀"
+        with pytest.raises(TypeError):
+            _ = native[InvalidIndex()]
+        with pytest.raises(TypeError):
+            _ = make(native)[InvalidIndex()]
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    @pytest.mark.parametrize("method", ["get_uint", "get_uint_le", "get_int", "get_int_le"])
+    def test_variable_width_index_protocol_and_atomicity(self, make, method):
+        class Index:
+            def __init__(self, value):
+                self.value = value
+
+            def __index__(self):
+                return self.value
+
+        class InvalidIndex:
+            def __index__(self):
+                return "not an integer"
+
+        class RaisingIndex:
+            def __init__(self, error_type, message):
+                self.error_type = error_type
+                self.message = message
+
+            def __index__(self):
+                raise self.error_type(self.message)
+
+        raw = make in self.RAW
+        source = b"\x01abcdefgh" if raw else "abcdefgh"
+
+        value = make(source)
+        before = self._snapshot(value, raw)
+        assert getattr(value, method)(Index(0)) == 0
+        assert self._snapshot(value, raw) == before
+
+        value = make(source)
+        getattr(value, method)(Index(1))
+        assert self._snapshot(value, raw) == before[1:]
+
+        for argument, error_type, message in [
+            (object(), TypeError, None),
+            (InvalidIndex(), TypeError, None),
+            (-1, ValueError, None),
+            (9, ValueError, None),
+            (10**100, ValueError, None),
+            (Index(10**100), ValueError, None),
+            (RaisingIndex(RuntimeError, "runtime-width"), RuntimeError, "runtime-width"),
+            (RaisingIndex(TypeError, "type-width"), TypeError, "type-width"),
+            (RaisingIndex(OverflowError, "overflow-width"), OverflowError, "overflow-width"),
+        ]:
+            value = make(source)
+            before = self._snapshot(value, raw)
+            with pytest.raises(error_type) as error:
+                getattr(value, method)(argument)
+            if message is not None:
+                assert str(error.value) == message
+            assert self._snapshot(value, raw) == before
+
+    def test_cross_strategy_equality_and_native_domains(self):
+        raw = [make(b"abc") for make in self.RAW]
+        text = [make("abc") for make in self.UTF8]
+        assert all(left == right for left in raw for right in raw)
+        assert all(left == right for left in text for right in text)
+        assert all(value != "abc" for value in raw)
+        assert all(value != b"abc" for value in text)
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_raw_slice_assignment_matches_fixed_size_bytearray(self, make):
+        cases = [
+            (slice(4, 1, -2), b"XY"),
+            (slice(2, 0, -1), b"XY"),
+            (slice(None, None, -1), b"UVWXYZ"),
+            (slice(4, 1, 2), b""),
+            (slice(5, None, sys.maxsize), b"X"),
+        ]
+        for subscript, replacement in cases:
+            expected = bytearray(b"abcdef")
+            expected[subscript] = replacement
+            value = make(b"abcdef")
+            value[subscript] = replacement
+            assert bytes(value) == bytes(expected)
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    @pytest.mark.parametrize("subscript", [slice(None), slice(None, None, -1)])
+    def test_raw_self_slice_assignment_uses_snapshot(self, make, subscript):
+        expected = bytearray(b"abcdef")
+        expected[subscript] = expected
+        value = make(b"abcdef")
+        value[subscript] = value
+        assert bytes(value) == bytes(expected)
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_raw_slice_assignment_errors_preserve_state(self, make):
+        cases = [
+            (slice(4, 1, -2), b"X", ValueError),
+            (slice(4, 1, 2), b"X", ValueError),
+            (slice(None, None, 0), b"", ValueError),
+            (10**100, 0, IndexError),
+            (object(), 0, TypeError),
+            (slice(None), object(), TypeError),
+        ]
+        for subscript, replacement, error in cases:
+            value = make(b"abcdef")
+            with pytest.raises(error):
+                value[subscript] = replacement
+            assert bytes(value) == b"abcdef"
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_raw_scalar_assignment_matches_bytearray_index_protocol(self, make):
+        class Index:
+            def __init__(self, value):
+                self.value = value
+
+            def __index__(self):
+                return self.value
+
+        class InvalidIndex:
+            def __index__(self):
+                return "not an integer"
+
+        class RaisingIndex:
+            def __init__(self, error_type, message):
+                self.error_type = error_type
+                self.message = message
+
+            def __index__(self):
+                raise self.error_type(self.message)
+
+        for replacement in (0, True, Index(255)):
+            native = bytearray(b"abc")
+            native[1] = replacement
+            value = make(b"abc")
+            value[1] = replacement
+            assert bytes(value) == bytes(native)
+
+        for replacement, error_type, message in [
+            (-1, ValueError, None),
+            (256, ValueError, None),
+            (10**100, ValueError, None),
+            (Index(10**100), ValueError, None),
+            (object(), TypeError, None),
+            (InvalidIndex(), TypeError, None),
+            (RaisingIndex(RuntimeError, "runtime-scalar"), RuntimeError, "runtime-scalar"),
+            (RaisingIndex(TypeError, "type-scalar"), TypeError, "type-scalar"),
+            (RaisingIndex(OverflowError, "overflow-scalar"), OverflowError, "overflow-scalar"),
+        ]:
+            native = bytearray(b"abc")
+            with pytest.raises(error_type) as native_error:
+                native[1] = replacement
+            value = make(b"abc")
+            with pytest.raises(error_type) as wrapper_error:
+                value[1] = replacement
+            if message is not None:
+                assert str(wrapper_error.value) == str(native_error.value) == message
+            assert bytes(value) == b"abc"
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_raw_slice_assignment_matches_bytearray_rhs_protocol(self, make):
+        cases = [
+            (slice(1, 3), lambda: b"XY"),
+            (slice(1, 3), lambda: bytearray(b"XY")),
+            (slice(1, 3), lambda: memoryview(b"XY")),
+            (slice(1, 3), lambda: [88, 89]),
+            (slice(1, 3), lambda: range(88, 90)),
+            (slice(1, 3), lambda: iter([88, 89])),
+            (slice(4, 1, -2), lambda: (item for item in (88, 89))),
+            (slice(4, 1, 2), lambda: iter(())),
+        ]
+
+        for subscript, replacement in cases:
+            native = bytearray(b"abcdef")
+            native[subscript] = replacement()
+            value = make(b"abcdef")
+            value[subscript] = replacement()
+            assert bytes(value) == bytes(native)
+
+    @pytest.mark.parametrize("make", RAW[:2])
+    def test_raw_slice_assignment_conversion_and_length_errors_are_atomic(self, make):
+        class RaisingIterator:
+            def __iter__(self):
+                yield 88
+                raise RuntimeError("iterator-boom")
+
+        class RaisingElement:
+            def __index__(self):
+                raise RuntimeError("element-boom")
+
+        cases = [
+            (slice(1, 3), lambda: "XY", TypeError, None),
+            (slice(1, 3), lambda: [88, 256], ValueError, None),
+            (slice(1, 3), lambda: [88, RaisingElement()], RuntimeError, "element-boom"),
+            (slice(1, 3), RaisingIterator, RuntimeError, "iterator-boom"),
+        ]
+
+        for subscript, replacement, error_type, message in cases:
+            native = bytearray(b"abcdef")
+            with pytest.raises(error_type) as native_error:
+                native[subscript] = replacement()
+            value = make(b"abcdef")
+            with pytest.raises(error_type) as wrapper_error:
+                value[subscript] = replacement()
+            if message is not None:
+                assert str(wrapper_error.value) == str(native_error.value) == message
+            assert bytes(value) == b"abcdef"
+
+        for subscript, replacement in [
+            (slice(1, 3), b"X"),
+            (slice(4, 1, -2), b"X"),
+            (slice(4, 1, 2), b"X"),
+        ]:
+            value = make(b"abcdef")
+            with pytest.raises(ValueError):
+                value[subscript] = replacement
+            assert bytes(value) == b"abcdef"
+
+    @pytest.mark.parametrize("make", UTF8)
+    def test_utf8_length_index_and_iteration_match_str(self, make):
+        native = "aé€🦀e\u0301z"
+        value = make(native)
+        assert len(value) == len(native)
+        assert list(value) == list(native)
+        assert [value[index] for index in range(-len(native), len(native))] == [
+            native[index] for index in range(-len(native), len(native))
+        ]
+        assert value.remaining() == len(native.encode("utf-8"))
+
+    @pytest.mark.parametrize("make", RAW)
+    def test_raw_contains_matches_native_bytes(self, make):
+        native = b"abc"
+        for item in [97, 256, -1, b"bc", bytearray(b"bc"), memoryview(b"bc"), "a", object()]:
+            value = make(native)
+            try:
+                expected = item in native
+            except Exception as error:
+                with pytest.raises(type(error)):
+                    _ = item in value
+            else:
+                assert (item in value) == expected
+
+    @pytest.mark.parametrize("make", UTF8)
+    def test_utf8_contains_matches_native_str(self, make):
+        native = "aé€🦀e\u0301z"
+        for item in ["é€", "", 97, -1, "é".encode(), bytearray(b"x"), memoryview(b"x"), object()]:
+            value = make(native)
+            try:
+                expected = item in native
+            except Exception as error:
+                with pytest.raises(type(error)):
+                    _ = item in value
+            else:
+                assert (item in value) == expected
+
+    def test_raw_comparisons_follow_native_bytes_protocol(self):
+        for make in self.RAW:
+            value = make(b"abc")
+            assert value == b"abc"
+            assert b"abc" == value
+            assert value == bytearray(b"abc")
+            assert value == memoryview(b"abc")
+            assert value < b"abd"
+            with pytest.raises(TypeError):
+                _ = value < "abc"
+
+    @pytest.mark.parametrize("make", RAW)
+    @pytest.mark.parametrize(
+        "comparison",
+        [operator.lt, operator.le, operator.eq, operator.ne, operator.gt, operator.ge],
+    )
+    def test_raw_comparisons_match_exact_bytearray_both_directions(self, make, comparison):
+        native = b"abc"
+        value = make(native)
+        for other in (bytearray(native), bytearray(b"abd")):
+            assert comparison(value, other) == comparison(native, other)
+            assert comparison(other, value) == comparison(other, native)
+
+    @pytest.mark.parametrize("make", RAW)
+    @pytest.mark.parametrize("comparison", [operator.eq, operator.ne])
+    def test_raw_eq_ne_match_exact_memoryview_both_directions(self, make, comparison):
+        native = b"abc"
+        value = make(native)
+        for other in (memoryview(native), memoryview(b"abd")):
+            assert comparison(value, other) == comparison(native, other)
+            assert comparison(other, value) == comparison(other, native)
+
+    @pytest.mark.parametrize("make", RAW)
+    @pytest.mark.parametrize("comparison", [operator.lt, operator.le, operator.gt, operator.ge])
+    def test_raw_ordering_with_exact_memoryview_raises_both_directions(self, make, comparison):
+        value = make(b"abc")
+        other = memoryview(b"abc")
+        with pytest.raises(TypeError):
+            comparison(value, other)
+        with pytest.raises(TypeError):
+            comparison(other, value)
+
+    @pytest.mark.parametrize("make", RAW)
+    def test_raw_multidimensional_memoryview_is_unequal(self, make):
+        value = make(b"abcd")
+        other = memoryview(b"abcd").cast("B", shape=[2, 2])
+        assert value != other
+        assert other != value
+
+    @pytest.mark.parametrize("make", RAW)
+    def test_bytearray_subclass_uses_one_call_fallback(self, make):
+        sentinel = object()
+
+        class ComparisonOverride(bytearray):
+            def __init__(self, value):
+                super().__init__(value)
+                self.calls = 0
+
+            def __eq__(self, other):
+                self.calls += 1
+                return sentinel
+
+        other = ComparisonOverride(b"abc")
+        value = make(b"abc")
+        assert value.__eq__(other) is NotImplemented
+        assert other.calls == 0
+        assert (value == other) is sentinel
+        assert other.calls == 1
+
+    @pytest.mark.parametrize("left", RAW)
+    @pytest.mark.parametrize("right", RAW)
+    @pytest.mark.parametrize(
+        "comparison",
+        [operator.lt, operator.le, operator.eq, operator.ne, operator.gt, operator.ge],
+    )
+    def test_raw_wrapper_comparisons_match_bytes_across_strategies(self, left, right, comparison):
+        for left_value, right_value in [(b"abc", b"abc"), (b"abc", b"abd")]:
+            assert comparison(left(left_value), right(right_value)) == comparison(left_value, right_value)
+
+    @pytest.mark.parametrize("left", UTF8)
+    @pytest.mark.parametrize("right", UTF8)
+    @pytest.mark.parametrize(
+        "comparison",
+        [operator.lt, operator.le, operator.eq, operator.ne, operator.gt, operator.ge],
+    )
+    def test_utf8_wrapper_comparisons_match_str_across_strategies(self, left, right, comparison):
+        for left_value, right_value in [("abc", "abc"), ("abc", "abd")]:
+            assert comparison(left(left_value), right(right_value)) == comparison(left_value, right_value)
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    def test_comparisons_preserve_non_bool_results(self, make):
+        sentinel = object()
+
+        class SentinelComparison:
+            def __eq__(self, other):
+                return sentinel
+
+            def __ne__(self, other):
+                return sentinel
+
+            def __lt__(self, other):
+                return sentinel
+
+            def __le__(self, other):
+                return sentinel
+
+            def __gt__(self, other):
+                return sentinel
+
+            def __ge__(self, other):
+                return sentinel
+
+        value = make(b"abc") if make in self.RAW else make("abc")
+        other = SentinelComparison()
+        assert (value == other) is sentinel
+        assert (value != other) is sentinel
+        assert (value < other) is sentinel
+        assert (value <= other) is sentinel
+        assert (value > other) is sentinel
+        assert (value >= other) is sentinel
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    @pytest.mark.parametrize(
+        "comparison",
+        [operator.lt, operator.le, operator.eq, operator.ne, operator.gt, operator.ge],
+        ids=["lt", "le", "eq", "ne", "gt", "ge"],
+    )
+    def test_custom_left_comparisons_match_native_without_retry(self, make, comparison):
+        sentinel = object()
+
+        class CustomLeft:
+            def __init__(self):
+                self.calls = 0
+
+            def _compare(self, other):
+                self.calls += 1
+                return NotImplemented if self.calls == 1 else sentinel
+
+            __lt__ = _compare
+            __le__ = _compare
+            __eq__ = _compare
+            __ne__ = _compare
+            __gt__ = _compare
+            __ge__ = _compare
+
+        native = b"abc" if make in self.RAW else "abc"
+        native_left = CustomLeft()
+        try:
+            expected = comparison(native_left, native)
+        except TypeError:
+            wrapper_left = CustomLeft()
+            with pytest.raises(TypeError):
+                comparison(wrapper_left, make(native))
+        else:
+            wrapper_left = CustomLeft()
+            assert comparison(wrapper_left, make(native)) is expected
+
+        assert native_left.calls == 1
+        assert wrapper_left.calls == 1
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    @pytest.mark.parametrize("method", ["get_uint", "get_uint_le", "get_int", "get_int_le"])
+    def test_variable_width_validates_before_reading(self, make, method):
+        value = make(b"\x01" if make in self.RAW else "a")
+        before = bytes(value) if hasattr(value, "__bytes__") else str(value)
+        for width, error in [(-1, ValueError), (9, ValueError), (10**100, ValueError), ("1", TypeError)]:
+            with pytest.raises(error):
+                getattr(value, method)(width)
+            after = bytes(value) if hasattr(value, "__bytes__") else str(value)
+            assert after == before
+
+    @pytest.mark.parametrize("make", RAW + UTF8)
+    @pytest.mark.parametrize("method", ["get_uint", "get_uint_le", "get_int", "get_int_le"])
+    def test_variable_width_edges_match_buffer_contract(self, make, method):
+        is_raw = make in self.RAW
+        payloads = [b"", b"\x01", b"\x01" * 8]
+        if make not in (self.RAW[0], self.UTF8[0]):
+            payloads.append(b"\x01" * 63)
+
+        for payload in payloads:
+            source = payload if is_raw else payload.decode("ascii")
+            for width in (0, 1, 8):
+                value = make(source)
+                before = bytes(value) if hasattr(value, "__bytes__") else str(value)
+                if width <= len(payload):
+                    getattr(value, method)(width)
+                    if width == 0:
+                        after = bytes(value) if hasattr(value, "__bytes__") else str(value)
+                        assert after == before
+                else:
+                    with pytest.raises(BufferError):
+                        getattr(value, method)(width)
+                    after = bytes(value) if hasattr(value, "__bytes__") else str(value)
+                    assert after == before
+
+    @pytest.mark.parametrize("make", [lambda: Utf8Buffer.from_str("éx"), lambda: Utf8BytesMut.from_str("éx")])
+    def test_utf8_truncate_is_fallible_and_unchanged_on_boundary_error(self, make):
+        value = make()
+        with pytest.raises(ValueError):
+            value.truncate(1)
+        assert str(value) == "éx"
+        value.truncate(2)
+        assert str(value) == "é"
+        value.truncate(99)
+        assert str(value) == "é"
 
     def test_utf8_index_out_of_range(self):
         buf = Utf8Bytes.from_str("hi")
@@ -1005,11 +1682,13 @@ class TestMultibyteUtf8:
 
     def test_cafe_len_is_bytes(self):
         buf = Utf8Bytes.from_str("caf\u00e9")
-        assert len(buf) == 5  # 3 ASCII + 2-byte e-acute
+        assert len(buf) == 4  # Unicode scalar values; remaining() is still five bytes.
+        assert buf.remaining() == 5
 
     def test_crab_emoji_len(self):
         buf = Utf8BytesMut.from_str("\U0001f980")
-        assert len(buf) == 4  # 4-byte crab emoji
+        assert len(buf) == 1  # One Unicode scalar value; remaining() is still four bytes.
+        assert buf.remaining() == 4
 
     def test_cafe_iteration(self):
         buf = Utf8Buffer.from_str("caf\u00e9")

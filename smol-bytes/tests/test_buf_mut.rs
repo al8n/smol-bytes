@@ -392,7 +392,7 @@ fn bytes_mut_chunk_mut_makes_progress_when_inline_tail_is_full() {
 #[test]
 #[cfg_attr(not(panic = "unwind"), ignore)]
 fn reserve_and_put_bytes_overflow_panic_before_mutation() {
-  use std::panic::{catch_unwind, AssertUnwindSafe};
+  use std::panic::{AssertUnwindSafe, catch_unwind};
 
   for mut reserved in [BytesMut::from(&b"x"[..]), heap_with_data()] {
     let before = reserved.as_slice().to_vec();

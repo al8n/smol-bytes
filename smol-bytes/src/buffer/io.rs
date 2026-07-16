@@ -5,7 +5,18 @@
 
 use crate::{InvalidIntegerLength, TryPutIntegerError};
 
-use super::{panic_advance, panic_does_not_fit, Buffer, InlineSize, TryGetError, TryPutError};
+use super::{Buffer, InlineSize, TryGetError, TryPutError, panic_advance, panic_does_not_fit};
+
+/// Validates the byte width accepted by the variable-width integer readers.
+///
+/// This is deliberately performed before checking available input so an invalid
+/// width cannot be masked by a short buffer (or reach the copy below).
+#[inline]
+pub(crate) fn assert_uint_width(nbytes: usize) {
+  if nbytes > 8 {
+    panic_does_not_fit(8, nbytes);
+  }
+}
 
 // https://en.wikipedia.org/wiki/Sign_extension
 pub(crate) const fn sign_extend(val: u64, nbytes: usize) -> i64 {
@@ -41,16 +52,14 @@ macro_rules! impl_try_get {
   (le($this:ident, $typ:tt, $len_to_read:expr)) => {{
     const SIZE: usize = core::mem::size_of::<$typ>();
 
+    assert_uint_width($len_to_read);
+
     let remaining = $this.remaining();
     if remaining < $len_to_read {
       return Err(TryGetError {
         requested: $len_to_read,
         available: remaining,
       });
-    }
-
-    if $len_to_read > SIZE {
-      panic_does_not_fit(SIZE, $len_to_read);
     }
 
     let mut buf = [0u8; SIZE];
@@ -72,16 +81,14 @@ macro_rules! impl_try_get {
   (be($this:ident, $typ:tt, $len_to_read:expr)) => {{
     const SIZE: usize = core::mem::size_of::<$typ>();
 
+    assert_uint_width($len_to_read);
+
     let remaining = $this.remaining();
     if remaining < $len_to_read {
       return Err(TryGetError {
         requested: $len_to_read,
         available: remaining,
       });
-    }
-
-    if $len_to_read > SIZE {
-      panic_does_not_fit(SIZE, $len_to_read);
     }
 
     let slice_at = SIZE - $len_to_read;
@@ -1164,6 +1171,9 @@ impl Buffer {
 
 #[cfg(test)]
 mod tests {
+  #[cfg(not(feature = "std"))]
+  extern crate std;
+
   use super::*;
 
   #[test]
@@ -1625,5 +1635,30 @@ mod tests {
     let mut full_buf = Buffer::try_from(&[0u8; 62][..]).unwrap();
     assert!(full_buf.try_put_u8(0).is_err());
     assert!(full_buf.try_put_i8(0).is_err());
+  }
+
+  #[test]
+  fn variable_width_panics_before_availability_checks_and_preserves_cursor() {
+    for operation in [
+      |buffer: &mut Buffer| buffer.get_uint(9),
+      |buffer: &mut Buffer| buffer.get_uint_le(9),
+      |buffer: &mut Buffer| buffer.get_uint_ne(9),
+    ] {
+      let mut buffer = Buffer::try_from(&b"abc"[..]).unwrap();
+      let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| operation(&mut buffer)));
+      assert!(panic.is_err());
+      assert_eq!(buffer.as_slice(), b"abc");
+    }
+
+    for operation in [
+      |buffer: &mut Buffer| buffer.get_int(9),
+      |buffer: &mut Buffer| buffer.get_int_le(9),
+      |buffer: &mut Buffer| buffer.get_int_ne(9),
+    ] {
+      let mut buffer = Buffer::try_from(&b"abc"[..]).unwrap();
+      let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| operation(&mut buffer)));
+      assert!(panic.is_err());
+      assert_eq!(buffer.as_slice(), b"abc");
+    }
   }
 }

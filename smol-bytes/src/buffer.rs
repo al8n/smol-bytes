@@ -2,7 +2,7 @@
 use core::borrow::Borrow;
 
 use core::{
-  mem::{transmute, MaybeUninit},
+  mem::{MaybeUninit, transmute},
   ops::RangeBounds,
   ptr::{copy_nonoverlapping, write_bytes},
   slice::from_raw_parts_mut,
@@ -18,7 +18,7 @@ mod iter;
 mod ops;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub(crate) use io::sign_extend;
+pub(crate) use io::{assert_uint_width, sign_extend};
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -1107,7 +1107,7 @@ impl Buffer {
 
 #[cfg(any(feature = "alloc", feature = "std"))]
 const _: () = {
-  use bytes::{buf::UninitSlice, Buf, BufMut};
+  use bytes::{Buf, BufMut, buf::UninitSlice};
 
   use crate::macros::{forward_buf, forward_buf_mut};
 

@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
@@ -26,26 +26,29 @@ fn constructor_from_vec_benchmarks(c: &mut Criterion) {
 
     // Benchmark bytes::Bytes::from(Vec)
     group.bench_function("bytes::Bytes", |b| {
-      b.iter(|| {
-        let bytes = bytes::Bytes::from(black_box(data.clone()));
-        black_box(bytes);
-      });
+      b.iter_batched(
+        || data.clone(),
+        |data| black_box(bytes::Bytes::from(black_box(data))),
+        BatchSize::SmallInput,
+      );
     });
 
     // Benchmark Bytes (Shared) from Vec
     group.bench_function("Bytes (Shared)", |b| {
-      b.iter(|| {
-        let smol = shared::Bytes::from(black_box(data.clone()));
-        black_box(smol);
-      });
+      b.iter_batched(
+        || data.clone(),
+        |data| black_box(shared::Bytes::from(black_box(data))),
+        BatchSize::SmallInput,
+      );
     });
 
     // Benchmark Bytes (Compact) from Vec
     group.bench_function("Bytes (Compact)", |b| {
-      b.iter(|| {
-        let smol = compact::Bytes::from(black_box(data.clone()));
-        black_box(smol);
-      });
+      b.iter_batched(
+        || data.clone(),
+        |data| black_box(compact::Bytes::from(black_box(data))),
+        BatchSize::SmallInput,
+      );
     });
 
     group.finish();
@@ -115,10 +118,11 @@ fn constructor_inline_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("bytes::Bytes/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let bytes = bytes::Bytes::from(black_box(data.clone()));
-          black_box(bytes);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(bytes::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 
@@ -126,10 +130,11 @@ fn constructor_inline_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("Bytes (Shared)/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let smol = shared::Bytes::from(black_box(data.clone()));
-          black_box(smol);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(shared::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 
@@ -137,10 +142,11 @@ fn constructor_inline_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("Bytes (Compact)/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let smol = compact::Bytes::from(black_box(data.clone()));
-          black_box(smol);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(compact::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 
@@ -197,10 +203,11 @@ fn constructor_heap_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("bytes::Bytes/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let bytes = bytes::Bytes::from(black_box(data.clone()));
-          black_box(bytes);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(bytes::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 
@@ -208,10 +215,11 @@ fn constructor_heap_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("Bytes (Shared)/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let smol = shared::Bytes::from(black_box(data.clone()));
-          black_box(smol);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(shared::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 
@@ -219,10 +227,11 @@ fn constructor_heap_benchmarks(c: &mut Criterion) {
       BenchmarkId::new("Bytes (Compact)/from_vec", size),
       &data,
       |b, data| {
-        b.iter(|| {
-          let smol = compact::Bytes::from(black_box(data.clone()));
-          black_box(smol);
-        });
+        b.iter_batched(
+          || data.clone(),
+          |data| black_box(compact::Bytes::from(black_box(data))),
+          BatchSize::SmallInput,
+        );
       },
     );
 

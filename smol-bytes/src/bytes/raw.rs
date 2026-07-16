@@ -9,8 +9,8 @@ use bytes::{Buf, Bytes};
 use std::{borrow::Cow, boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use crate::{
-  buffer::{Buffer, INLINE_CAP},
   BytesMut, OutOfBounds, RangeOutOfBounds,
+  buffer::{Buffer, INLINE_CAP},
 };
 
 use super::strategy::ImmutableStorage;

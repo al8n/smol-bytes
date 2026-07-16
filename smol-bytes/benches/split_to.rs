@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use smol_bytes::{compact, shared};
 use std::hint::black_box;
 
@@ -10,33 +10,33 @@ struct SplitCase {
 
 fn split_to_benchmarks(c: &mut Criterion) {
   let cases = [
-    // Original buffer is inline; both resulting segments remain inline.
+    // Inline source split near its midpoint.
     SplitCase {
-      label: "inline_src_inline_segments",
+      label: "inline_source_midpoint",
       total: 40,
       split_at: 18,
     },
-    // Original buffer is heap; both resulting segments shrink to inline.
+    // Heap source split evenly.
     SplitCase {
-      label: "heap_src_two_inline_segments",
+      label: "heap_source_even_split",
       total: 80,
       split_at: 40,
     },
-    // Original buffer is heap; prefix becomes inline, remainder stays heap.
+    // Heap source with a short prefix.
     SplitCase {
-      label: "heap_src_prefix_inline_remainder_heap",
+      label: "heap_source_short_prefix",
       total: 128,
       split_at: 48,
     },
-    // Original buffer is heap; prefix remains heap, remainder converts inline.
+    // Heap source with a short remainder.
     SplitCase {
-      label: "heap_src_prefix_heap_remainder_inline",
+      label: "heap_source_short_remainder",
       total: 128,
       split_at: 96,
     },
-    // Original buffer is heap; both segments remain heap.
+    // Large heap source split evenly.
     SplitCase {
-      label: "heap_src_two_heap_segments",
+      label: "large_heap_source_even_split",
       total: 256,
       split_at: 128,
     },

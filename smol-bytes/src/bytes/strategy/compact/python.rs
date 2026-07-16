@@ -1,6 +1,6 @@
 use crate::{
+  Buf, OutOfBounds, RangeOutOfBounds,
   python::{PyBufCmp, PyBufCommon, PyBufExt},
-  Buf, DefaultHasher, OutOfBounds, RangeOutOfBounds,
 };
 use pyo3::{
   basic::CompareOp,
@@ -167,14 +167,8 @@ impl PyCompactBytes {
     !self.inner.is_empty()
   }
 
-  /// Compute a hash identical to Rust's `Bytes` implementation.
-  fn __hash__(&self) -> u64 {
-    use ::core::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    self.inner.hash(&mut hasher);
-    hasher.finish()
-  }
+  #[allow(non_upper_case_globals)]
+  const __hash__: Option<Py<PyAny>> = None;
 
   /// Return the number of remaining readable bytes.
   fn __len__(&self) -> usize {
@@ -182,7 +176,7 @@ impl PyCompactBytes {
   }
 
   /// Check membership of a byte or bytes-like object.
-  fn __contains__(&self, item: &Bound<'_, PyAny>) -> bool {
+  fn __contains__(&self, item: &Bound<'_, PyAny>) -> PyResult<bool> {
     self.py_contains(item)
   }
 
@@ -200,19 +194,14 @@ impl PyCompactBytes {
   }
 
   /// Perform rich comparisons (`==`, `<`, etc.) with other byte sequences.
-  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<bool> {
+  fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
     self.py_richcmp(other, op)
   }
 
   /// Interpret the bytes as UTF-8, raising `UnicodeDecodeError` on failure.
-  fn __str__(&self) -> PyResult<&str> {
-    ::core::str::from_utf8(self.inner.as_ref()).map_err(|e| {
-      PyUnicodeDecodeError::new_err(format!(
-        "invalid utf-8 sequence at byte {}: {}",
-        e.valid_up_to(),
-        e
-      ))
-    })
+  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
+    ::core::str::from_utf8(self.inner.as_ref())
+      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.inner.as_ref(), err))
   }
 
   /// Debug representation mirroring Rust's `Debug` output.
@@ -657,13 +646,13 @@ impl PyCompactBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint")]
-  fn __python_get_uint(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.inner.py_get_uint(nbytes)
+  fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.inner.py_get_uint_object(nbytes)
   }
 
   /// Read an unsigned n-byte integer in little-endian byte order.
@@ -671,13 +660,13 @@ impl PyCompactBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_uint_le")]
-  fn __python_get_uint_le(&mut self, nbytes: usize) -> PyResult<u64> {
-    self.inner.py_get_uint_le(nbytes)
+  fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
+    self.inner.py_get_uint_le_object(nbytes)
   }
 
   /// Read a signed n-byte integer in big-endian byte order.
@@ -685,13 +674,13 @@ impl PyCompactBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int")]
-  fn __python_get_int(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.inner.py_get_int(nbytes)
+  fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.inner.py_get_int_object(nbytes)
   }
 
   /// Read a signed n-byte integer in little-endian byte order.
@@ -699,13 +688,13 @@ impl PyCompactBytes {
   /// The current position is advanced by nbytes.
   ///
   /// Args:
-  ///     nbytes: Number of bytes to read (1-8).
+  ///     nbytes: Number of bytes to read (0-8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough remaining data in the buffer.
   #[pyo3(name = "get_int_le")]
-  fn __python_get_int_le(&mut self, nbytes: usize) -> PyResult<i64> {
-    self.inner.py_get_int_le(nbytes)
+  fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
+    self.inner.py_get_int_le_object(nbytes)
   }
 
   /// Support pickling via `pickle.dumps` / `pickle.loads`.
