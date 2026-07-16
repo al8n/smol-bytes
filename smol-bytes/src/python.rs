@@ -43,6 +43,10 @@ pub(crate) fn validate_utf8_advance(value: &impl AsRef<str>, cnt: usize) -> PyRe
 /// raise `MemoryError` like CPython containers instead of aborting the
 /// process inside the infallible Rust allocator path.
 ///
+/// Only Rust-side allocations proportional to caller-controlled sizes need this
+/// preflight: allocations made through CPython's allocator (`PyBytes::new`,
+/// `PyString`) already raise `MemoryError` natively.
+///
 /// This is a best-effort guard: it probes exactly `additional` bytes, so
 /// reserve-style callers (whose underlying reservation may allocate
 /// `len + additional` plus growth slack) are protected against absurd or
@@ -129,6 +133,12 @@ pub(crate) enum NormalizedSubscript {
 /// final selected position is never advanced, which matters for a maximal
 /// Python slice step in debug builds.
 pub(crate) fn normalized_slice_positions(indices: &PySliceIndices) -> PyResult<Vec<isize>> {
+  // Guard the positions `Vec` here so every caller is covered at one choke point.
+  py_check_alloc(
+    indices
+      .slicelength
+      .saturating_mul(core::mem::size_of::<isize>()),
+  )?;
   let mut positions = Vec::with_capacity(indices.slicelength);
   let mut position = indices.start;
   let mut remaining = indices.slicelength;
@@ -213,6 +223,7 @@ pub(crate) fn py_bytes_getitem(data: &[u8], index: &Bound<'_, PyAny>) -> PyResul
         return Ok(PyBytes::new(py, &data[start..stop]).into());
       }
 
+      py_check_alloc(indices.slicelength)?;
       let mut result = std::vec::Vec::with_capacity(indices.slicelength);
       for position in normalized_slice_positions(&indices)? {
         result.push(data[normalized_slice_position(position)?]);
@@ -249,6 +260,7 @@ pub(crate) fn py_str_getitem(value: &str, index: &Bound<'_, PyAny>) -> PyResult<
       Ok(PyString::new(py, &value[start..stop]).into())
     }
     NormalizedSubscript::Slice(indices) => {
+      py_check_alloc(char_len.saturating_mul(core::mem::size_of::<char>()))?;
       let chars: std::vec::Vec<char> = value.chars().collect();
       let mut result = std::string::String::new();
       for position in normalized_slice_positions(&indices)? {
@@ -388,6 +400,7 @@ fn py_slice_assignment_bytes(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
   let py = value.py();
   let bytes = PyByteArray::new(py, &[]);
   bytes.call_method1("__setitem__", (PySlice::full(py), value))?;
+  py_check_alloc(bytes.len())?;
   Ok(bytes.to_vec())
 }
 
@@ -708,6 +721,25 @@ pub trait PyBufMutExt: PyBufExt + AsMut<[u8]> + BufMut {
           Some(bytes) => bytes,
           None => py_slice_assignment_bytes(value)?,
         };
+
+        // Contiguous fast path: a unit-step slice targets one continuous range,
+        // so copy straight into it without materializing per-position indices.
+        if indices.step == 1 {
+          let start = normalized_slice_position(indices.start)?;
+          let len = indices.slicelength;
+          if bytes.len() != len {
+            return Err(PyValueError::new_err(format!(
+              "attempt to assign bytes of size {} to slice of size {}",
+              bytes.len(),
+              len
+            )));
+          }
+          self.as_mut()[start..start + len].copy_from_slice(&bytes);
+          return Ok(());
+        }
+
+        // General (extended-step) path: `normalized_slice_positions` preflights
+        // its own allocation, covering the mapped positions collected below.
         let positions = normalized_slice_positions(&indices)?
           .into_iter()
           .map(normalized_slice_position)

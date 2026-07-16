@@ -1,4 +1,4 @@
-use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt};
+use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt, py_check_alloc};
 use pyo3::{
   basic::CompareOp,
   exceptions::{PyBufferError, PyUnicodeDecodeError},
@@ -159,7 +159,12 @@ impl Buffer {
       .to_owned()
       .into_any()
       .unbind();
-    let self_assignment = value.is(&self_object).then(|| slf.as_ref().to_vec());
+    let self_assignment = if value.is(&self_object) {
+      py_check_alloc(slf.as_ref().len())?;
+      Some(slf.as_ref().to_vec())
+    } else {
+      None
+    };
     slf.py_setitem(index, value, self_assignment)
   }
 

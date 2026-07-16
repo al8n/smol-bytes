@@ -100,8 +100,16 @@ impl PySharedUtf8Bytes {
   }
 
   /// Return a debug representation.
-  fn __repr__(&self) -> String {
-    format!("{:?}", self.inner)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(
+      self
+        .inner
+        .as_str()
+        .len()
+        .saturating_mul(4)
+        .saturating_add(64),
+    )?;
+    Ok(format!("{:?}", self.inner))
   }
 
   /// Return the number of Unicode scalar values.
@@ -201,6 +209,8 @@ impl PySharedUtf8Bytes {
 
   /// Iterate over the characters of the bytes.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Utf8CharIter>> {
+    let char_count = slf.inner.as_str().chars().count();
+    py_check_alloc(char_count.saturating_mul(core::mem::size_of::<char>()))?;
     let chars: Vec<char> = slf.inner.as_str().chars().collect();
     Py::new(slf.py(), Utf8CharIter { chars, index: 0 })
   }
@@ -244,6 +254,7 @@ impl PySharedUtf8Bytes {
   fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
     let cls = py.get_type::<Self>();
     let from_str = cls.getattr("from_str")?;
+    py_check_alloc(slf.inner.as_str().len())?;
     Ok((from_str.unbind(), (slf.inner.as_str().to_string(),)))
   }
 
@@ -756,8 +767,16 @@ impl PyCompactUtf8Bytes {
   }
 
   /// Return a debug representation.
-  fn __repr__(&self) -> String {
-    format!("{:?}", self.inner)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(
+      self
+        .inner
+        .as_str()
+        .len()
+        .saturating_mul(4)
+        .saturating_add(64),
+    )?;
+    Ok(format!("{:?}", self.inner))
   }
 
   /// Return the number of Unicode scalar values.
@@ -857,6 +876,8 @@ impl PyCompactUtf8Bytes {
 
   /// Iterate over the characters of the bytes.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Utf8CharIter>> {
+    let char_count = slf.inner.as_str().chars().count();
+    py_check_alloc(char_count.saturating_mul(core::mem::size_of::<char>()))?;
     let chars: Vec<char> = slf.inner.as_str().chars().collect();
     Py::new(slf.py(), Utf8CharIter { chars, index: 0 })
   }
@@ -900,6 +921,7 @@ impl PyCompactUtf8Bytes {
   fn __reduce__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
     let cls = py.get_type::<Self>();
     let from_str = cls.getattr("from_str")?;
+    py_check_alloc(slf.inner.as_str().len())?;
     Ok((from_str.unbind(), (slf.inner.as_str().to_string(),)))
   }
 

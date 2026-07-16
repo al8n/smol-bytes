@@ -188,12 +188,18 @@ impl BytesMut {
       .to_owned()
       .into_any()
       .unbind();
-    let self_assignment = value.is(&self_object).then(|| slf.as_ref().to_vec());
+    let self_assignment = if value.is(&self_object) {
+      py_check_alloc(slf.as_ref().len())?;
+      Some(slf.as_ref().to_vec())
+    } else {
+      None
+    };
     slf.py_setitem(index, value, self_assignment)
   }
 
   /// Iterate over the readable bytes.
   fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<Iter>> {
+    py_check_alloc(slf.len())?;
     let iter = Iter {
       inner: BytesMut::clone(&*slf).into_iter(),
     };
@@ -211,8 +217,9 @@ impl BytesMut {
       .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.as_slice(), err))
   }
 
-  fn __repr__(&self) -> String {
-    format!("{:?}", self)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(self.len().saturating_mul(4).saturating_add(64))?;
+    Ok(format!("{:?}", self))
   }
 
   /// Support `copy.copy`, returning a shallow copy.

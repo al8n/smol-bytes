@@ -1210,6 +1210,63 @@ class TestNativeProtocolDifferential:
             buf[5]
 
 
+class TestSliceAssignmentAllocationGuards:
+    """Regression coverage for the guarded slice-assignment machinery.
+
+    Exercises the contiguous (unit-step) fast path, the extended-step general
+    path, and the guarded self-assignment snapshot, including the >62-byte heap
+    representation of ``BytesMut``.
+    """
+
+    MUTABLE = [BytesMut.from_bytes, Buffer.from_bytes]
+
+    @pytest.mark.parametrize("make", MUTABLE, ids=["BytesMut", "Buffer"])
+    def test_contiguous_full_slice_assignment(self, make):
+        value = make(b"abcdef")
+        value[:] = b"UVWXYZ"
+        assert bytes(value) == b"UVWXYZ"
+
+    @pytest.mark.parametrize("make", MUTABLE, ids=["BytesMut", "Buffer"])
+    def test_contiguous_inner_slice_assignment(self, make):
+        value = make(b"abcdef")
+        value[2:5] = b"xyz"
+        assert bytes(value) == b"abxyzf"
+
+    @pytest.mark.parametrize("make", MUTABLE, ids=["BytesMut", "Buffer"])
+    def test_extended_step_two_assignment_matches_bytearray(self, make):
+        expected = bytearray(b"abcdef")
+        expected[::2] = b"XYZ"
+        value = make(b"abcdef")
+        value[::2] = b"XYZ"
+        assert bytes(value) == bytes(expected)
+
+    @pytest.mark.parametrize("make", MUTABLE, ids=["BytesMut", "Buffer"])
+    @pytest.mark.parametrize(
+        "subscript",
+        [slice(None), slice(2, 5), slice(None, None, 2)],
+        ids=["contiguous-full", "contiguous-inner", "extended-step2"],
+    )
+    def test_mismatched_length_raises_without_mutation(self, make, subscript):
+        value = make(b"abcdef")
+        with pytest.raises(ValueError):
+            value[subscript] = b"toolong!!"
+        assert bytes(value) == b"abcdef"
+
+    @pytest.mark.parametrize(
+        "subscript",
+        [slice(None), slice(None, None, -1)],
+        ids=["contiguous-full", "reversed"],
+    )
+    def test_heap_self_slice_assignment_matches_bytearray(self, subscript):
+        payload = bytes(range(96))  # 96 > 62 forces the heap representation
+        expected = bytearray(payload)
+        expected[subscript] = expected
+        value = BytesMut.from_bytes(payload)
+        assert value.is_heap()
+        value[subscript] = value
+        assert bytes(value) == bytes(expected)
+
+
 # ---------------------------------------------------------------------------
 # 8. Split operations
 # ---------------------------------------------------------------------------

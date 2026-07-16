@@ -213,8 +213,9 @@ impl PySharedBytes {
   }
 
   /// Debug representation mirroring Rust's `Debug` output.
-  fn __repr__(&self) -> String {
-    format!("{:?}", self.inner)
+  fn __repr__(&self) -> PyResult<String> {
+    py_check_alloc(self.inner.len().saturating_mul(4).saturating_add(64))?;
+    Ok(format!("{:?}", self.inner))
   }
 
   /// Return the buffer contents as Python bytes.
