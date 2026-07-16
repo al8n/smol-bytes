@@ -111,14 +111,18 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: A new mutable buffer containing a copy of the data.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> Self {
-    Self::from(py_bytes)
+  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
+    py_check_alloc(py_bytes.len())?;
+    Ok(Self::from(py_bytes))
   }
 
   /// Create a new buffer from a UTF-8 string.
@@ -131,14 +135,18 @@ impl BytesMut {
   /// Returns:
   ///     BytesMut: A new buffer containing the UTF-8 encoded string.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> buf = BytesMut.from_str("Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> Self {
-    Self::from(py_str)
+  fn __python_from_str(py_str: &str) -> PyResult<Self> {
+    py_check_alloc(py_str.len())?;
+    Ok(Self::from(py_str))
   }
 
   /// Return the mutable bytes as a Python `bytes` object.
@@ -208,15 +216,23 @@ impl BytesMut {
   }
 
   /// Support `copy.copy`, returning a shallow copy.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__copy__")]
-  fn __python_copy(&self) -> Self {
-    self.clone()
+  fn __python_copy(&self) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Support `copy.deepcopy`, returning a new `BytesMut` clone.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__deepcopy__")]
-  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> Self {
-    self.clone()
+  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Return the buffer as a Python `bytes` object.
@@ -513,9 +529,14 @@ impl BytesMut {
   ///
   /// Args:
   ///    data: The bytes-like object to write.
+  ///
+  /// Raises:
+  ///    MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "put_slice")]
   fn __python_put_slice(&mut self, data: &Bound<'_, PyBytes>) -> PyResult<()> {
-    self.put_slice(data.as_ref());
+    let data: &[u8] = data.as_ref();
+    py_check_alloc(data.len())?;
+    self.put_slice(data);
     Ok(())
   }
 

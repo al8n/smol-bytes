@@ -9,7 +9,9 @@ use pyo3::{
   },
 };
 
-use crate::{Buf, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetError};
+use crate::{
+  Buf, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetError, utf8_buf::char_offset_to_byte,
+};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 use crate::bytes::{self, RawBytes};
@@ -217,14 +219,6 @@ pub(crate) fn py_bytes_getitem(data: &[u8], index: &Bound<'_, PyAny>) -> PyResul
       }
       Ok(PyBytes::new(py, &result).into())
     }
-  }
-}
-
-fn char_offset_to_byte(value: &str, offset: usize) -> Option<usize> {
-  if offset == value.chars().count() {
-    Some(value.len())
-  } else {
-    value.char_indices().nth(offset).map(|(index, _)| index)
   }
 }
 

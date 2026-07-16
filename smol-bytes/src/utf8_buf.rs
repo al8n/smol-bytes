@@ -188,3 +188,35 @@ pub trait Utf8BufMut: Utf8Buf {
   /// ```
   fn clear(&mut self);
 }
+
+/// Maps a Unicode-scalar offset to its byte offset in `s`.
+///
+/// `chars == number of chars` maps to `s.len()`; anything larger is out of range.
+///
+/// Kept crate-level (rather than inside the `pyo3`-gated bindings) so its unit
+/// tests run under the default test configuration. Only the Python bindings call
+/// it, so it is dead code in non-`pyo3`, non-test builds.
+#[allow(dead_code)]
+pub(crate) fn char_offset_to_byte(s: &str, chars: usize) -> Option<usize> {
+  if chars == s.chars().count() {
+    Some(s.len())
+  } else {
+    s.char_indices().nth(chars).map(|(index, _)| index)
+  }
+}
+
+#[cfg(test)]
+mod char_offset_tests {
+  use super::char_offset_to_byte;
+
+  #[test]
+  fn maps_scalar_offset_to_byte_offset() {
+    assert_eq!(char_offset_to_byte("abc", 1), Some(1));
+    assert_eq!(char_offset_to_byte("é", 1), Some(2));
+    assert_eq!(char_offset_to_byte("aé", 1), Some(1));
+    assert_eq!(char_offset_to_byte("aé", 2), Some(3));
+    assert_eq!(char_offset_to_byte("", 0), Some(0));
+    assert_eq!(char_offset_to_byte("a", 2), None);
+    assert_eq!(char_offset_to_byte("🦀x", 1), Some(4));
+  }
+}

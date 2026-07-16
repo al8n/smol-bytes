@@ -7,7 +7,8 @@ use pyo3::{
 
 use crate::bytes::strategy::compact::Compact;
 use crate::bytes::strategy::shared::Shared;
-use crate::python::{py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::python::{py_check_alloc, py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::utf8_buf::char_offset_to_byte;
 
 /// Concrete shared Utf8Bytes type for Python bindings.
 type SharedUtf8Bytes = super::Utf8Bytes<Shared>;
@@ -81,12 +82,16 @@ impl PySharedUtf8Bytes {
   ///
   /// Returns:
   ///     Utf8Bytes: A new immutable UTF-8 bytes object.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(s: &str) -> Self {
-    Self {
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    py_check_alloc(s.len())?;
+    Ok(Self {
       inner: SharedUtf8Bytes::from(s),
-    }
+    })
   }
 
   /// Return the contents as a Python string.
@@ -127,40 +132,44 @@ impl PySharedUtf8Bytes {
     py_str_richcmp(self.inner.as_str(), other, op)
   }
 
-  /// Split at the given index.
+  /// Split at the given Unicode scalar value (character) offset.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Bytes: The content before the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.inner.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
       .inner
-      .try_split_to(at)
+      .try_split_to(byte_at)
       .map(Into::into)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
-  /// Split at the given index, returning the tail.
+  /// Split at the given Unicode scalar value (character) offset, returning the tail.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Bytes: The content after the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.inner.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
       .inner
-      .try_split_off(at)
+      .try_split_off(byte_at)
       .map(Into::into)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
@@ -168,16 +177,21 @@ impl PySharedUtf8Bytes {
   /// Return a sub-slice of the bytes.
   ///
   /// Args:
-  ///     start: The start index (inclusive).
-  ///     end: The end index (exclusive).
+  ///     start: The start offset in Unicode scalar values (characters, inclusive).
+  ///     end: The end offset in Unicode scalar values (characters, exclusive).
   ///
   /// Returns:
   ///     Utf8Bytes: A new bytes object containing the specified range.
   ///
   /// Raises:
-  ///     ValueError: If the range is not on character boundaries or is out of bounds.
+  ///     ValueError: If the range is out of bounds.
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> PyResult<Self> {
+    let s = self.inner.as_str();
+    let start = char_offset_to_byte(s, start)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", start)))?;
+    let end = char_offset_to_byte(s, end)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", end)))?;
     self
       .inner
       .try_slice(start..end)
@@ -206,6 +220,12 @@ impl PySharedUtf8Bytes {
   #[pyo3(name = "is_heap")]
   fn __python_is_heap(&self) -> bool {
     self.inner.is_heap()
+  }
+
+  /// Return the length in bytes.
+  #[pyo3(name = "byte_len")]
+  fn __python_byte_len(&self) -> usize {
+    self.inner.as_str().len()
   }
 
   /// Support copy.copy.
@@ -718,12 +738,16 @@ impl PyCompactUtf8Bytes {
   ///
   /// Returns:
   ///     Utf8Bytes: A new immutable UTF-8 bytes object.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(s: &str) -> Self {
-    Self {
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    py_check_alloc(s.len())?;
+    Ok(Self {
       inner: CompactUtf8Bytes::from(s),
-    }
+    })
   }
 
   /// Return the contents as a Python string.
@@ -764,40 +788,44 @@ impl PyCompactUtf8Bytes {
     py_str_richcmp(self.inner.as_str(), other, op)
   }
 
-  /// Split at the given index.
+  /// Split at the given Unicode scalar value (character) offset.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Bytes: The content before the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.inner.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
       .inner
-      .try_split_to(at)
+      .try_split_to(byte_at)
       .map(Into::into)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
-  /// Split at the given index, returning the tail.
+  /// Split at the given Unicode scalar value (character) offset, returning the tail.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Bytes: The content after the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.inner.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
       .inner
-      .try_split_off(at)
+      .try_split_off(byte_at)
       .map(Into::into)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
@@ -805,16 +833,21 @@ impl PyCompactUtf8Bytes {
   /// Return a sub-slice of the bytes.
   ///
   /// Args:
-  ///     start: The start index (inclusive).
-  ///     end: The end index (exclusive).
+  ///     start: The start offset in Unicode scalar values (characters, inclusive).
+  ///     end: The end offset in Unicode scalar values (characters, exclusive).
   ///
   /// Returns:
   ///     Utf8Bytes: A new bytes object containing the specified range.
   ///
   /// Raises:
-  ///     ValueError: If the range is not on character boundaries or is out of bounds.
+  ///     ValueError: If the range is out of bounds.
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> PyResult<Self> {
+    let s = self.inner.as_str();
+    let start = char_offset_to_byte(s, start)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", start)))?;
+    let end = char_offset_to_byte(s, end)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", end)))?;
     self
       .inner
       .try_slice(start..end)
@@ -843,6 +876,12 @@ impl PyCompactUtf8Bytes {
   #[pyo3(name = "is_heap")]
   fn __python_is_heap(&self) -> bool {
     self.inner.is_heap()
+  }
+
+  /// Return the length in bytes.
+  #[pyo3(name = "byte_len")]
+  fn __python_byte_len(&self) -> usize {
+    self.inner.as_str().len()
   }
 
   /// Support copy.copy.

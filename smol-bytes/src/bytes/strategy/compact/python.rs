@@ -1,6 +1,6 @@
 use crate::{
   Buf, OutOfBounds, RangeOutOfBounds,
-  python::{PyBufCmp, PyBufCommon, PyBufExt},
+  python::{PyBufCmp, PyBufCommon, PyBufExt, py_check_alloc},
 };
 use pyo3::{
   basic::CompareOp,
@@ -123,16 +123,20 @@ impl PyCompactBytes {
   /// Returns:
   ///     Bytes: A new immutable bytes object containing a copy of the data.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> b = Bytes.from_bytes(b"Hello")
   ///     >>> bytes(b)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> Self {
-    Self {
+  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
+    py_check_alloc(py_bytes.len())?;
+    Ok(Self {
       inner: super::Bytes::copy_from_slice(py_bytes),
-    }
+    })
   }
 
   /// Create a new immutable bytes object from a UTF-8 string.
@@ -145,16 +149,20 @@ impl PyCompactBytes {
   /// Returns:
   ///     Bytes: A new immutable bytes object containing the UTF-8 encoded string.
   ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
+  ///
   /// Example:
   ///     >>> b = Bytes.from_str("Hello")
   ///     >>> bytes(b)
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> Self {
-    Self {
+  fn __python_from_str(py_str: &str) -> PyResult<Self> {
+    py_check_alloc(py_str.len())?;
+    Ok(Self {
       inner: super::Bytes::from(py_str),
-    }
+    })
   }
 
   /// Return the contents as a Python `bytes` object.

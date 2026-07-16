@@ -1,5 +1,6 @@
 use super::*;
 use crate::python::{py_check_alloc, py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::utf8_buf::char_offset_to_byte;
 use pyo3::{basic::CompareOp, exceptions::PyValueError, prelude::*, types::PyBytes};
 
 #[derive(Debug)]
@@ -57,10 +58,14 @@ impl Utf8BytesMut {
   ///
   /// Returns:
   ///     Utf8BytesMut: A new mutable UTF-8 buffer.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[staticmethod]
   #[pyo3(name = "from_str")]
-  fn __python_from_str(s: &str) -> Self {
-    Self::from(s)
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    py_check_alloc(s.len())?;
+    Ok(Self::from(s))
   }
 
   /// Return the contents as a Python string.
@@ -125,9 +130,14 @@ impl Utf8BytesMut {
   ///
   /// Args:
   ///     s: The string to append.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "push_str")]
-  fn __python_push_str(&mut self, s: &str) {
+  fn __python_push_str(&mut self, s: &str) -> PyResult<()> {
+    py_check_alloc(s.len())?;
     self.push_str(s);
+    Ok(())
   }
 
   /// Clear the buffer.
@@ -136,45 +146,55 @@ impl Utf8BytesMut {
     self.clear();
   }
 
-  /// Truncate at a UTF-8 character boundary.
+  /// Truncate to `new_len` Unicode scalar values (characters).
+  ///
+  /// A length at or beyond the current character count leaves the buffer
+  /// unchanged.
   #[pyo3(name = "truncate")]
   fn __python_truncate(&mut self, new_len: usize) -> PyResult<()> {
-    self
-      .try_truncate(new_len)
-      .map_err(|error| PyValueError::new_err(error.to_string()))
+    match char_offset_to_byte(self.as_str(), new_len) {
+      Some(byte_len) => self
+        .try_truncate(byte_len)
+        .map_err(|error| PyValueError::new_err(error.to_string())),
+      None => Ok(()),
+    }
   }
 
-  /// Split at the given index.
+  /// Split at the given Unicode scalar value (character) offset.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8BytesMut: The content before the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
-      .try_split_to(at)
+      .try_split_to(byte_at)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
-  /// Split at the given index, returning the tail.
+  /// Split at the given Unicode scalar value (character) offset, returning the tail.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8BytesMut: The content after the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
-      .try_split_off(at)
+      .try_split_off(byte_at)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
@@ -219,6 +239,12 @@ impl Utf8BytesMut {
     self.capacity()
   }
 
+  /// Return the length in bytes.
+  #[pyo3(name = "byte_len")]
+  fn __python_byte_len(&self) -> usize {
+    self.len()
+  }
+
   /// Return whether the bytes are stored inline.
   #[pyo3(name = "is_inline")]
   fn __python_is_inline(&self) -> bool {
@@ -232,15 +258,23 @@ impl Utf8BytesMut {
   }
 
   /// Support copy.copy.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__copy__")]
-  fn __python_copy(&self) -> Self {
-    self.clone()
+  fn __python_copy(&self) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Support copy.deepcopy.
+  ///
+  /// Raises:
+  ///     MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "__deepcopy__")]
-  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> Self {
-    self.clone()
+  fn __python_deepcopy(&self, _memo: &Bound<'_, PyAny>) -> PyResult<Self> {
+    py_check_alloc(self.len())?;
+    Ok(self.clone())
   }
 
   /// Support pickling via `pickle.dumps` / `pickle.loads`.

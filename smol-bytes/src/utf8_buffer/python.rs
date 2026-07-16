@@ -1,4 +1,5 @@
 use crate::python::{py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::utf8_buf::char_offset_to_byte;
 
 use super::*;
 use pyo3::{
@@ -127,61 +128,76 @@ impl Utf8Buffer {
     self.clear();
   }
 
-  /// Truncate at a UTF-8 character boundary.
+  /// Truncate to `new_len` Unicode scalar values (characters).
+  ///
+  /// A length at or beyond the current character count leaves the buffer
+  /// unchanged.
   #[pyo3(name = "truncate")]
   fn __python_truncate(&mut self, new_len: usize) -> PyResult<()> {
-    self
-      .try_truncate(new_len)
-      .map_err(|error| PyValueError::new_err(error.to_string()))
+    match char_offset_to_byte(self.as_str(), new_len) {
+      Some(byte_len) => self
+        .try_truncate(byte_len)
+        .map_err(|error| PyValueError::new_err(error.to_string())),
+      None => Ok(()),
+    }
   }
 
-  /// Split the buffer at the given index, returning the head.
+  /// Split the buffer at the given Unicode scalar value (character) offset, returning the head.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Buffer: The content before the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
-      .try_split_to(at)
+      .try_split_to(byte_at)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
-  /// Split the buffer at the given index, returning the tail.
+  /// Split the buffer at the given Unicode scalar value (character) offset, returning the tail.
   ///
   /// Args:
-  ///     at: The split index (must be on a character boundary).
+  ///     at: The split offset in Unicode scalar values (characters).
   ///
   /// Returns:
   ///     Utf8Buffer: The content after the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is not on a character boundary or is out of bounds.
+  ///     ValueError: If `at` is out of range.
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
+    let byte_at = char_offset_to_byte(self.as_str(), at)
+      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
     self
-      .try_split_off(at)
+      .try_split_off(byte_at)
       .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Return a sub-slice of the buffer.
   ///
   /// Args:
-  ///     start: The start index (inclusive).
-  ///     end: The end index (exclusive).
+  ///     start: The start offset in Unicode scalar values (characters, inclusive).
+  ///     end: The end offset in Unicode scalar values (characters, exclusive).
   ///
   /// Returns:
   ///     Utf8Buffer: A new buffer containing the specified range.
   ///
   /// Raises:
-  ///     ValueError: If the range is not on character boundaries or is out of bounds.
+  ///     ValueError: If the range is out of bounds.
   #[pyo3(name = "slice")]
   fn __python_slice(&self, start: usize, end: usize) -> PyResult<Self> {
+    let s = self.as_str();
+    let start = char_offset_to_byte(s, start)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", start)))?;
+    let end = char_offset_to_byte(s, end)
+      .ok_or_else(|| PyValueError::new_err(format!("slice index {} out of range", end)))?;
     self
       .try_slice(start..end)
       .map_err(|e| PyValueError::new_err(e.to_string()))
@@ -190,6 +206,12 @@ impl Utf8Buffer {
   /// Return the length of the buffer in bytes.
   #[pyo3(name = "len")]
   fn __python_len_method(&self) -> usize {
+    self.len()
+  }
+
+  /// Return the length in bytes.
+  #[pyo3(name = "byte_len")]
+  fn __python_byte_len(&self) -> usize {
     self.len()
   }
 

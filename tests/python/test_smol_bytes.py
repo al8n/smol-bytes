@@ -1194,15 +1194,15 @@ class TestNativeProtocolDifferential:
                     assert after == before
 
     @pytest.mark.parametrize("make", [lambda: Utf8Buffer.from_str("éx"), lambda: Utf8BytesMut.from_str("éx")])
-    def test_utf8_truncate_is_fallible_and_unchanged_on_boundary_error(self, make):
+    def test_utf8_truncate_uses_char_offsets(self, make):
         value = make()
-        with pytest.raises(ValueError):
-            value.truncate(1)
+        value.truncate(1)  # keep one Unicode scalar value
+        assert str(value) == "é"
+        value = make()
+        value.truncate(2)  # length in characters: no-op
         assert str(value) == "éx"
-        value.truncate(2)
-        assert str(value) == "é"
-        value.truncate(99)
-        assert str(value) == "é"
+        value.truncate(99)  # beyond the character count: no-op
+        assert str(value) == "éx"
 
     def test_utf8_index_out_of_range(self):
         buf = Utf8Bytes.from_str("hi")
@@ -1305,11 +1305,11 @@ class TestSplitOperations:
         ],
         ids=["Utf8Buffer", "Utf8Bytes", "Utf8BytesMut"],
     )
-    def test_utf8_split_mid_char_raises(self, make_buf):
-        # "cafe" byte 4 is in the middle of the 2-byte e-acute
+    def test_utf8_split_out_of_range_raises(self, make_buf):
+        # "café" has four characters; a char offset beyond that is out of range
         buf = make_buf()
         with pytest.raises(ValueError):
-            buf.split_to(4)
+            buf.split_to(5)
 
     def test_split_out_of_bounds(self):
         buf = Buffer.from_bytes(b"hi")
@@ -1828,3 +1828,61 @@ class TestClearTruncate:
         buf = BytesMut.from_bytes(b"hello world")
         buf.truncate(5)
         assert bytes(buf) == b"hello"
+
+
+# ---------------------------------------------------------------------------
+# UTF-8 char-offset semantics for truncate / split / slice / byte_len
+# ---------------------------------------------------------------------------
+
+
+class TestUtf8CharOffsets:
+    """Offset-taking string methods interpret offsets as Unicode scalar values."""
+
+    def test_len_counts_scalar_values(self):
+        # c, a, f, é, space, crab emoji -> six scalar values
+        assert len(Utf8BytesMut.from_str("café 🦀")) == 6
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Utf8Buffer.from_str("café"),
+            lambda: Utf8BytesMut.from_str("café"),
+        ],
+        ids=["Utf8Buffer", "Utf8BytesMut"],
+    )
+    def test_truncate_at_char_offset_crossing_multibyte(self, make_buf):
+        buf = make_buf()
+        buf.truncate(3)  # keep "caf"; the é (byte offsets 3..5) is dropped
+        assert str(buf) == "caf"
+
+    def test_truncate_between_multibyte_chars(self):
+        buf = Utf8BytesMut.from_str("éé")
+        buf.truncate(1)  # keep one scalar value across a multibyte boundary
+        assert str(buf) == "é"
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Utf8Bytes.from_str("café 🦀"),
+            lambda: CompactUtf8Bytes.from_str("café 🦀"),
+        ],
+        ids=["Utf8Bytes", "CompactUtf8Bytes"],
+    )
+    def test_split_to_at_char_offset(self, make_buf):
+        head = make_buf().split_to(4)  # four scalar values -> "café"
+        assert str(head) == "café"
+
+    @pytest.mark.parametrize(
+        "make_buf",
+        [
+            lambda: Utf8Buffer.from_str("café 🦀"),
+            lambda: Utf8Bytes.from_str("café 🦀"),
+            lambda: CompactUtf8Bytes.from_str("café 🦀"),
+            lambda: Utf8BytesMut.from_str("café 🦀"),
+        ],
+        ids=["Utf8Buffer", "Utf8Bytes", "CompactUtf8Bytes", "Utf8BytesMut"],
+    )
+    def test_byte_len_reports_byte_length(self, make_buf):
+        buf = make_buf()
+        assert len(buf) == 6
+        assert buf.byte_len() == len("café 🦀".encode("utf-8"))
