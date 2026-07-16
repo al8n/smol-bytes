@@ -30,7 +30,7 @@ jobs:
       - name: Check Wasm feature combinations
         run: |
           test "$(wasm-pack --version)" = "wasm-pack 0.13.1"
-          cargo tree -p smol-bytes --no-default-features --features wasm -i wasm-bindgen | grep -Fx 'wasm-bindgen v0.2.105'
+          cargo tree -p smol-bytes --no-default-features --features wasm -i wasm-bindgen | grep -Fx 'wasm-bindgen v0.2.126'
           cargo check -p smol-bytes --no-default-features --features wasm --target wasm32-unknown-unknown
           cargo check -p smol-bytes --no-default-features --features wasm,serde,borsh,arbitrary,quickcheck --target wasm32-unknown-unknown
       - name: Build wasm

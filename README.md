@@ -206,7 +206,7 @@ Binding behavior worth knowing:
 ## JavaScript / WebAssembly from source
 
 Install Node.js 20, `wasm-pack` 0.13.1, and the `wasm32-unknown-unknown`
-target. The generated package is pinned to wasm-bindgen 0.2.105 for
+target. The generated package is pinned to wasm-bindgen 0.2.126 for
 reproducibility:
 
 ```bash
