@@ -106,7 +106,7 @@ impl PySharedUtf8Bytes {
         .inner
         .as_str()
         .len()
-        .saturating_mul(4)
+        .saturating_mul(6)
         .saturating_add(64),
     )?;
     Ok(format!("{:?}", self.inner))
@@ -773,7 +773,7 @@ impl PyCompactUtf8Bytes {
         .inner
         .as_str()
         .len()
-        .saturating_mul(4)
+        .saturating_mul(6)
         .saturating_add(64),
     )?;
     Ok(format!("{:?}", self.inner))

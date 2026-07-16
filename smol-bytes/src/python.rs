@@ -125,26 +125,26 @@ pub(crate) enum NormalizedSubscript {
   Slice(PySliceIndices),
 }
 
-/// Returns every selected normalized slice position exactly once.
+/// Returns every selected normalized slice position exactly once, already
+/// converted to a valid Rust index.
 ///
 /// `PySlice::indices` guarantees that every selected position lies in the
-/// logical sequence. Keeping the positions signed until their use avoids
-/// accidentally turning a reverse-slice sentinel into a Rust index. The
-/// final selected position is never advanced, which matters for a maximal
-/// Python slice step in debug builds.
-pub(crate) fn normalized_slice_positions(indices: &PySliceIndices) -> PyResult<Vec<isize>> {
+/// logical sequence, so each converted position is a valid index into it.
+/// The final selected position is never advanced, which matters for a
+/// maximal Python slice step in debug builds.
+pub(crate) fn normalized_slice_positions(indices: &PySliceIndices) -> PyResult<Vec<usize>> {
   // Guard the positions `Vec` here so every caller is covered at one choke point.
   py_check_alloc(
     indices
       .slicelength
-      .saturating_mul(core::mem::size_of::<isize>()),
+      .saturating_mul(core::mem::size_of::<usize>()),
   )?;
   let mut positions = Vec::with_capacity(indices.slicelength);
   let mut position = indices.start;
   let mut remaining = indices.slicelength;
 
   while remaining != 0 {
-    positions.push(position);
+    positions.push(normalized_slice_position(position)?);
     remaining -= 1;
     if remaining != 0 {
       position = position
@@ -226,7 +226,7 @@ pub(crate) fn py_bytes_getitem(data: &[u8], index: &Bound<'_, PyAny>) -> PyResul
       py_check_alloc(indices.slicelength)?;
       let mut result = std::vec::Vec::with_capacity(indices.slicelength);
       for position in normalized_slice_positions(&indices)? {
-        result.push(data[normalized_slice_position(position)?]);
+        result.push(data[position]);
       }
       Ok(PyBytes::new(py, &result).into())
     }
@@ -260,11 +260,16 @@ pub(crate) fn py_str_getitem(value: &str, index: &Bound<'_, PyAny>) -> PyResult<
       Ok(PyString::new(py, &value[start..stop]).into())
     }
     NormalizedSubscript::Slice(indices) => {
-      py_check_alloc(char_len.saturating_mul(core::mem::size_of::<char>()))?;
+      // Guards both the `chars` Vec built below and the `result` String it
+      // feeds: each selected char can cost up to 4 UTF-8 bytes in `result`.
+      py_check_alloc(
+        char_len
+          .saturating_mul(core::mem::size_of::<char>())
+          .saturating_add(indices.slicelength.saturating_mul(4)),
+      )?;
       let chars: std::vec::Vec<char> = value.chars().collect();
       let mut result = std::string::String::new();
       for position in normalized_slice_positions(&indices)? {
-        let position = normalized_slice_position(position)?;
         let ch = chars
           .get(position)
           .ok_or_else(|| PyIndexError::new_err("string index out of range"))?;
@@ -739,11 +744,8 @@ pub trait PyBufMutExt: PyBufExt + AsMut<[u8]> + BufMut {
         }
 
         // General (extended-step) path: `normalized_slice_positions` preflights
-        // its own allocation, covering the mapped positions collected below.
-        let positions = normalized_slice_positions(&indices)?
-          .into_iter()
-          .map(normalized_slice_position)
-          .collect::<PyResult<Vec<_>>>()?;
+        // its own allocation and already returns valid Rust indices.
+        let positions = normalized_slice_positions(&indices)?;
 
         if bytes.len() != positions.len() {
           return Err(PyValueError::new_err(format!(

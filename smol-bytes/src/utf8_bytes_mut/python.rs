@@ -75,7 +75,7 @@ impl Utf8BytesMut {
 
   /// Return a debug representation.
   fn __repr__(&self) -> PyResult<String> {
-    py_check_alloc(self.len().saturating_mul(4).saturating_add(64))?;
+    py_check_alloc(self.len().saturating_mul(6).saturating_add(64))?;
     Ok(format!("{:?}", self))
   }
 

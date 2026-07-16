@@ -1266,6 +1266,15 @@ class TestSliceAssignmentAllocationGuards:
         value[subscript] = value
         assert bytes(value) == bytes(expected)
 
+    def test_heap_bytesmut_reverse_self_assignment(self):
+        payload = bytes(range(100))  # > 62 bytes forces the heap representation
+        expected = bytearray(payload)
+        expected[::-1] = expected
+        buf = BytesMut.from_bytes(payload)
+        assert buf.is_heap()
+        buf[::-1] = buf
+        assert bytes(buf) == bytes(expected)
+
 
 # ---------------------------------------------------------------------------
 # 8. Split operations
@@ -1805,6 +1814,11 @@ class TestMultibyteUtf8:
         assert buf.get_u16() == int.from_bytes("\u00e9".encode(), "big")
         assert str(buf) == "x"
 
+    def test_reversed_slice_matches_str_for_mixed_content(self):
+        value = "caf\u00e9 \U0001f980abc"
+        buf = Utf8Bytes.from_str(value)
+        assert buf[::-1] == value[::-1]
+
 
 # ---------------------------------------------------------------------------
 # Additional: __contains__
@@ -1850,6 +1864,14 @@ class TestRepr:
         buf = Utf8Bytes.from_str("hi")
         r = repr(buf)
         assert isinstance(r, str)
+
+    def test_utf8_bytes_repr_with_control_character(self):
+        # DEL (0x7f) has no short Debug escape, so Rust emits the 6-byte
+        # `\u{7f}` form; this pins the repr allocation guard sized for it.
+        buf = Utf8Bytes.from_str("a\x7fb")
+        r = repr(buf)
+        assert isinstance(r, str)
+        assert "\\u{7f}" in r
 
 
 # ---------------------------------------------------------------------------
