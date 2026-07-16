@@ -175,7 +175,7 @@ jobs:
     name: msrv-library
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.85.0
         with:
           targets: wasm32-unknown-unknown
@@ -194,7 +194,7 @@ jobs:
     name: rustdoc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: RUSTDOCFLAGS=-Dwarnings cargo doc -p smol-bytes --no-deps --no-default-features --features std,serde,borsh,arbitrary,quickcheck
   
