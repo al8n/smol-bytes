@@ -32,13 +32,16 @@ This is a good fit when most values are small and cloned often — tokens in a
 lexer, keys and field names, protocol headers — and allocation pressure
 matters.
 
-This repository is unpublished: Rust, Python, and JavaScript packages build
-from source. For production Rust use, pin a reviewed Git revision:
+## Install
 
 ```toml
 [dependencies]
-smol-bytes = { git = "https://github.com/al8n/smol-bytes", rev = "<reviewed-revision>" }
+smol-bytes = "0.1"
 ```
+
+Python (`pip install smol-bytes`) and JavaScript (`npm install smol-bytes`)
+packages are also published; build-from-source instructions for each binding
+are below.
 
 ## Quick start
 
@@ -157,9 +160,12 @@ The test and CI story is deliberately heavier than the crate's size:
   bounded chunks instead of trusting the length prefix, and serde sequence
   hints are capped before preallocating.
 
-## Python from source
+## Python
 
-Python 3.11+, Rust, and `maturin` are required:
+Install the published package with `pip install smol-bytes` (Python 3.11+).
+
+To build from a checkout instead, Python 3.11+, Rust, and `maturin` are
+required:
 
 ```bash
 python -m venv .venv
@@ -203,11 +209,13 @@ Binding behavior worth knowing:
 - Slice assignment on the mutable classes requires matching lengths, and
   contiguous assignments take a direct copy fast path.
 
-## JavaScript / WebAssembly from source
+## JavaScript / WebAssembly
 
-Install Node.js 20, `wasm-pack` 0.13.1, and the `wasm32-unknown-unknown`
-target. The generated package is pinned to wasm-bindgen 0.2.126 for
-reproducibility:
+Install the published package with `npm install smol-bytes`.
+
+To build from a checkout instead, install Node.js 20, `wasm-pack` 0.13.1, and
+the `wasm32-unknown-unknown` target. The generated package is pinned to
+wasm-bindgen 0.2.126 for reproducibility:
 
 ```bash
 rustup target add wasm32-unknown-unknown
