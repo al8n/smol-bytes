@@ -2,12 +2,14 @@
 resolver = "3"
 members = [
   "smol-bytes",
+  "smol-bytes-py",
+  "smol-bytes-wasm",
 ]
 
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.1.1"
+version = "0.1.2"
 repository = "https://github.com/al8n/smol-bytes"
 homepage = "https://github.com/al8n/smol-bytes"
 description = "High-performance, clone-efficient byte buffers optimized for small data."
@@ -27,3 +29,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(all_tests)',
   'cfg(coverage)',
 ] }
+
+[profile.release]
+lto = true
+codegen-units = 1

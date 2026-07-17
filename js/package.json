@@ -32,7 +32,7 @@
     "pkg/smol_bytes_bg.wasm.d.ts"
   ],
   "scripts": {
-    "build:wasm": "cd .. && wasm-pack build smol-bytes --target bundler --out-dir ../js/pkg -- --features wasm",
+    "build:wasm": "cd .. && wasm-pack build smol-bytes-wasm --target bundler --out-dir ../js/pkg --out-name smol_bytes -- --features wasm",
     "build:js": "tsc",
     "build": "npm run build:wasm && npm run build:js",
     "test": "vitest run && npm run test:package",

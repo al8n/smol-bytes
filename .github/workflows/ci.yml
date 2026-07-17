@@ -92,9 +92,9 @@ jobs:
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check featureless no_std rlib
-        run: cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
+        run: cargo check --package smol-bytes --lib --no-default-features
       - name: Check portable feature powerset rlib
-        run: cargo hack --package smol-bytes --feature-powerset --include-features alloc,std,serde,borsh,arbitrary,quickcheck --exclude-features pyo3,wasm rustc --lib --crate-type rlib
+        run: cargo hack --package smol-bytes --feature-powerset --include-features alloc,std,serde,borsh,arbitrary,quickcheck --exclude-features pyo3,wasm check --lib
       - name: Check isolated binding features
         run: |
           cargo check -p smol-bytes --no-default-features --features pyo3
@@ -142,7 +142,7 @@ jobs:
       - name: cargo rustc --target ${{ matrix.target }}
         run: |
           rustup target add ${{ matrix.target }}
-          cargo rustc --package smol-bytes --lib --target ${{ matrix.target }} --crate-type rlib
+          cargo check --package smol-bytes --lib --target ${{ matrix.target }}
 
   build:
     name: build
@@ -181,11 +181,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Check supported library configurations only
         run: |
-          # The package also produces a cdylib for bindings. Build the no_std
-          # library configurations as rlibs so they do not require an
-          # application panic handler.
-          cargo rustc -p smol-bytes --lib --no-default-features --crate-type rlib
-          cargo rustc -p smol-bytes --lib --no-default-features --features alloc --crate-type rlib
+          cargo check -p smol-bytes --lib --no-default-features
+          cargo check -p smol-bytes --lib --no-default-features --features alloc
           cargo check -p smol-bytes --lib --no-default-features --features std,serde,borsh,arbitrary,quickcheck
           cargo check -p smol-bytes --lib --no-default-features --features pyo3
           cargo check -p smol-bytes --lib --no-default-features --features wasm --target wasm32-unknown-unknown
