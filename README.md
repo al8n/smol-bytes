@@ -171,7 +171,7 @@ required:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install maturin pytest
-maturin develop --features pyo3 --manifest-path smol-bytes/Cargo.toml
+maturin develop --features pyo3 --manifest-path smol-bytes-py/Cargo.toml
 python -m pytest tests/python -v
 ```
 
@@ -228,7 +228,7 @@ npm test
 The Wasm build entry point is:
 
 ```bash
-wasm-pack build smol-bytes --target bundler --out-dir ../js/pkg -- --features wasm
+wasm-pack build smol-bytes-wasm --target bundler --out-dir ../js/pkg --out-name smol_bytes -- --features wasm
 ```
 
 The root export contains the core, mutable, and shared UTF-8 types; the

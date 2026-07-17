@@ -1,0 +1,23 @@
+[package]
+name = "smol-bytes-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "WebAssembly bindings for smol-bytes."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+wasm = ["dep:wasm-bindgen", "smol-bytes/wasm"]
+
+[dependencies]
+smol-bytes = { path = "../smol-bytes", default-features = false }
+wasm-bindgen = { version = "=0.2.126", default-features = false, features = ["strict-macro"], optional = true }

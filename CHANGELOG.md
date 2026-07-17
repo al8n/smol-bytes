@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-18
+
+### Fixed
+
+- `smol-bytes` is now built as a plain `rlib` instead of
+  `crate-type = ["cdylib", "rlib"]`, so it can be used as a dependency in
+  `no_std` targets. The forced `cdylib` previously pulled in a `#[panic_handler]`
+  requirement that broke every downstream `no_std` build.
+
+### Changed
+
+- The Python (`pyo3`) and WebAssembly (`wasm`) bindings now ship through two thin
+  wrapper crates, `smol-bytes-py` and `smol-bytes-wasm`, which provide the
+  `cdylib` artifacts. All binding code stays in `smol-bytes` (feature-gated);
+  maturin and wasm-pack now target the wrapper crates.
+
 ## [0.1.0] - 2026-07-16
 
 Initial release.
@@ -42,5 +58,6 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/al8n/smol-bytes/compare/v0.1.1...v0.1.2
 [0.1.0]: https://github.com/al8n/smol-bytes/releases/tag/v0.1.0

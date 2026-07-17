@@ -18,4 +18,4 @@ classifiers = [
 features = ["pyo3"]
 module-name = "smol_bytes._smol_bytes"
 python-source = "python"
-manifest-path = "smol-bytes/Cargo.toml"
+manifest-path = "smol-bytes-py/Cargo.toml"

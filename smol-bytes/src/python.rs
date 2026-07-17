@@ -827,24 +827,3 @@ pub fn register_compact(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<
   m.getattr("Utf8Bytes")?.setattr("__module__", module_name)?;
   Ok(())
 }
-
-#[pymodule]
-fn _smol_bytes(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-  register_classes(m, "smol_bytes")?;
-
-  let shared = PyModule::new(m.py(), "shared")?;
-  register_shared(&shared, "smol_bytes.shared")?;
-  m.add_submodule(&shared)?;
-  py.import("sys")?
-    .getattr("modules")?
-    .set_item("smol_bytes._smol_bytes.shared", &shared)?;
-
-  let compact = PyModule::new(m.py(), "compact")?;
-  register_compact(&compact, "smol_bytes.compact")?;
-  m.add_submodule(&compact)?;
-  py.import("sys")?
-    .getattr("modules")?
-    .set_item("smol_bytes._smol_bytes.compact", &compact)?;
-
-  Ok(())
-}

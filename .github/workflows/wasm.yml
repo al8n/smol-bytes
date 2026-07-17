@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SMOL_BYTES_CRATE: smol-bytes
+  SMOL_BYTES_CRATE: smol-bytes-wasm
   WASM_OUT_DIR: ../js/pkg
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
           cargo check -p smol-bytes --no-default-features --features wasm --target wasm32-unknown-unknown
           cargo check -p smol-bytes --no-default-features --features wasm,serde,borsh,arbitrary,quickcheck --target wasm32-unknown-unknown
       - name: Build wasm
-        run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} -- --features wasm
+        run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} --out-name smol_bytes -- --features wasm
       - name: Install JS deps
         run: cd js && npm ci
       - name: Build JS
@@ -60,7 +60,7 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-      - run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} -- --features wasm
+      - run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} --out-name smol_bytes -- --features wasm
       - run: cd js && npm ci && npm run build:js && npm test && npm pack --dry-run
       - run: cd js && npm publish
         env:
