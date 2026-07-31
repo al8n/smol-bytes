@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Optional `async-graphql` feature registering six GraphQL scalars:
+  `SmolSharedBytes`, `SmolCompactBytes` and `SmolBuffer` map to
+  `Value::Binary`; `SmolSharedUtf8Bytes`, `SmolCompactUtf8Bytes` and
+  `SmolUtf8Buffer` map to `Value::String`. `shared::Bytes` parses and
+  serialises without copying. `Buffer` and `Utf8Buffer` reject a payload over
+  `INLINE_CAP` with an error naming the limit rather than truncating, and
+  their `is_valid` applies the same length check so it accepts exactly what
+  `parse` accepts. The names are prefixed so a schema can hold these and
+  `async-graphql`'s own `Bytes` scalar at once. The feature implies `std` and
+  requires Rust 1.89.
+
 ## [0.1.2] - 2026-07-18
 
 ### Fixed
