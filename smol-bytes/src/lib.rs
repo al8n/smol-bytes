@@ -54,6 +54,10 @@ mod bytes_mut;
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
 mod python;
 
+#[cfg(feature = "sqlx")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlx")))]
+mod sql;
+
 #[cfg(feature = "wasm")]
 mod wasm;
 #[cfg(feature = "wasm")]

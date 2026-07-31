@@ -135,6 +135,7 @@ allows:
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
+| `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for the value types; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
@@ -144,7 +145,9 @@ With no features enabled the crate is `no_std` and provides the fixed
 
 Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
 Development-only test and benchmark dependencies can require a newer
-compiler.
+compiler, as does the `sqlx` feature: sqlx 0.9 declares Rust 1.94, and 0.9 is
+the floor because the impls are written against the lifetime-free
+`Database::ArgumentBuffer` introduced in that release.
 
 ## Verification
 

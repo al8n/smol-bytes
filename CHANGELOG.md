@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Optional `sqlx` feature implementing `Type`, `Encode` and `Decode` for
+  `shared::Bytes`, `compact::Bytes`, `Buffer`, `shared::Utf8Bytes`,
+  `compact::Utf8Bytes` and `Utf8Buffer`. The impls are generic over
+  `Database`, delegating to `[u8]`/`Vec<u8>`/`&[u8]` and `str`/`String`/`&str`,
+  so PostgreSQL, MySQL and SQLite are all covered. UTF-8 is validated on the
+  decode path by the driver rather than assumed. `Buffer` and `Utf8Buffer`
+  reject a row over `INLINE_CAP` with an error naming the limit rather than
+  truncating. The feature implies `std` and requires Rust 1.94.
+
 ## [0.1.2] - 2026-07-18
 
 ### Fixed
