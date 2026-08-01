@@ -99,13 +99,17 @@ jobs:
         run: |
           cargo check -p smol-bytes --no-default-features --features pyo3
           cargo check -p smol-bytes --no-default-features --features pyo3,serde,borsh,arbitrary,quickcheck
-      # Kept out of the powerset above: `async-graphql` pulls a large tree and
-      # requires a newer compiler than this crate's MSRV, so it is checked on
+      # Kept out of the powerset above: each of these pulls a large tree and
+      # requires a newer compiler than this crate's MSRV, so each is checked on
       # its own. The tests are `--lib`-scoped because that is where they live.
       - name: Check isolated async-graphql feature
         run: |
           cargo check -p smol-bytes --no-default-features --features async-graphql
           cargo test -p smol-bytes --lib --no-default-features --features async-graphql
+      - name: Check isolated sqlx feature
+        run: |
+          cargo check -p smol-bytes --no-default-features --features sqlx
+          cargo test -p smol-bytes --lib --no-default-features --features sqlx
       - name: Test alloc-only quickcheck
         run: cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
 
