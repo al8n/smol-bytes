@@ -1,38 +1,59 @@
 //! [`async-graphql`](https://docs.rs/async-graphql) scalar bindings.
 //!
-//! ## Which shape each type gets
+//! ## Which types, and which scalar
 //!
-//! Byte types map to `Value::Binary`, UTF-8 types map to `Value::String`.
-//! The split is what lets [`Utf8Bytes`](crate::shared::Utf8Bytes) sit in a text
-//! position in a schema instead of being an opaque blob: a `String`-shaped
-//! scalar is readable in a query document and survives a JSON transport, which
-//! `Value::Binary` does not. Nothing in the GraphQL grammar produces a binary
-//! literal and `serde_json` never calls `visit_bytes`, so `Value::Binary` only
-//! ever arrives through a binary variables encoding such as CBOR.
+//! | Rust type | GraphQL scalar | GraphQL value |
+//! | --- | --- | --- |
+//! | [`shared::Bytes`](crate::shared::Bytes) | `Bytes` | `Value::Binary` |
+//! | [`compact::Bytes`](crate::compact::Bytes) | `Bytes` | `Value::Binary` |
+//! | [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) | `String` | `Value::String` |
+//! | [`compact::Utf8Bytes`](crate::compact::Utf8Bytes) | `String` | `Value::String` |
 //!
-//! ## Scalar names
+//! A scalar name is a wire type, and there are two of those here: a binary one
+//! and a UTF-8 text one. [`shared`](crate::shared) and
+//! [`compact`](crate::compact) are two strategies for holding the same wire
+//! value, and which one a program picks is not something a schema can act on,
+//! so both register under one name. Nothing is lost by sharing it: `parse` and
+//! `to_value` resolve on the Rust type, so the type written in a field
+//! signature is still the one that gets built.
 //!
-//! Every scalar registered here is named
+//! The byte/text split is what lets [`Utf8Bytes`](crate::shared::Utf8Bytes) sit
+//! in a text position in a schema instead of being an opaque blob: a
+//! `String`-shaped scalar is readable in a query document and survives a JSON
+//! transport, which `Value::Binary` does not. Nothing in the GraphQL grammar
+//! produces a binary literal and `serde_json` never calls `visit_bytes`, so
+//! `Value::Binary` only ever arrives through a binary variables encoding such
+//! as CBOR.
 //!
-//! > `Smol` + *strategy, when the crate spells the type once per strategy* +
-//! > *the Rust type name*
+//! The text scalars accept **only** `Value::String`. Accepting `Value::Binary`
+//! would require UTF-8 validation, and keeping `is_valid` in agreement with
+//! `parse` would mean running that validation inside `is_valid` too — which
+//! `async-graphql` documents as a cheap pre-check run during query validation.
+//! That is a second scan of the whole payload on every request.
+//! `async-graphql`'s own `String` and `SmolStr` scalars are likewise
+//! `Value::String`-only. Callers holding bytes should use the binary scalar and
+//! this crate's checked `TryFrom` conversions.
 //!
-//! giving `SmolSharedBytes`, `SmolCompactBytes`, `SmolSharedUtf8Bytes` and
-//! `SmolCompactUtf8Bytes`.
+//! ## `String` is a built-in, and is reused rather than redeclared
 //!
-//! The `Smol` prefix is not decoration. `async-graphql` registers its own
-//! `bytes::Bytes` under the GraphQL name `Bytes`, unconditionally — that
-//! integration is not feature-gated, because `Value::Binary` holds a
-//! `bytes::Bytes`. A schema using both it and a scalar of ours named `Bytes`
-//! would declare two different types under one name. The same hazard already
-//! exists inside `async-graphql`, where `Duration` is claimed by
-//! `chrono::Duration` and by `jiff::Span`. Prefixing sidesteps it: the only
-//! name `async-graphql` 7.x registers that starts with `Smol` is `SmolStr`,
-//! and no type here is called `Str`.
+//! The five built-in scalars are implicitly defined by the specification, so a
+//! schema that emits `scalar String` is malformed. Two independent mechanisms
+//! in `async-graphql` keep that line from ever appearing here.
+//! `Registry::add_system_types` registers `Boolean`, `Int`, `Float`, `String`
+//! and `ID` before the walk reaches any user type, and `Registry::create_type`
+//! drops a later claimant of a name a scalar already holds — so the text
+//! scalars always resolve to the built-in rather than replacing it. And
+//! `Registry::export_sdl` skips the five by name regardless of what is
+//! registered under them.
 //!
-//! The strategy segment is required because `Bytes` and `Utf8Bytes` each exist
-//! twice, once per [strategy](crate::compact), and the two differ in
-//! allocation behaviour — they are genuinely different scalars, not aliases.
+//! `Bytes` is not privileged that way. `async-graphql` registers its own
+//! `bytes::Bytes` under `Bytes` unconditionally — that integration is not
+//! feature-gated, because `Value::Binary` holds a `bytes::Bytes` — so a schema
+//! holding it and these types declares `Bytes` exactly once, from whichever
+//! claimant the walk reaches first. The description that survives therefore has
+//! to be true of all of them, which is why the ones below describe the wire
+//! type and never the strategy, and why the two claimants here carry the same
+//! description: which of the two wins is then unobservable.
 //!
 //! ## The capped types have no scalar
 //!
@@ -47,12 +68,22 @@
 //!
 //! ## Copying
 //!
-//! Each `impl` documents its own behaviour. In summary, on the byte side
 //! [`shared::Bytes`](crate::shared::Bytes) is allocation-free in *both*
-//! directions, because `Value::Binary` carries the very `bytes::Bytes` that
-//! the shared strategy stores. On the text side no direction can be
-//! allocation-free, because `Value::String` owns a `String` and `to_value`
-//! only has `&self` to hand it.
+//! directions for a heap-backed value: `parse` moves the incoming
+//! `bytes::Bytes` in without inspecting its length, and `to_value` hands
+//! `Value::Binary` a reference-counted clone of the same allocation. An inline
+//! value costs one allocation of at most [`INLINE_CAP`](crate::INLINE_CAP)
+//! bytes on the way out, which `Value::Binary` makes unavoidable.
+//!
+//! [`compact::Bytes`](crate::compact::Bytes) differs only on the way in: a
+//! payload that fits inline is copied and the incoming allocation released,
+//! which is that strategy's whole purpose.
+//!
+//! Neither text type can be allocation-free in either direction, because
+//! `Value::String` owns a `String` and `to_value` only has `&self`. `parse`
+//! does take the `String` by value, so above [`INLINE_CAP`](crate::INLINE_CAP)
+//! bytes its allocation is moved in and at or below it is copied inline and
+//! released — a length-driven split, identical for both strategies.
 
 use async_graphql::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
 
@@ -61,14 +92,8 @@ use crate::{
   shared::{Bytes as SharedBytes, Utf8Bytes as SharedUtf8Bytes},
 };
 
-/// Binary data held in a `smol_bytes::shared::Bytes`, which stores up to 62
-/// bytes inline and reference-counts anything larger. Both directions are
-/// allocation-free for a heap-backed value: parsing moves the incoming
-/// `bytes::Bytes` in without inspecting its length, and serialising hands back
-/// a reference-counted clone of the same allocation. An inline value costs one
-/// allocation of at most 62 bytes on the way out, which `Value::Binary` makes
-/// unavoidable.
-#[Scalar(name = "SmolSharedBytes")]
+/// Binary data of any length.
+#[Scalar(name = "Bytes")]
 impl ScalarType for SharedBytes {
   fn parse(value: Value) -> InputValueResult<Self> {
     match value {
@@ -86,13 +111,8 @@ impl ScalarType for SharedBytes {
   }
 }
 
-/// Binary data held in a `smol_bytes::compact::Bytes`, which inlines whatever
-/// fits in 62 bytes rather than keeping a heap allocation alive. Parsing a
-/// longer payload moves the incoming `bytes::Bytes` in unchanged; a shorter one
-/// is copied inline and the incoming allocation released, which is the whole
-/// point of the compact strategy. Serialising a heap-backed value is
-/// allocation-free; an inline one costs one allocation of at most 62 bytes.
-#[Scalar(name = "SmolCompactBytes")]
+/// Binary data of any length.
+#[Scalar(name = "Bytes")]
 impl ScalarType for CompactBytes {
   fn parse(value: Value) -> InputValueResult<Self> {
     match value {
@@ -110,20 +130,8 @@ impl ScalarType for CompactBytes {
   }
 }
 
-/// UTF-8 text held in a `smol_bytes::shared::Utf8Bytes`. Parsing takes the
-/// `String` by value: above 62 bytes its allocation is moved into the
-/// reference-counted representation, at or below 62 bytes it is copied inline
-/// and released. The UTF-8 invariant costs nothing here — the source is already
-/// a `String`, and the type reads itself back with `from_utf8_unchecked`.
-/// Serialising always allocates, because `Value::String` owns its `String`.
-///
-/// Only `Value::String` is accepted. `Value::Binary` carries no UTF-8
-/// guarantee, and validating it inside `is_valid` — which `async-graphql`
-/// documents as a cheap pre-check run during query validation — would scan
-/// every byte of the payload, then scan it again in `parse`. Decode such input
-/// through `SmolSharedBytes` and this crate's checked `TryFrom` conversions
-/// instead.
-#[Scalar(name = "SmolSharedUtf8Bytes")]
+/// UTF-8 text of any length.
+#[Scalar(name = "String")]
 impl ScalarType for SharedUtf8Bytes {
   fn parse(value: Value) -> InputValueResult<Self> {
     match value {
@@ -141,12 +149,8 @@ impl ScalarType for SharedUtf8Bytes {
   }
 }
 
-/// UTF-8 text held in a `smol_bytes::compact::Utf8Bytes`. Parsing behaves
-/// exactly as `SmolSharedUtf8Bytes` — for a value built from a `String` the
-/// inline/heap split is decided by length, not by strategy — but the compact
-/// strategy keeps collapsing the value back inline as it shrinks.
-/// `Value::Binary` is rejected for the same reason as `SmolSharedUtf8Bytes`.
-#[Scalar(name = "SmolCompactUtf8Bytes")]
+/// UTF-8 text of any length.
+#[Scalar(name = "String")]
 impl ScalarType for CompactUtf8Bytes {
   fn parse(value: Value) -> InputValueResult<Self> {
     match value {
@@ -166,7 +170,7 @@ impl ScalarType for CompactUtf8Bytes {
 
 #[cfg(test)]
 mod tests {
-  use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
+  use async_graphql::{EmptyMutation, EmptySubscription, InputType, Object, Schema};
 
   use super::*;
   use crate::INLINE_CAP;
@@ -220,22 +224,9 @@ mod tests {
     assert_eq!(kept.as_slice().as_ptr(), address);
   }
 
-  #[test]
-  fn text_scalars_refuse_binary_and_byte_scalars_refuse_text() {
-    let bytes = binary(4);
-    let text = Value::String("data".into());
-
-    assert!(!<SharedUtf8Bytes as ScalarType>::is_valid(&bytes));
-    assert!(<SharedUtf8Bytes as ScalarType>::parse(bytes.clone()).is_err());
-    assert!(!<CompactUtf8Bytes as ScalarType>::is_valid(&bytes));
-    assert!(<CompactUtf8Bytes as ScalarType>::parse(bytes).is_err());
-
-    assert!(!<SharedBytes as ScalarType>::is_valid(&text));
-    assert!(<SharedBytes as ScalarType>::parse(text.clone()).is_err());
-    assert!(!<CompactBytes as ScalarType>::is_valid(&text));
-    assert!(<CompactBytes as ScalarType>::parse(text).is_err());
-  }
-
+  /// Sharing a scalar name is a schema-level collapse only. Every type still
+  /// parses through its own `ScalarType` impl, including at lengths a capped
+  /// type would have refused.
   #[test]
   fn every_scalar_round_trips() {
     let short = b"smol".as_slice();
@@ -282,52 +273,129 @@ mod tests {
     }
   }
 
+  /// The registry keeps one type per name and silently drops the rest, so a
+  /// name claimed by four Rust types is registered from one of them. Argument
+  /// decoding does not go through the registry: it calls `InputType::parse` on
+  /// the type in the signature. Each of the four must therefore come back as
+  /// itself, out of a `Value` any of the others could have produced.
+  #[test]
+  fn input_parse_resolves_on_the_rust_type() {
+    let bytes = binary(4096);
+    assert_eq!(
+      <SharedBytes as InputType>::parse(Some(bytes.clone()))
+        .unwrap()
+        .len(),
+      4096
+    );
+    assert_eq!(
+      <CompactBytes as InputType>::parse(Some(bytes))
+        .unwrap()
+        .len(),
+      4096
+    );
+
+    let text = Value::String("é".repeat(4096));
+    assert_eq!(
+      <SharedUtf8Bytes as InputType>::parse(Some(text.clone()))
+        .unwrap()
+        .as_str(),
+      "é".repeat(4096)
+    );
+    assert_eq!(
+      <CompactUtf8Bytes as InputType>::parse(Some(text))
+        .unwrap()
+        .as_str(),
+      "é".repeat(4096)
+    );
+  }
+
+  #[test]
+  fn text_scalars_refuse_binary_and_byte_scalars_refuse_text() {
+    let bytes = binary(4);
+    let text = Value::String("data".into());
+
+    assert!(!<SharedUtf8Bytes as ScalarType>::is_valid(&bytes));
+    assert!(<SharedUtf8Bytes as ScalarType>::parse(bytes.clone()).is_err());
+    assert!(!<CompactUtf8Bytes as ScalarType>::is_valid(&bytes));
+    assert!(<CompactUtf8Bytes as ScalarType>::parse(bytes).is_err());
+
+    assert!(!<SharedBytes as ScalarType>::is_valid(&text));
+    assert!(<SharedBytes as ScalarType>::parse(text.clone()).is_err());
+    assert!(!<CompactBytes as ScalarType>::is_valid(&text));
+    assert!(<CompactBytes as ScalarType>::parse(text).is_err());
+  }
+
   struct Query;
 
   #[Object]
   impl Query {
-    async fn shared_bytes(&self) -> SharedBytes {
-      SharedBytes::new()
+    /// Every type appears in both an output and an input position, so the
+    /// schema below is built from both `OutputType::create_type_info` and
+    /// `InputType::create_type_info` for all four.
+    async fn shared_bytes(&self, echo: SharedBytes) -> SharedBytes {
+      echo
     }
 
-    async fn compact_bytes(&self) -> CompactBytes {
-      CompactBytes::new()
+    async fn compact_bytes(&self, echo: CompactBytes) -> CompactBytes {
+      echo
     }
 
-    async fn shared_utf8_bytes(&self) -> SharedUtf8Bytes {
-      SharedUtf8Bytes::new()
+    async fn shared_utf8_bytes(&self, echo: SharedUtf8Bytes) -> SharedUtf8Bytes {
+      echo
     }
 
-    async fn compact_utf8_bytes(&self) -> CompactUtf8Bytes {
-      CompactUtf8Bytes::new()
+    async fn compact_utf8_bytes(&self, echo: CompactUtf8Bytes) -> CompactUtf8Bytes {
+      echo
     }
 
-    /// Present so the schema also carries the `Bytes` scalar that
-    /// `async-graphql` registers for `bytes::Bytes`, which is the name our
-    /// prefix exists to stay clear of.
+    /// Present so the schema also carries `async-graphql`'s own `Bytes`
+    /// scalar for `bytes::Bytes`, making it a third claimant of that name.
     async fn upstream_bytes(&self) -> ::bytes::Bytes {
       ::bytes::Bytes::new()
     }
   }
 
-  /// Pins the four registered names, and pins them in a schema that also
-  /// contains `async-graphql`'s own `Bytes`. A rename is a breaking schema
-  /// change, and an unprefixed name would put two different types under one
-  /// name here rather than the five distinct scalars this asserts.
+  /// `Bytes` is claimed by three Rust types here and `String` by two plus the
+  /// built-in, and a scalar may be declared once. `String` additionally may
+  /// not be declared at all: it is one of the five scalars the specification
+  /// defines implicitly, and redeclaring one is invalid SDL.
   #[test]
-  fn sdl_registers_four_prefixed_scalars_alongside_upstream_bytes() {
+  fn sdl_declares_bytes_once_and_never_declares_string() {
     let sdl = Schema::new(Query, EmptyMutation, EmptySubscription).sdl();
 
-    let names = [
-      "Bytes",
-      "SmolSharedBytes",
-      "SmolCompactBytes",
-      "SmolSharedUtf8Bytes",
-      "SmolCompactUtf8Bytes",
-    ];
-    for name in names {
-      let declaration = std::format!("scalar {name}\n");
-      assert_eq!(sdl.matches(&declaration).count(), 1, "{name} in {sdl}");
+    assert_eq!(sdl.matches("scalar Bytes\n").count(), 1, "{sdl}");
+    assert_eq!(sdl.matches("scalar String").count(), 0, "{sdl}");
+  }
+
+  struct SharedOnly;
+
+  #[Object(name = "Query")]
+  impl SharedOnly {
+    async fn value(&self) -> SharedBytes {
+      SharedBytes::new()
     }
+  }
+
+  struct CompactOnly;
+
+  #[Object(name = "Query")]
+  impl CompactOnly {
+    async fn value(&self) -> CompactBytes {
+      CompactBytes::new()
+    }
+  }
+
+  /// Only one claimant of `Bytes` survives registration, and which one is
+  /// decided by the order the schema walk happens to take. That is tolerable
+  /// only while the claimants are interchangeable, so these two schemas —
+  /// identical but for the strategy behind the scalar — must emit the same
+  /// SDL, description included. A description that named a storage strategy
+  /// would be wrong for the other claimant and would break this.
+  #[test]
+  fn the_bytes_claimants_are_indistinguishable_in_a_schema() {
+    let shared = Schema::new(SharedOnly, EmptyMutation, EmptySubscription).sdl();
+    let compact = Schema::new(CompactOnly, EmptyMutation, EmptySubscription).sdl();
+
+    assert_eq!(shared, compact);
   }
 }
