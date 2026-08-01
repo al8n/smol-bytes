@@ -99,9 +99,13 @@ jobs:
         run: |
           cargo check -p smol-bytes --no-default-features --features pyo3
           cargo check -p smol-bytes --no-default-features --features pyo3,serde,borsh,arbitrary,quickcheck
-      # Kept out of the powerset above: `sqlx` pulls a large tree and requires
-      # a newer compiler than this crate's MSRV, so it is checked on its own.
-      # The tests are `--lib`-scoped because that is where they live.
+      # Kept out of the powerset above: each of these pulls a large tree and
+      # requires a newer compiler than this crate's MSRV, so each is checked on
+      # its own. The tests are `--lib`-scoped because that is where they live.
+      - name: Check isolated async-graphql feature
+        run: |
+          cargo check -p smol-bytes --no-default-features --features async-graphql
+          cargo test -p smol-bytes --lib --no-default-features --features async-graphql
       - name: Check isolated sqlx feature
         run: |
           cargo check -p smol-bytes --no-default-features --features sqlx
@@ -183,7 +187,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.100.0
+      # This ref is not an action version: `dtolnay/rust-toolchain` installs the
+      # Rust release named by the ref it is used at, so this literal is the MSRV
+      # under test. Keep it equal to `rust-version` in the workspace Cargo.toml,
+      # and never let a bot bump it -- .github/dependabot.yml ignores this action
+      # for exactly that reason.
+      - uses: dtolnay/rust-toolchain@1.85.0
         with:
           targets: wasm32-unknown-unknown
       - name: Check supported library configurations only

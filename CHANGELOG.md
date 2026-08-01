@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `async-graphql` feature giving `shared::Bytes` and `compact::Bytes`
+  the GraphQL scalar `Bytes`, backed by `Value::Binary`, and
+  `shared::Utf8Bytes` and `compact::Utf8Bytes` the built-in scalar `String`,
+  backed by `Value::String`. A scalar name is a wire type, and the two
+  strategies behind each are a storage decision a schema cannot act on, so
+  they share one name; `parse` and `to_value` still resolve on the Rust type.
+  `Bytes` coexists with `async-graphql`'s own `bytes::Bytes` scalar, and no
+  `scalar String` is ever declared — redeclaring a built-in would be invalid
+  SDL. `shared::Bytes` parses and serialises without copying. `Buffer` and
+  `Utf8Buffer` are deliberately excluded: they are capped at `INLINE_CAP` and
+  a GraphQL input is of unbounded length, so a scalar for them would fail at
+  runtime on data the program did not choose. The feature implies `std` and
+  requires Rust 1.89.
 - Optional `sqlx` feature implementing `Type`, `Encode` and `Decode` for
   `shared::Bytes`, `compact::Bytes`, `shared::Utf8Bytes` and
   `compact::Utf8Bytes`. The impls are generic over `Database`, delegating to

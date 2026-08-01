@@ -23,6 +23,9 @@ std = ["bytes/default", "serde_core?/default"]
 serde = ["dep:serde_core"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]
+# `async-graphql`'s derives expand to `::std::` paths, so this integration
+# cannot be built without `std`.
+async-graphql = ["dep:async-graphql", "std"]
 # `sqlx` is std-only, so this integration cannot be built without `std`.
 sqlx = ["dep:sqlx", "std"]
 pyo3 = ["dep:pyo3", "std"]
@@ -35,6 +38,11 @@ paste = "1"
 serde_core = { version = "1", optional = true, default-features = false }
 borsh = { version = "1", optional = true, default-features = false }
 
+# Only the scalar machinery is used; the default features pull in a GraphiQL
+# playground, an email validator and `tempfile`, none of which a scalar needs.
+# Note that `async-graphql` 7.2 declares `rust-version = "1.89"`, above this
+# crate's own MSRV — enabling this feature raises it for the whole build.
+async-graphql = { version = "7.2", optional = true, default-features = false }
 # Only the `Type`/`Encode`/`Decode` traits are used; the default features pull
 # in the `Any` driver, the macros, the migrator and JSON support, none of which
 # a type binding needs. The `0.9` floor is deliberate: the impls are written

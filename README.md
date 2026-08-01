@@ -135,6 +135,7 @@ allows:
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
+| `async-graphql` | `Bytes` and `String` GraphQL scalars for `Bytes` and `Utf8Bytes`; implies `std` |
 | `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
@@ -153,9 +154,12 @@ unaffected, as are the UTF-8 types and every MySQL and SQLite path.
 
 Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
 Development-only test and benchmark dependencies can require a newer
-compiler, as does the `sqlx` feature: sqlx 0.9 declares Rust 1.94, and 0.9 is
-the floor because the impls are written against the lifetime-free
-`Database::ArgumentBuffer` introduced in that release.
+compiler, and so do both optional integrations, to different floors:
+`async-graphql` 7.2 declares Rust 1.89, and 7.2 is the floor because the 7.0
+releases do not build against the 7.2 derive crate their own dependency range
+admits; sqlx 0.9 declares Rust 1.94, and 0.9 is the floor because the impls are
+written against the lifetime-free `Database::ArgumentBuffer` introduced there.
+Enabling either raises the MSRV for the whole build.
 
 ## Verification
 
@@ -291,7 +295,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
 cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
 cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
-cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
+cargo check --package smol-bytes --lib --no-default-features
 cargo doc --package smol-bytes --no-deps
 ```
 
