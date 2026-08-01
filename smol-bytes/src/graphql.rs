@@ -17,8 +17,8 @@
 //! > `Smol` + *strategy, when the crate spells the type once per strategy* +
 //! > *the Rust type name*
 //!
-//! giving `SmolSharedBytes`, `SmolCompactBytes`, `SmolBuffer`,
-//! `SmolSharedUtf8Bytes`, `SmolCompactUtf8Bytes` and `SmolUtf8Buffer`.
+//! giving `SmolSharedBytes`, `SmolCompactBytes`, `SmolSharedUtf8Bytes` and
+//! `SmolCompactUtf8Bytes`.
 //!
 //! The `Smol` prefix is not decoration. `async-graphql` registers its own
 //! `bytes::Bytes` under the GraphQL name `Bytes`, unconditionally — that
@@ -34,6 +34,17 @@
 //! twice, once per [strategy](crate::compact), and the two differ in
 //! allocation behaviour — they are genuinely different scalars, not aliases.
 //!
+//! ## The capped types have no scalar
+//!
+//! [`Buffer`](crate::Buffer) and [`Utf8Buffer`](crate::Utf8Buffer) hold their
+//! contents inline and are capped at [`INLINE_CAP`](crate::INLINE_CAP) bytes;
+//! their `TryFrom` conversions refuse anything longer. A GraphQL input carries
+//! data of unbounded length that the program does not choose, so decoding one
+//! into a capped type turns an ordinary long value into a runtime failure on
+//! data nobody picked. The four types above accept any length. A caller that
+//! knows its payload is short enough can convert after parsing, where the
+//! length is its own to check.
+//!
 //! ## Copying
 //!
 //! Each `impl` documents its own behaviour. In summary, on the byte side
@@ -46,7 +57,6 @@
 use async_graphql::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
 
 use crate::{
-  Buffer, INLINE_CAP, Utf8Buffer,
   compact::{Bytes as CompactBytes, Utf8Bytes as CompactUtf8Bytes},
   shared::{Bytes as SharedBytes, Utf8Bytes as SharedUtf8Bytes},
 };
@@ -97,29 +107,6 @@ impl ScalarType for CompactBytes {
 
   fn to_value(&self) -> Value {
     Value::Binary(self.clone().into_bytes())
-  }
-}
-
-/// Binary data held entirely inline in a `smol_bytes::Buffer`, and therefore
-/// **at most 62 bytes long** — see `smol_bytes::INLINE_CAP`. A longer payload
-/// is a parse error naming the limit; it is never truncated. `is_valid`
-/// applies the same length check, so it accepts exactly what `parse` accepts.
-/// Both directions copy, which is what an inline buffer means.
-#[Scalar(name = "SmolBuffer")]
-impl ScalarType for Buffer {
-  fn parse(value: Value) -> InputValueResult<Self> {
-    match value {
-      Value::Binary(data) => Self::try_from(data.as_ref()).map_err(InputValueError::custom),
-      _ => Err(InputValueError::expected_type(value)),
-    }
-  }
-
-  fn is_valid(value: &Value) -> bool {
-    matches!(value, Value::Binary(data) if data.len() <= INLINE_CAP)
-  }
-
-  fn to_value(&self) -> Value {
-    Value::Binary(::bytes::Bytes::copy_from_slice(self.as_slice()))
   }
 }
 
@@ -177,43 +164,15 @@ impl ScalarType for CompactUtf8Bytes {
   }
 }
 
-/// UTF-8 text held entirely inline in a `smol_bytes::Utf8Buffer`, and therefore
-/// **at most 62 bytes long** — see `smol_bytes::INLINE_CAP`. The limit counts
-/// bytes, not characters, so a 21-character string of three-byte characters
-/// already exceeds it. A longer payload is a parse error naming the limit; it
-/// is never truncated. `is_valid` applies the same byte-length check, so it
-/// accepts exactly what `parse` accepts. `Value::Binary` is rejected for the
-/// same reason as `SmolSharedUtf8Bytes`.
-#[Scalar(name = "SmolUtf8Buffer")]
-impl ScalarType for Utf8Buffer {
-  fn parse(value: Value) -> InputValueResult<Self> {
-    match value {
-      Value::String(s) => Self::try_from_str(&s).map_err(InputValueError::custom),
-      _ => Err(InputValueError::expected_type(value)),
-    }
-  }
-
-  fn is_valid(value: &Value) -> bool {
-    matches!(value, Value::String(s) if s.len() <= INLINE_CAP)
-  }
-
-  fn to_value(&self) -> Value {
-    Value::String(self.as_str().to_owned())
-  }
-}
-
 #[cfg(test)]
 mod tests {
-  use async_graphql::{EmptyMutation, EmptySubscription, Object, Pos, Schema};
+  use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
 
   use super::*;
+  use crate::INLINE_CAP;
 
   fn binary(len: usize) -> Value {
     Value::Binary(::bytes::Bytes::from(std::vec![b'x'; len]))
-  }
-
-  fn message<T: async_graphql::InputType>(err: InputValueError<T>) -> String {
-    err.into_server_error(Pos::default()).message
   }
 
   /// The shared strategy promises a zero-copy handover with `bytes::Bytes`.
@@ -262,85 +221,6 @@ mod tests {
   }
 
   #[test]
-  fn buffer_rejects_one_byte_over_capacity() {
-    let accepted = <Buffer as ScalarType>::parse(binary(INLINE_CAP)).unwrap();
-    assert_eq!(accepted.len(), INLINE_CAP);
-
-    let rejected = <Buffer as ScalarType>::parse(binary(INLINE_CAP + 1)).unwrap_err();
-    let text = message(rejected);
-
-    assert!(text.contains("63"), "{text}");
-    assert!(text.contains(&INLINE_CAP.to_string()), "{text}");
-  }
-
-  #[test]
-  fn utf8_buffer_rejects_one_byte_over_capacity() {
-    let accepted =
-      <Utf8Buffer as ScalarType>::parse(Value::String("x".repeat(INLINE_CAP))).unwrap();
-    assert_eq!(accepted.len(), INLINE_CAP);
-
-    let rejected =
-      <Utf8Buffer as ScalarType>::parse(Value::String("x".repeat(INLINE_CAP + 1))).unwrap_err();
-    let text = message(rejected);
-
-    assert!(text.contains("63"), "{text}");
-    assert!(text.contains(&INLINE_CAP.to_string()), "{text}");
-  }
-
-  /// A cheap `is_valid` that accepts what `parse` then rejects produces an
-  /// error the caller cannot attribute, so the two must agree exactly — which
-  /// for the capacity-bounded types means `is_valid` checks the length too.
-  #[test]
-  fn is_valid_agrees_with_parse_on_every_length() {
-    for len in [
-      0,
-      1,
-      INLINE_CAP - 1,
-      INLINE_CAP,
-      INLINE_CAP + 1,
-      INLINE_CAP * 2,
-    ] {
-      let bytes = binary(len);
-      assert_eq!(
-        <Buffer as ScalarType>::is_valid(&bytes),
-        <Buffer as ScalarType>::parse(bytes.clone()).is_ok(),
-        "Buffer disagreed at length {len}"
-      );
-
-      let text = Value::String("x".repeat(len));
-      assert_eq!(
-        <Utf8Buffer as ScalarType>::is_valid(&text),
-        <Utf8Buffer as ScalarType>::parse(text.clone()).is_ok(),
-        "Utf8Buffer disagreed at length {len}"
-      );
-    }
-  }
-
-  /// `Utf8Buffer`'s ceiling is on bytes. A string that fits by character count
-  /// and not by byte count must be rejected, not truncated mid-character.
-  #[test]
-  fn utf8_buffer_counts_bytes_not_characters() {
-    let fits = "é".repeat(INLINE_CAP / 2);
-    assert_eq!(fits.len(), INLINE_CAP);
-    assert!(<Utf8Buffer as ScalarType>::is_valid(&Value::String(
-      fits.clone()
-    )));
-    assert_eq!(
-      <Utf8Buffer as ScalarType>::parse(Value::String(fits))
-        .unwrap()
-        .as_str(),
-      "é".repeat(INLINE_CAP / 2)
-    );
-
-    let overflows = "é".repeat(INLINE_CAP / 2 + 1);
-    assert!(overflows.chars().count() < INLINE_CAP);
-    assert!(!<Utf8Buffer as ScalarType>::is_valid(&Value::String(
-      overflows.clone()
-    )));
-    assert!(<Utf8Buffer as ScalarType>::parse(Value::String(overflows)).is_err());
-  }
-
-  #[test]
   fn text_scalars_refuse_binary_and_byte_scalars_refuse_text() {
     let bytes = binary(4);
     let text = Value::String("data".into());
@@ -348,16 +228,12 @@ mod tests {
     assert!(!<SharedUtf8Bytes as ScalarType>::is_valid(&bytes));
     assert!(<SharedUtf8Bytes as ScalarType>::parse(bytes.clone()).is_err());
     assert!(!<CompactUtf8Bytes as ScalarType>::is_valid(&bytes));
-    assert!(<CompactUtf8Bytes as ScalarType>::parse(bytes.clone()).is_err());
-    assert!(!<Utf8Buffer as ScalarType>::is_valid(&bytes));
-    assert!(<Utf8Buffer as ScalarType>::parse(bytes).is_err());
+    assert!(<CompactUtf8Bytes as ScalarType>::parse(bytes).is_err());
 
     assert!(!<SharedBytes as ScalarType>::is_valid(&text));
     assert!(<SharedBytes as ScalarType>::parse(text.clone()).is_err());
     assert!(!<CompactBytes as ScalarType>::is_valid(&text));
-    assert!(<CompactBytes as ScalarType>::parse(text.clone()).is_err());
-    assert!(!<Buffer as ScalarType>::is_valid(&text));
-    assert!(<Buffer as ScalarType>::parse(text).is_err());
+    assert!(<CompactBytes as ScalarType>::parse(text).is_err());
   }
 
   #[test]
@@ -385,13 +261,6 @@ mod tests {
       );
     }
 
-    let buffer = Buffer::try_from(short).unwrap();
-    let value = <Buffer as ScalarType>::to_value(&buffer);
-    assert_eq!(
-      <Buffer as ScalarType>::parse(value).unwrap().as_slice(),
-      short
-    );
-
     for payload in ["smol", &"é".repeat(4096)] {
       let shared = SharedUtf8Bytes::from(payload);
       let value = <SharedUtf8Bytes as ScalarType>::to_value(&shared);
@@ -411,13 +280,6 @@ mod tests {
         payload
       );
     }
-
-    let buffer = Utf8Buffer::try_from_str("smol").unwrap();
-    let value = <Utf8Buffer as ScalarType>::to_value(&buffer);
-    assert_eq!(
-      <Utf8Buffer as ScalarType>::parse(value).unwrap().as_str(),
-      "smol"
-    );
   }
 
   struct Query;
@@ -432,20 +294,12 @@ mod tests {
       CompactBytes::new()
     }
 
-    async fn buffer(&self) -> Buffer {
-      Buffer::new()
-    }
-
     async fn shared_utf8_bytes(&self) -> SharedUtf8Bytes {
       SharedUtf8Bytes::new()
     }
 
     async fn compact_utf8_bytes(&self) -> CompactUtf8Bytes {
       CompactUtf8Bytes::new()
-    }
-
-    async fn utf8_buffer(&self) -> Utf8Buffer {
-      Utf8Buffer::new()
     }
 
     /// Present so the schema also carries the `Bytes` scalar that
@@ -456,28 +310,24 @@ mod tests {
     }
   }
 
-  /// Pins the six registered names, and pins them in a schema that also
+  /// Pins the four registered names, and pins them in a schema that also
   /// contains `async-graphql`'s own `Bytes`. A rename is a breaking schema
   /// change, and an unprefixed name would put two different types under one
-  /// name here rather than the seven distinct scalars this asserts.
+  /// name here rather than the five distinct scalars this asserts.
   #[test]
-  fn sdl_registers_six_prefixed_scalars_alongside_upstream_bytes() {
+  fn sdl_registers_four_prefixed_scalars_alongside_upstream_bytes() {
     let sdl = Schema::new(Query, EmptyMutation, EmptySubscription).sdl();
 
     let names = [
       "Bytes",
       "SmolSharedBytes",
       "SmolCompactBytes",
-      "SmolBuffer",
       "SmolSharedUtf8Bytes",
       "SmolCompactUtf8Bytes",
-      "SmolUtf8Buffer",
     ];
     for name in names {
       let declaration = std::format!("scalar {name}\n");
       assert_eq!(sdl.matches(&declaration).count(), 1, "{name} in {sdl}");
     }
-
-    assert!(sdl.contains("at most 62 bytes long"), "{sdl}");
   }
 }

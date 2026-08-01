@@ -135,7 +135,7 @@ allows:
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
-| `async-graphql` | GraphQL scalars for the value types; implies `std` |
+| `async-graphql` | GraphQL scalars for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
