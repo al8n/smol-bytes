@@ -283,7 +283,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
 cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
 cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
-cargo rustc --package smol-bytes --lib --no-default-features --crate-type rlib
+cargo check --package smol-bytes --lib --no-default-features
 cargo doc --package smol-bytes --no-deps
 ```
 

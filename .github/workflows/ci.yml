@@ -183,7 +183,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.100.0
+      # This ref is not an action version: `dtolnay/rust-toolchain` installs the
+      # Rust release named by the ref it is used at, so this literal is the MSRV
+      # under test. Keep it equal to `rust-version` in the workspace Cargo.toml,
+      # and never let a bot bump it -- .github/dependabot.yml ignores this action
+      # for exactly that reason.
+      - uses: dtolnay/rust-toolchain@1.85.0
         with:
           targets: wasm32-unknown-unknown
       - name: Check supported library configurations only

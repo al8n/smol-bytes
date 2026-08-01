@@ -11,3 +11,11 @@ updates:
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
+    ignore:
+      # `dtolnay/rust-toolchain` encodes the Rust release to install in the ref
+      # it is used at, so a version bump here changes the compiler, not the
+      # action. The `msrv-library` job pins the MSRV that way, and the ref
+      # namespace contains branches for unreleased Rust versions, so a bump can
+      # -- and did, in #16 -- point the job at a Rust that does not exist yet.
+      # The MSRV moves by hand, together with `rust-version` in Cargo.toml.
+      - dependency-name: "dtolnay/rust-toolchain"
