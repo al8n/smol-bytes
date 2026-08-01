@@ -3,15 +3,50 @@
 //! ## Shape
 //!
 //! One impl trio per type, generic over `DB: Database`, delegating to the
-//! standard-library type the driver already supports — `[u8]` / `Vec<u8>` /
-//! `&[u8]` for the byte types, `str` / `String` / `&str` for the UTF-8 ones.
-//! Every backend that supports those comes along for free; PostgreSQL, MySQL
-//! and SQLite all do. This mirrors `sqlx-core`'s own `bstr` integration.
+//! standard-library type the driver already supports — `[u8]` and `&[u8]` for
+//! the byte types, `str` and `&str` for the UTF-8 ones. Every backend that
+//! supports those comes along for free; PostgreSQL, MySQL and SQLite all do.
+//! This mirrors `sqlx-core`'s own `bstr` integration.
 //!
 //! The four types bound are [`shared::Bytes`](crate::shared::Bytes),
 //! [`compact::Bytes`](crate::compact::Bytes),
 //! [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) and
 //! [`compact::Utf8Bytes`](crate::compact::Utf8Bytes).
+//!
+//! ## PostgreSQL: the byte types need a prepared query
+//!
+//! Decoding borrows from the row, and `sqlx-postgres` refuses to lend `BYTEA`
+//! out as a `&[u8]` in a simple (unprepared) query — there the value arrives
+//! as `\x`-prefixed hex text, so the row holds no bytes to borrow. The error
+//! reads *"unsupported decode to `&[u8]` of BYTEA in a simple query; use a
+//! prepared query or decode to `Vec<u8>`"*.
+//!
+//! A statement is prepared whenever it carries an argument list, which
+//! `query`, `query_as` and the `query!` macros always do, even with nothing
+//! bound. The simple protocol is reached only by executing a statement that
+//! has no argument list at all: `raw_sql`, or a SQL string handed straight to
+//! an `Executor` method. Where one of those has to read bytes, decode the
+//! column as a `Vec<u8>` and convert — at the cost of the allocation this
+//! binding otherwise avoids:
+//!
+//! ```text
+//! let raw: Vec<u8> = row.try_get("payload")?;
+//! let payload = smol_bytes::shared::Bytes::from(raw);
+//! ```
+//!
+//! Nothing else is restricted: PostgreSQL lends `&str` out under either
+//! protocol, so the UTF-8 types are unaffected, and MySQL and SQLite lend both
+//! unconditionally.
+//!
+//! ## SQLite: a decoded value is marked borrowed
+//!
+//! `SqliteValueRef::blob_borrowed` and `text_borrowed` record on the value
+//! handle that its buffer was lent out, because SQLite may invalidate that
+//! pointer when the same value is read as another type. The one consequence is
+//! that `sqlite3_value_int64` and `sqlite3_value_double` on **that same
+//! handle** then report `BorrowedBlobError`: decoding a value as bytes or text
+//! and *then* as a number is what breaks. Decoding a row is unaffected — each
+//! column arrives as its own handle and is decoded once.
 //!
 //! ## The capped types are not bound
 //!
@@ -26,7 +61,7 @@
 //! rows are short enough can convert after decoding, where the length bound is
 //! its own to check and its own to report on.
 //!
-//! ## Why there is no per-backend specialisation
+//! ## Why the delegate is a borrow
 //!
 //! The obvious ambition is for a `Decode` that takes an owned or shareable
 //! buffer off the row rather than copying out of it. **No backend permits
@@ -45,24 +80,32 @@
 //!   `to_vec()`, and the handle is deliberately `!Send + !Sync`.
 //!
 //! So exactly one copy out of the row is unavoidable for every type on every
-//! backend, and the delegating shape is not merely convenient — it is the
-//! only shape available. What *is* worth choosing carefully is the delegate,
-//! and what happens after the copy; see below.
+//! backend, and delegating is the only shape available rather than merely the
+//! convenient one. What that leaves to choose is *which* delegate, and the
+//! borrowed one is never worse. `&[u8]` and `&str` hand over a view of the
+//! row, and this crate then performs the one unavoidable copy directly into
+//! its own representation. `Vec<u8>` and `String` perform that copy into an
+//! allocation of their own first: above 62 bytes the allocation is handed on
+//! and the two routes come out even, but at or below 62 bytes it is allocated,
+//! copied out of, and freed — for a value that was always going to live
+//! inline. That is the allocation this crate exists to avoid, and it is the
+//! whole of what the delegate decides.
+//!
+//! There is no third shape that tries the borrow and falls back to the owned
+//! delegate. `decode` consumes the `ValueRef` by value, and neither
+//! `sqlx_core::value::ValueRef` nor `Database::ValueRef` is bound by `Copy` or
+//! `Clone`, so a generic impl has nothing left to make a second attempt with.
 //!
 //! ## Copying, per type and direction
 //!
-//! | Type | `decode` | `encode_by_ref` |
-//! | --- | --- | --- |
-//! | [`shared::Bytes`](crate::shared::Bytes) | one copy row → `Vec<u8>`, then the `Vec`'s allocation is **moved** into the reference-counted representation above 62 bytes | one copy into the argument buffer |
-//! | [`compact::Bytes`](crate::compact::Bytes) | same, except at or below 62 bytes the `Vec` is copied inline and released, by construction | one copy into the argument buffer |
-//! | [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) / [`compact::Utf8Bytes`](crate::compact::Utf8Bytes) | one copy row → `String`, UTF-8 validated by the driver, then the allocation is **moved** in above 62 bytes | one copy into the argument buffer |
+//! | Type | `decode`, at or below 62 bytes | `decode`, above 62 bytes | `encode_by_ref` |
+//! | --- | --- | --- | --- |
+//! | [`shared::Bytes`](crate::shared::Bytes) / [`compact::Bytes`](crate::compact::Bytes) | one copy row → inline, **no allocation** | one copy row → a fresh reference-counted allocation | one copy into the argument buffer |
+//! | [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) / [`compact::Utf8Bytes`](crate::compact::Utf8Bytes) | the same, after the driver has validated UTF-8 | the same, after the driver has validated UTF-8 | one copy into the argument buffer |
 //!
-//! Decoding goes through the *owned* delegates `Vec<u8>` / `String` rather
-//! than `&[u8]` / `&str`, which is what makes the move above possible and is
-//! also the only portable choice: on PostgreSQL `&[u8]` refuses to decode
-//! `BYTEA` in a simple (unprepared) query outright, and on SQLite decoding a
-//! borrow marks the value handle as borrowed so that later decodes of it fail.
-//! The owned delegates work everywhere.
+//! The two strategies do not differ here: both store a value inline when it
+//! fits at the moment of construction, and they part company only later, over
+//! whether an operation that shrinks a heap-backed value converts it back.
 //!
 //! ## `encode` versus `encode_by_ref`
 //!
@@ -119,6 +162,16 @@ macro_rules! byte_type {
         self.len()
       }
     }
+
+    impl<'r, DB> Decode<'r, DB> for $ty
+    where
+      DB: Database,
+      &'r [u8]: Decode<'r, DB>,
+    {
+      fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
+        <&'r [u8] as Decode<'r, DB>>::decode(value).map(Self::from)
+      }
+    }
   };
 }
 
@@ -151,6 +204,16 @@ macro_rules! text_type {
         self.len()
       }
     }
+
+    impl<'r, DB> Decode<'r, DB> for $ty
+    where
+      DB: Database,
+      &'r str: Decode<'r, DB>,
+    {
+      fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
+        <&'r str as Decode<'r, DB>>::decode(value).map(Self::from)
+      }
+    }
   };
 }
 
@@ -160,80 +223,74 @@ byte_type!(CompactBytes);
 text_type!(SharedUtf8Bytes);
 text_type!(CompactUtf8Bytes);
 
-impl<'r, DB> Decode<'r, DB> for SharedBytes
-where
-  DB: Database,
-  Vec<u8>: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    <Vec<u8> as Decode<'r, DB>>::decode(value).map(Self::from)
-  }
-}
-
-impl<'r, DB> Decode<'r, DB> for CompactBytes
-where
-  DB: Database,
-  Vec<u8>: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    <Vec<u8> as Decode<'r, DB>>::decode(value).map(Self::from)
-  }
-}
-
-impl<'r, DB> Decode<'r, DB> for SharedUtf8Bytes
-where
-  DB: Database,
-  String: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    <String as Decode<'r, DB>>::decode(value).map(Self::from)
-  }
-}
-
-impl<'r, DB> Decode<'r, DB> for CompactUtf8Bytes
-where
-  DB: Database,
-  String: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    <String as Decode<'r, DB>>::decode(value).map(Self::from)
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::INLINE_CAP;
 
-  /// Decoding a heap-sized row must move the delegate's allocation into the
-  /// reference-counted representation rather than copying it again.
-  #[test]
-  fn heap_sized_decode_moves_the_delegates_allocation() {
-    let row = std::vec![7u8; INLINE_CAP + 1];
-    let address = row.as_ptr();
-    let decoded = SharedBytes::from(row);
+  /// The delegate is the borrow, pinned by the compiler: this caller offers the
+  /// four impls nothing but `&'r [u8]` and `&'r str`, so it stops compiling the
+  /// moment one of them asks for an owned `Vec<u8>` or `String` instead.
+  fn _decode_delegates_are_borrows<'r, DB>()
+  where
+    DB: Database,
+    &'r [u8]: Decode<'r, DB>,
+    &'r str: Decode<'r, DB>,
+  {
+    fn decodes<'r, DB: Database, T: Decode<'r, DB>>() {}
 
-    assert!(decoded.is_heap());
-    assert_eq!(decoded.as_slice().as_ptr(), address);
-
-    let row = "é".repeat(INLINE_CAP);
-    let address = row.as_ptr();
-    let decoded = SharedUtf8Bytes::from(row);
-
-    assert!(decoded.is_heap());
-    assert_eq!(decoded.as_str().as_ptr(), address);
+    decodes::<DB, SharedBytes>();
+    decodes::<DB, CompactBytes>();
+    decodes::<DB, SharedUtf8Bytes>();
+    decodes::<DB, CompactUtf8Bytes>();
   }
 
-  /// The other half of the table: the compact strategy does not keep the
-  /// delegate's allocation alive for a row it can hold inline, which is the
-  /// whole reason to pick it over the shared one.
+  /// A row that fits inline must arrive with no heap allocation behind it. The
+  /// borrowed delegate cannot own one — `&[u8]` and `&str` are views of the
+  /// row — so the single copy goes straight into the inline buffer, and
+  /// `is_inline` on the result is the whole accounting.
   #[test]
-  fn inline_sized_decode_releases_the_delegates_allocation() {
+  fn inline_sized_decode_allocates_nothing() {
     let row = std::vec![7u8; INLINE_CAP];
-    let address = row.as_ptr();
-    let decoded = CompactBytes::from(row);
 
+    let decoded = SharedBytes::from(row.as_slice());
     assert!(decoded.is_inline());
-    assert_ne!(decoded.as_slice().as_ptr(), address);
+    assert_eq!(decoded.as_slice(), row.as_slice());
+
+    let decoded = CompactBytes::from(row.as_slice());
+    assert!(decoded.is_inline());
+    assert_eq!(decoded.as_slice(), row.as_slice());
+
+    // Thirty-one two-byte characters land exactly on the cap.
+    let row = "é".repeat(INLINE_CAP / 2);
+    assert_eq!(row.len(), INLINE_CAP);
+
+    let decoded = SharedUtf8Bytes::from(row.as_str());
+    assert!(decoded.is_inline());
+    assert_eq!(decoded.as_str(), row);
+
+    let decoded = CompactUtf8Bytes::from(row.as_str());
+    assert!(decoded.is_inline());
+    assert_eq!(decoded.as_str(), row);
+  }
+
+  /// The other half of the table: above the cap the borrow is copied into an
+  /// allocation of this crate's own, so the value carries the row's contents
+  /// without aliasing a buffer the driver is still free to reuse.
+  #[test]
+  fn heap_sized_decode_copies_into_its_own_allocation() {
+    let row = std::vec![7u8; INLINE_CAP + 1];
+
+    let decoded = SharedBytes::from(row.as_slice());
+    assert!(decoded.is_heap());
+    assert_ne!(decoded.as_slice().as_ptr(), row.as_ptr());
+    assert_eq!(decoded.as_slice(), row.as_slice());
+
+    let row = "é".repeat(INLINE_CAP);
+
+    let decoded = SharedUtf8Bytes::from(row.as_str());
+    assert!(decoded.is_heap());
+    assert_ne!(decoded.as_str().as_ptr(), row.as_ptr());
+    assert_eq!(decoded.as_str(), row);
   }
 }

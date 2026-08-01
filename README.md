@@ -143,6 +143,14 @@ With no features enabled the crate is `no_std` and provides the fixed
 `Buffer` and `Utf8Buffer` types; `alloc` adds the heap-backed types without
 `std`.
 
+The `sqlx` bindings decode by borrowing from the row, so a value of at most 62
+bytes is built inline with no heap allocation at all. That costs one thing:
+PostgreSQL will not lend `BYTEA` out in a simple (unprepared) query, so code on
+that path — `raw_sql`, or a SQL string handed straight to an `Executor` — has
+to decode the byte types as `Vec<u8>` and convert. `query`, `query_as` and the
+`query!` macros carry an argument list and are therefore prepared, so they are
+unaffected, as are the UTF-8 types and every MySQL and SQLite path.
+
 Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
 Development-only test and benchmark dependencies can require a newer
 compiler, as does the `sqlx` feature: sqlx 0.9 declares Rust 1.94, and 0.9 is
