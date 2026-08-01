@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-01
+
 ### Added
 
 - Optional `async-graphql` feature giving `shared::Bytes` and `compact::Bytes`
@@ -35,6 +37,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   they are capped at `INLINE_CAP` and a database column is of unbounded
   length, so binding them would fail at runtime on data the program did not
   choose. The feature implies `std` and requires Rust 1.94.
+
+### Fixed
+
+- `LICENSE-APACHE` and `LICENSE-MIT` are now included in the published crate.
+  They live at the workspace root, outside the package directory, so the
+  README's links to them resolved to nothing on crates.io and docs.rs.
 
 ## [0.1.2] - 2026-07-18
 
@@ -88,6 +96,7 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/al8n/smol-bytes/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/al8n/smol-bytes/compare/v0.1.1...v0.1.2
 [0.1.0]: https://github.com/al8n/smol-bytes/releases/tag/v0.1.0
