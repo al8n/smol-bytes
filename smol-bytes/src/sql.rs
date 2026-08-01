@@ -8,6 +8,24 @@
 //! Every backend that supports those comes along for free; PostgreSQL, MySQL
 //! and SQLite all do. This mirrors `sqlx-core`'s own `bstr` integration.
 //!
+//! The four types bound are [`shared::Bytes`](crate::shared::Bytes),
+//! [`compact::Bytes`](crate::compact::Bytes),
+//! [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) and
+//! [`compact::Utf8Bytes`](crate::compact::Utf8Bytes).
+//!
+//! ## The capped types are not bound
+//!
+//! [`Buffer`](crate::Buffer) and [`Utf8Buffer`](crate::Utf8Buffer) hold their
+//! contents inline and are capped at [`INLINE_CAP`](crate::INLINE_CAP) bytes;
+//! their `TryFrom` conversions refuse anything longer. A database column
+//! carries data of unbounded length that the program does not choose, so
+//! decoding one into a capped type turns an ordinary long row into a runtime
+//! failure on data nobody picked — and a `Decode` cannot even warn about it
+//! ahead of time, because `Type::compatible` sees the SQL type and never the
+//! value. The four types above accept any length. A caller that knows its
+//! rows are short enough can convert after decoding, where the length bound is
+//! its own to check and its own to report on.
+//!
 //! ## Why there is no per-backend specialisation
 //!
 //! The obvious ambition is for a `Decode` that takes an owned or shareable
@@ -37,16 +55,14 @@
 //! | --- | --- | --- |
 //! | [`shared::Bytes`](crate::shared::Bytes) | one copy row → `Vec<u8>`, then the `Vec`'s allocation is **moved** into the reference-counted representation above 62 bytes | one copy into the argument buffer |
 //! | [`compact::Bytes`](crate::compact::Bytes) | same, except at or below 62 bytes the `Vec` is copied inline and released, by construction | one copy into the argument buffer |
-//! | [`Buffer`](crate::Buffer) | one copy row → `Vec<u8>`, then a second inline copy; the `Vec` is discarded | one copy into the argument buffer |
 //! | [`shared::Utf8Bytes`](crate::shared::Utf8Bytes) / [`compact::Utf8Bytes`](crate::compact::Utf8Bytes) | one copy row → `String`, UTF-8 validated by the driver, then the allocation is **moved** in above 62 bytes | one copy into the argument buffer |
-//! | [`Utf8Buffer`](crate::Utf8Buffer) | one copy row → `String`, then a second inline copy | one copy into the argument buffer |
 //!
-//! The wasted intermediate for the two inline types is the price of decoding
-//! through `Vec<u8>` / `String` instead of `&[u8]` / `&str`. That price is
-//! worth paying: on PostgreSQL `&[u8]` refuses to decode `BYTEA` in a simple
-//! (unprepared) query outright, and on SQLite decoding a borrow marks the
-//! value handle as borrowed so that later decodes of it fail. The owned
-//! delegates work everywhere.
+//! Decoding goes through the *owned* delegates `Vec<u8>` / `String` rather
+//! than `&[u8]` / `&str`, which is what makes the move above possible and is
+//! also the only portable choice: on PostgreSQL `&[u8]` refuses to decode
+//! `BYTEA` in a simple (unprepared) query outright, and on SQLite decoding a
+//! borrow marks the value handle as borrowed so that later decodes of it fail.
+//! The owned delegates work everywhere.
 //!
 //! ## `encode` versus `encode_by_ref`
 //!
@@ -70,27 +86,9 @@
 use sqlx::{Database, Decode, Encode, Type, encode::IsNull, error::BoxDynError};
 
 use crate::{
-  Buffer, Utf8Buffer,
   compact::{Bytes as CompactBytes, Utf8Bytes as CompactUtf8Bytes},
   shared::{Bytes as SharedBytes, Utf8Bytes as SharedUtf8Bytes},
 };
-
-/// Fits a decoded row into a fixed-capacity [`Buffer`].
-///
-/// A row longer than [`INLINE_CAP`](crate::INLINE_CAP) is an error naming the
-/// limit, never a truncation.
-fn fit_buffer(bytes: &[u8]) -> Result<Buffer, BoxDynError> {
-  Buffer::try_from(bytes).map_err(Into::into)
-}
-
-/// Fits a decoded row into a fixed-capacity [`Utf8Buffer`].
-///
-/// The limit counts bytes, not characters. UTF-8 validity is already
-/// established by decoding through `String`, so this cannot fail for that
-/// reason.
-fn fit_utf8_buffer(text: &str) -> Result<Utf8Buffer, BoxDynError> {
-  Utf8Buffer::try_from_str(text).map_err(Into::into)
-}
 
 macro_rules! byte_type {
   ($ty:ty) => {
@@ -158,11 +156,9 @@ macro_rules! text_type {
 
 byte_type!(SharedBytes);
 byte_type!(CompactBytes);
-byte_type!(Buffer);
 
 text_type!(SharedUtf8Bytes);
 text_type!(CompactUtf8Bytes);
-text_type!(Utf8Buffer);
 
 impl<'r, DB> Decode<'r, DB> for SharedBytes
 where
@@ -181,16 +177,6 @@ where
 {
   fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
     <Vec<u8> as Decode<'r, DB>>::decode(value).map(Self::from)
-  }
-}
-
-impl<'r, DB> Decode<'r, DB> for Buffer
-where
-  DB: Database,
-  Vec<u8>: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    fit_buffer(&<Vec<u8> as Decode<'r, DB>>::decode(value)?)
   }
 }
 
@@ -214,60 +200,10 @@ where
   }
 }
 
-impl<'r, DB> Decode<'r, DB> for Utf8Buffer
-where
-  DB: Database,
-  String: Decode<'r, DB>,
-{
-  fn decode(value: DB::ValueRef<'r>) -> Result<Self, BoxDynError> {
-    fit_utf8_buffer(&<String as Decode<'r, DB>>::decode(value)?)
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::INLINE_CAP;
-
-  /// A row one byte over the inline capacity must be refused with the limit
-  /// named, not silently shortened. This is the one place the integration
-  /// could corrupt data.
-  #[test]
-  fn buffer_decode_refuses_one_byte_over_capacity() {
-    let accepted = fit_buffer(&std::vec![b'x'; INLINE_CAP]).unwrap();
-    assert_eq!(accepted.len(), INLINE_CAP);
-
-    let rejected = fit_buffer(&std::vec![b'x'; INLINE_CAP + 1]).unwrap_err();
-    let text = rejected.to_string();
-
-    assert!(text.contains("63"), "{text}");
-    assert!(text.contains(&INLINE_CAP.to_string()), "{text}");
-  }
-
-  #[test]
-  fn utf8_buffer_decode_refuses_one_byte_over_capacity() {
-    let accepted = fit_utf8_buffer(&"x".repeat(INLINE_CAP)).unwrap();
-    assert_eq!(accepted.len(), INLINE_CAP);
-
-    let rejected = fit_utf8_buffer(&"x".repeat(INLINE_CAP + 1)).unwrap_err();
-    let text = rejected.to_string();
-
-    assert!(text.contains("63"), "{text}");
-    assert!(text.contains(&INLINE_CAP.to_string()), "{text}");
-  }
-
-  /// The ceiling is on bytes. A row that fits by character count but not by
-  /// byte count must still be refused rather than split mid-character.
-  #[test]
-  fn utf8_buffer_decode_counts_bytes_not_characters() {
-    let fits = "é".repeat(INLINE_CAP / 2);
-    assert_eq!(fits.len(), INLINE_CAP);
-    assert_eq!(fit_utf8_buffer(&fits).unwrap().as_str(), fits);
-
-    let overflows = "é".repeat(INLINE_CAP / 2 + 1);
-    assert!(overflows.chars().count() < INLINE_CAP);
-    assert!(fit_utf8_buffer(&overflows).is_err());
-  }
 
   /// Decoding a heap-sized row must move the delegate's allocation into the
   /// reference-counted representation rather than copying it again.
@@ -286,5 +222,18 @@ mod tests {
 
     assert!(decoded.is_heap());
     assert_eq!(decoded.as_str().as_ptr(), address);
+  }
+
+  /// The other half of the table: the compact strategy does not keep the
+  /// delegate's allocation alive for a row it can hold inline, which is the
+  /// whole reason to pick it over the shared one.
+  #[test]
+  fn inline_sized_decode_releases_the_delegates_allocation() {
+    let row = std::vec![7u8; INLINE_CAP];
+    let address = row.as_ptr();
+    let decoded = CompactBytes::from(row);
+
+    assert!(decoded.is_inline());
+    assert_ne!(decoded.as_slice().as_ptr(), address);
   }
 }

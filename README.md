@@ -135,7 +135,7 @@ allows:
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
-| `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for the value types; implies `std` |
+| `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
