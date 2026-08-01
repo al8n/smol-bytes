@@ -135,6 +135,7 @@ allows:
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
+| `async-graphql` | `Bytes` and `String` GraphQL scalars for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
@@ -144,7 +145,9 @@ With no features enabled the crate is `no_std` and provides the fixed
 
 Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
 Development-only test and benchmark dependencies can require a newer
-compiler.
+compiler, as does the `async-graphql` feature: `async-graphql` 7.2 declares
+Rust 1.89, and 7.2 is the floor because the 7.0 releases do not build against
+the 7.2 derive crate their own dependency range admits.
 
 ## Verification
 
