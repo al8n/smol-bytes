@@ -20,4 +20,4 @@ pyo3 = ["dep:pyo3", "smol-bytes/pyo3"]
 
 [dependencies]
 smol-bytes = { path = "../smol-bytes", default-features = false }
-pyo3 = { version = "=0.29.0", default-features = false, features = ["macros", "extension-module", "abi3-py311"], optional = true }
+pyo3 = { version = "=0.29.2", default-features = false, features = ["macros", "extension-module", "abi3-py311"], optional = true }
