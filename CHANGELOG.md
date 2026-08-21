@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `Utf8Bytes::new`, `Utf8Bytes::from_static` and `Utf8BytesMut::new` are now
+  `const fn`, so a UTF-8 constant no longer has to be built at run time. The
+  storage they wrap was already const-constructible — `RawBytes::new`,
+  `RawBytes::from_static` and `BytesMut::new` — and both branches of
+  `from_static` hold in a constant: a string within `INLINE_CAP` is copied into
+  the inline buffer, a longer one borrows the static allocation. The remaining
+  constructors stay non-`const` because they allocate
+  (`BytesMut::with_capacity`, `Utf8BytesMut::with_capacity`, `BytesMut::zeroed`,
+  `RawBytes::copy_from_slice`, `shared::Bytes::from_owner`) or reach a trait
+  method that is not const on stable (`Utf8Buffer::try_from_str`, via `TryFrom`
+  and `?`). This is additive; no signature changed and the MSRV stays at 1.85.
+
 ## [0.1.3] - 2026-08-01
 
 ### Added
