@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-22
+
 ### Changed
 
 - `Utf8Bytes::new`, `Utf8Bytes::from_static` and `Utf8BytesMut::new` are now
@@ -110,7 +112,8 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/al8n/smol-bytes/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/al8n/smol-bytes/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/al8n/smol-bytes/compare/v0.1.1...v0.1.2
 [0.1.0]: https://github.com/al8n/smol-bytes/releases/tag/v0.1.0
