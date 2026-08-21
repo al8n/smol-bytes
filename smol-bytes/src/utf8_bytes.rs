@@ -71,14 +71,36 @@ where
   RawBytes<S>: ImmutableStorage,
 {
   /// Creates a new, empty `Utf8Bytes`.
-  pub fn new() -> Self {
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// const EMPTY: Utf8Bytes = Utf8Bytes::new();
+  /// assert_eq!(EMPTY.as_str(), "");
+  /// ```
+  pub const fn new() -> Self {
     Self {
       inner: RawBytes::new(),
     }
   }
 
   /// Creates a `Utf8Bytes` from a static string slice.
-  pub fn from_static(s: &'static str) -> Self {
+  ///
+  /// A string that fits the inline capacity is copied into the inline
+  /// buffer; a longer one borrows the static allocation. Both paths are
+  /// evaluable at compile time.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// const GREETING: Utf8Bytes = Utf8Bytes::from_static("hello");
+  /// assert_eq!(GREETING.as_str(), "hello");
+  /// ```
+  pub const fn from_static(s: &'static str) -> Self {
     Self {
       inner: RawBytes::from_static(s.as_bytes()),
     }

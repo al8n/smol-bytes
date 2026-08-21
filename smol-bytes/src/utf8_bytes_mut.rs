@@ -77,10 +77,10 @@ impl Utf8BytesMut {
   /// ```
   /// use smol_bytes::Utf8BytesMut;
   ///
-  /// let buf = Utf8BytesMut::new();
-  /// assert!(buf.is_empty());
+  /// const EMPTY: Utf8BytesMut = Utf8BytesMut::new();
+  /// assert!(EMPTY.is_empty());
   /// ```
-  pub fn new() -> Self {
+  pub const fn new() -> Self {
     Self {
       inner: BytesMut::new(),
     }
