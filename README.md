@@ -51,7 +51,7 @@ values and retained shared heap views can remain heap-backed below that
 threshold.
 
 ```rust
-use smol_bytes::Bytes;
+use smol_bytes::{Bytes, Utf8Bytes};
 
 let small = Bytes::from_static(b"identifier");
 assert!(small.is_inline());
@@ -62,6 +62,9 @@ assert_eq!(small, cloned);
 let heap = Bytes::copy_from_slice(&[0_u8; 63]);
 assert!(heap.is_heap());
 assert_eq!(heap.len(), 63);
+
+let text: Utf8Bytes = "identifier".parse().expect("infallible parse");
+assert_eq!(text.as_str(), "identifier");
 ```
 
 ## Storage strategies
@@ -113,6 +116,10 @@ character boundaries; offenders panic, and the `try_split_to`,
 `try_split_off`, and `try_slice` variants return errors instead. (The Python
 bindings differ deliberately — see below.)
 
+The UTF-8 wrappers implement `FromStr`. Heap-capable wrappers parse
+infallibly; `Utf8Buffer` returns `TryPutError` when text exceeds its fixed
+inline capacity.
+
 ## `bytes` interop
 
 Conversions with the `bytes` crate are zero-copy wherever the representation
@@ -132,6 +139,7 @@ allows:
 | `std` (default) | Standard-library support and the heap-backed types |
 | `alloc` | Heap-backed types without `std` |
 | `serde` | Serde support |
+| `schemars` | Schemars v1 string schemas for UTF-8 wrappers; implies `alloc` |
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
 | `quickcheck` | QuickCheck support |
@@ -152,7 +160,7 @@ to decode the byte types as `Vec<u8>` and convert. `query`, `query_as` and the
 `query!` macros carry an argument list and are therefore prepared, so they are
 unaffected, as are the UTF-8 types and every MySQL and SQLite path.
 
-Rust 1.85 is the library MSRV, and the `bytes` dependency floor is 1.10.
+Rust 1.95 is the library MSRV, and the `bytes` dependency floor is 1.10.
 Development-only test and benchmark dependencies can require a newer
 compiler, and so do both optional integrations, to different floors:
 `async-graphql` 7.2 declares Rust 1.89, and 7.2 is the floor because the 7.0
@@ -230,7 +238,7 @@ Install the published package with `npm install smol-bytes`.
 
 To build from a checkout instead, install Node.js 20, `wasm-pack` 0.13.1, and
 the `wasm32-unknown-unknown` target. The generated package is pinned to
-wasm-bindgen 0.2.126 for reproducibility:
+wasm-bindgen 0.2.127 for reproducibility:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -292,8 +300,8 @@ These commands match the main CI checks:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
-cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
+cargo clippy --workspace --no-default-features --features std,alloc,serde,schemars,borsh,arbitrary,quickcheck --all-targets -- -D warnings
+cargo test --workspace --no-default-features --features std,serde,schemars,borsh,arbitrary,quickcheck
 cargo test --package smol-bytes --no-default-features --features alloc,quickcheck
 cargo check --package smol-bytes --lib --no-default-features
 cargo doc --package smol-bytes --no-deps

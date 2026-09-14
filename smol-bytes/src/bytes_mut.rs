@@ -505,12 +505,12 @@ impl BytesMut {
     // For inline buffers where `at` exceeds the written length, the `Buffer`
     // type has no way to represent "reserved but unwritten" capacity, so we
     // promote to heap before splitting.
-    if let Repr::Inline(b) = &self.0 {
-      if at > b.remaining() {
-        let mut new_heap = bytes::BytesMut::with_capacity(cap);
-        new_heap.extend_from_slice(b.as_slice());
-        self.0 = Repr::Heap(new_heap);
-      }
+    if let Repr::Inline(b) = &self.0
+      && at > b.remaining()
+    {
+      let mut new_heap = bytes::BytesMut::with_capacity(cap);
+      new_heap.extend_from_slice(b.as_slice());
+      self.0 = Repr::Heap(new_heap);
     }
 
     let result = match &mut self.0 {

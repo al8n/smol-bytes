@@ -1,3 +1,4 @@
+use core::str::FromStr;
 #[cfg(any(feature = "std", feature = "alloc"))]
 use std::string::ToString;
 
@@ -15,6 +16,14 @@ impl Utf8Buffer {
   pub fn try_from_str(s: &str) -> Result<Self, TryPutError> {
     let inner = Buffer::try_from(s.as_bytes())?;
     Ok(Self { inner })
+  }
+}
+
+impl FromStr for Utf8Buffer {
+  type Err = TryPutError;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    Self::try_from_str(s)
   }
 }
 

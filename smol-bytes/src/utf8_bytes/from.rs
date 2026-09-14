@@ -1,3 +1,4 @@
+use core::{convert::Infallible, str::FromStr};
 use std::string::String;
 
 use super::*;
@@ -10,6 +11,17 @@ where
     Self {
       inner: RawBytes::copy_from_slice(s.as_bytes()),
     }
+  }
+}
+
+impl<S> FromStr for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  type Err = Infallible;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    Ok(Self::from(s))
   }
 }
 

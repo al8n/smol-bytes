@@ -1,3 +1,4 @@
+use core::{convert::Infallible, str::FromStr};
 use std::string::String;
 
 use super::*;
@@ -7,6 +8,14 @@ impl From<&str> for Utf8BytesMut {
     Self {
       inner: BytesMut::from(s.as_bytes()),
     }
+  }
+}
+
+impl FromStr for Utf8BytesMut {
+  type Err = Infallible;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    Ok(Self::from(s))
   }
 }
 
