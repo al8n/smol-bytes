@@ -54,6 +54,10 @@ mod bytes_mut;
 #[cfg_attr(docsrs, doc(cfg(feature = "async-graphql")))]
 mod graphql;
 
+#[cfg(feature = "schemars")]
+#[cfg_attr(docsrs, doc(cfg(feature = "schemars")))]
+mod json_schema;
+
 #[cfg(feature = "pyo3")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
 mod python;

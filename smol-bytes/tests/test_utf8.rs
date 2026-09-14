@@ -5,7 +5,12 @@
 //! surface is operations involving multi-byte code points and char
 //! boundaries.
 
-use smol_bytes::{Buf, Buffer, Bytes, BytesMut, Utf8Buffer, Utf8Bytes, Utf8BytesMut, Utf8Error};
+use core::convert::Infallible;
+
+use smol_bytes::{
+  Buf, Buffer, Bytes, BytesMut, INLINE_CAP, TryPutError, Utf8Buffer, Utf8Bytes, Utf8BytesMut,
+  Utf8Error, compact,
+};
 
 /// A 2-byte char (Latin-1 supplement).
 const LATIN_1: &str = "café"; // 'é' = 2 bytes
@@ -34,6 +39,25 @@ fn utf8_buffer_from_multibyte_str() {
 
   let b = Utf8Buffer::from(MIXED);
   assert_eq!(b.as_str(), MIXED);
+}
+
+#[test]
+fn utf8_buffer_from_str_respects_inline_capacity() {
+  let multibyte: Utf8Buffer = MIXED.parse().expect("multibyte string parses");
+  assert_eq!(multibyte.as_str(), MIXED);
+
+  let maximum = "x".repeat(INLINE_CAP);
+  let parsed: Utf8Buffer = maximum.parse().expect("inline string parses");
+  assert_eq!(parsed.as_str(), maximum);
+
+  let oversized = "x".repeat(INLINE_CAP + 1);
+  assert_eq!(
+    oversized.parse::<Utf8Buffer>(),
+    Err(TryPutError {
+      requested: INLINE_CAP + 1,
+      available: INLINE_CAP,
+    })
+  );
 }
 
 #[test]
@@ -220,6 +244,20 @@ fn utf8_buffer_try_truncate_checks_boundaries_and_preserves_errors() {
 fn utf8_bytes_from_multibyte_str() {
   let b = Utf8Bytes::from(MIXED);
   assert_eq!(b.as_str(), MIXED);
+}
+
+#[test]
+fn heap_capable_utf8_types_parse_infallibly_and_preserve_multibyte_text() {
+  let value = "café € 🦀";
+
+  let shared: Result<Utf8Bytes, Infallible> = value.parse();
+  assert_eq!(shared.expect("infallible shared parse").as_str(), value);
+
+  let compact: Result<compact::Utf8Bytes, Infallible> = value.parse();
+  assert_eq!(compact.expect("infallible compact parse").as_str(), value);
+
+  let mutable: Result<Utf8BytesMut, Infallible> = value.parse();
+  assert_eq!(mutable.expect("infallible mutable parse").as_str(), value);
 }
 
 #[test]

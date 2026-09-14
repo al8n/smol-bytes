@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `FromStr` support for `shared::Utf8Bytes`, `compact::Utf8Bytes`, and
+  `Utf8BytesMut` with `Infallible`, plus fallible `Utf8Buffer` parsing with
+  its existing `TryPutError` capacity error.
+- Optional `schemars` support for all UTF-8 wrappers. Their schemas are the
+  ordinary JSON string schema regardless of storage strategy.
+
+### Changed
+
+- The documented and CI-tested library MSRV is Rust 1.95, matching the
+  workspace manifest.
+
 ## [0.1.4] - 2026-08-22
 
 ### Changed

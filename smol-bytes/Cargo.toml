@@ -21,6 +21,8 @@ default = ["std"]
 alloc = ["serde_core?/alloc", "bytes"]
 std = ["bytes/default", "serde_core?/default"]
 serde = ["dep:serde_core"]
+# Schemars needs allocation for schema documents, but not std or wrapper Serde impls.
+schemars = ["dep:schemars", "alloc"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]
 # `async-graphql`'s derives expand to `::std::` paths, so this integration
@@ -36,6 +38,7 @@ bytes = { version = "1.10", default-features = false, optional = true }
 paste = "1"
 
 serde_core = { version = "1", optional = true, default-features = false }
+schemars = { version = "1", optional = true, default-features = false }
 borsh = { version = "1", optional = true, default-features = false }
 
 async-graphql = { version = "7", optional = true, default-features = false }

@@ -68,7 +68,7 @@ jobs:
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
     - name: Apply portable clippy lints
-      run: cargo clippy --workspace --no-default-features --features std,alloc,serde,borsh,arbitrary,quickcheck --all-targets -- -D warnings
+      run: cargo clippy --workspace --no-default-features --features std,alloc,serde,schemars,borsh,arbitrary,quickcheck --all-targets -- -D warnings
 
   feature-check:
     name: feature-check
@@ -93,8 +93,15 @@ jobs:
         uses: taiki-e/install-action@cargo-hack
       - name: Check featureless no_std rlib
         run: cargo check --package smol-bytes --lib --no-default-features
+      - name: Check alloc-only Schemars support
+        run: |
+          cargo check --package smol-bytes --lib --no-default-features --features schemars
+          if cargo tree --package smol-bytes --no-default-features --features schemars -e features | grep -E 'smol-bytes feature "(std|serde)"'; then
+            echo "schemars must not imply smol-bytes std or serde"
+            exit 1
+          fi
       - name: Check portable feature powerset rlib
-        run: cargo hack --package smol-bytes --feature-powerset --include-features alloc,std,serde,borsh,arbitrary,quickcheck --exclude-features pyo3,wasm check --lib
+        run: cargo hack --package smol-bytes --feature-powerset --include-features alloc,std,serde,schemars,borsh,arbitrary,quickcheck --exclude-features pyo3,wasm check --lib
       - name: Check isolated binding features
         run: |
           cargo check -p smol-bytes --no-default-features --features pyo3
@@ -192,14 +199,14 @@ jobs:
       # under test. Keep it equal to `rust-version` in the workspace Cargo.toml,
       # and never let a bot bump it -- .github/dependabot.yml ignores this action
       # for exactly that reason.
-      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
       - name: Check supported library configurations only
         run: |
           cargo check -p smol-bytes --lib --no-default-features
           cargo check -p smol-bytes --lib --no-default-features --features alloc
-          cargo check -p smol-bytes --lib --no-default-features --features std,serde,borsh,arbitrary,quickcheck
+          cargo check -p smol-bytes --lib --no-default-features --features std,serde,schemars,borsh,arbitrary,quickcheck
           cargo check -p smol-bytes --lib --no-default-features --features pyo3
           cargo check -p smol-bytes --lib --no-default-features --features wasm --target wasm32-unknown-unknown
 
@@ -209,7 +216,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - run: RUSTDOCFLAGS=-Dwarnings cargo doc -p smol-bytes --no-deps --no-default-features --features std,serde,borsh,arbitrary,quickcheck
+      - run: RUSTDOCFLAGS=-Dwarnings cargo doc -p smol-bytes --no-deps --no-default-features --features std,serde,schemars,borsh,arbitrary,quickcheck
   
   test:
     name: test
@@ -236,7 +243,7 @@ jobs:
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable
     - name: Run test
-      run: cargo test --workspace --no-default-features --features std,serde,borsh,arbitrary,quickcheck
+      run: cargo test --workspace --no-default-features --features std,serde,schemars,borsh,arbitrary,quickcheck
   
   sanitizer:
     name: sanitizer
@@ -397,7 +404,7 @@ jobs:
       - name: Generate core Rust and doctest coverage
         run: >-
           cargo llvm-cov --workspace --no-default-features
-          --features std,serde,borsh,arbitrary,quickcheck --doctests
+          --features std,serde,schemars,borsh,arbitrary,quickcheck --doctests
           --ignore-filename-regex '(/python\.rs$|/wasm\.rs$|/wasm_iter\.rs$)'
           --lcov --output-path lcov.info
       - name: Upload to codecov.io
