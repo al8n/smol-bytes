@@ -9,7 +9,7 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.1.4"
+version = "0.1.5"
 repository = "https://github.com/al8n/smol-bytes"
 homepage = "https://github.com/al8n/smol-bytes"
 description = "High-performance, clone-efficient byte buffers optimized for small data."
