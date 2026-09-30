@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-30
+
+### Added
+
+- Add `core::fmt::Write` implementation for `Utf8BytesMut`
+
 ## [0.1.5] - 2026-09-14
 
 ### Added
