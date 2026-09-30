@@ -139,7 +139,7 @@ impl Utf8BytesMut {
   #[inline(always)]
   pub fn as_str(&self) -> &str {
     // SAFETY: Utf8BytesMut guarantees valid UTF-8
-    unsafe { str::from_utf8_unchecked(self.inner.as_slice()) }
+    unsafe { str::from_utf8_unchecked(self.inner.as_ref()) }
   }
 
   /// Returns the length in bytes.
