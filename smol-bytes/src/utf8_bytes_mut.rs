@@ -69,6 +69,14 @@ impl Default for Utf8BytesMut {
   }
 }
 
+impl core::fmt::Write for Utf8BytesMut {
+  #[inline(always)]
+  fn write_str(&mut self, s: &str) -> core::fmt::Result {
+    self.push_str(s);
+    Ok(())
+  }
+}
+
 impl Utf8BytesMut {
   /// Creates a new, empty `Utf8BytesMut`.
   ///
@@ -80,6 +88,7 @@ impl Utf8BytesMut {
   /// const EMPTY: Utf8BytesMut = Utf8BytesMut::new();
   /// assert!(EMPTY.is_empty());
   /// ```
+  #[inline(always)]
   pub const fn new() -> Self {
     Self {
       inner: BytesMut::new(),
@@ -106,11 +115,13 @@ impl Utf8BytesMut {
   ///
   /// Note: named `as_inner` to avoid confusion with `str::as_bytes`/
   /// `String::as_bytes_mut`, which users might expect to return `&[u8]`.
+  #[inline(always)]
   pub const fn as_inner(&self) -> &BytesMut {
     &self.inner
   }
 
   /// Consumes `self` and returns the inner `BytesMut`.
+  #[inline(always)]
   pub fn into_inner(self) -> BytesMut {
     self.inner
   }
@@ -125,20 +136,20 @@ impl Utf8BytesMut {
   /// let buf = Utf8BytesMut::from("hello");
   /// assert_eq!(buf.as_str(), "hello");
   /// ```
-  #[inline]
+  #[inline(always)]
   pub fn as_str(&self) -> &str {
     // SAFETY: Utf8BytesMut guarantees valid UTF-8
-    unsafe { str::from_utf8_unchecked(self.inner.as_ref()) }
+    unsafe { str::from_utf8_unchecked(self.inner.as_slice()) }
   }
 
   /// Returns the length in bytes.
-  #[inline]
+  #[inline(always)]
   pub fn len(&self) -> usize {
     self.inner.len()
   }
 
   /// Returns `true` if the buffer has length 0.
-  #[inline]
+  #[inline(always)]
   pub fn is_empty(&self) -> bool {
     self.inner.is_empty()
   }
