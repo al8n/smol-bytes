@@ -3,7 +3,12 @@ name: WebAssembly
 on:
   push:
     branches: [main, "*.*.x"]
+    tags:
+      - 'v*'
   pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -18,6 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Verify release version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            python3 scripts/check-release-version.py --tag "$GITHUB_REF_NAME" --check-js
+          else
+            python3 scripts/check-release-version.py
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -26,7 +38,9 @@ jobs:
           version: v0.13.1
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
+      - name: Pin npm
+        run: npm install --global npm@11.15.0
       - name: Check Wasm feature combinations
         run: |
           test "$(wasm-pack --version)" = "wasm-pack 0.13.1"
@@ -40,29 +54,67 @@ jobs:
         run: cd js && npm ci
       - name: Build JS
         run: cd js && npm run build:js
-      - name: Run JS tests
+      - name: Run JS tests and build tested package
         run: cd js && npm test
-      - name: Verify package
-        run: cd js && npm pack --dry-run
+        env:
+          SMOL_BYTES_PACKAGE_OUTPUT: ${{ github.workspace }}/npm-package
+      - name: Upload tested npm package
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: npm-package/*.tgz
+          if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     needs: test
     runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v8
         with:
-          targets: wasm32-unknown-unknown
-      - uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: v0.13.1
+          name: npm-package
+          path: npm-package
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: wasm-pack build ${{ env.SMOL_BYTES_CRATE }} --target bundler --out-dir ${{ env.WASM_OUT_DIR }} --out-name smol_bytes -- --features wasm
-      - run: cd js && npm ci && npm run build:js && npm test && npm pack --dry-run
-      - run: cd js && npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Pin npm
+        run: npm install --global npm@11.15.0
+      - name: Validate npm package artifact
+        shell: bash
+        run: |
+          tarball_count="$(find npm-package -type f -name '*.tgz' -exec printf x \; | wc -c | tr -d ' ')"
+          if [[ "$tarball_count" -ne 1 ]]; then
+            echo "expected exactly one npm tarball, found $tarball_count" >&2
+            exit 1
+          fi
+
+          tarball="$(find npm-package -type f -name '*.tgz' -print -quit)"
+          metadata_entries="$(tar -tf "$tarball" | awk '$0 == "package/package.json" { count++ } END { print count + 0 }')"
+          if [[ "$metadata_entries" -ne 1 ]]; then
+            echo "expected exactly one package/package.json, found $metadata_entries" >&2
+            exit 1
+          fi
+
+          package_json="$(tar -xOf "$tarball" package/package.json)"
+          package_name="$(node -p 'JSON.parse(process.argv[1]).name' "$package_json")"
+          package_version="$(node -p 'JSON.parse(process.argv[1]).version' "$package_json")"
+          expected_version="${GITHUB_REF_NAME#v}"
+          if [[ "$package_name" != "smol-bytes" || "$package_version" != "$expected_version" ]]; then
+            echo "expected smol-bytes@$expected_version, found $package_name@$package_version" >&2
+            exit 1
+          fi
+
+          mv -- "$tarball" npm-package/smol-bytes.tgz
+      - name: Publish npm package
+        run: |
+          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+            npm publish npm-package/smol-bytes.tgz --ignore-scripts --access public --tag next --registry https://registry.npmjs.org
+          else
+            npm publish npm-package/smol-bytes.tgz --ignore-scripts --access public --registry https://registry.npmjs.org
+          fi
