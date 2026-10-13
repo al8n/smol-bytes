@@ -6,7 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Iterator collection and extension support for `Utf8Bytes` and `Utf8BytesMut`.
+
 ## [0.1.7] - 2026-10-13
+
+### Added
+
+- `format_utf8bytes!` and `format_compact_utf8bytes!` macros, `ToUtf8Bytes`
+  formatting conversions, and `StrExt` case-conversion and replacement helpers
+  for both immutable strategies.
 
 ### Changed
 

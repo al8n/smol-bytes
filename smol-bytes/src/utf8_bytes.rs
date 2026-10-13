@@ -9,6 +9,7 @@ use super::{
 mod cmp;
 mod fmt;
 mod from;
+mod iter;
 mod ops;
 
 #[cfg(feature = "arbitrary")]
