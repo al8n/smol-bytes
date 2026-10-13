@@ -40,6 +40,10 @@ pub use bytes::strategy::shared::Utf8Bytes;
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use utf8_bytes_mut::Utf8BytesMut;
 
+#[cfg(any(feature = "std", feature = "alloc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
+pub use str_ext::{StrExt, ToUtf8Bytes};
+
 pub use buffer::{Buffer, INLINE_CAP};
 pub use error::*;
 pub use utf8_buf::{Utf8Buf, Utf8BufMut};
@@ -84,6 +88,9 @@ mod utf8_buffer;
 mod utf8_bytes;
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod utf8_bytes_mut;
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+mod str_ext;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod macros;
