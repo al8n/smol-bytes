@@ -34,8 +34,8 @@ pyo3 = ["dep:pyo3", "std"]
 wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:getrandom", "std"]
 
 [dependencies]
-bytes = { version = "1.10", default-features = false, optional = true }
-paste = { package = "pastey", version = "0.2.3" }
+bytes = { version = "1", default-features = false, optional = true }
+paste = { package = "pastey", version = "0.2" }
 
 serde_core = { version = "1", optional = true, default-features = false }
 schemars = { version = "1", optional = true, default-features = false }
