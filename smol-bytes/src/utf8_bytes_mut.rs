@@ -149,7 +149,7 @@ impl Utf8BytesMut {
   }
 
   /// Returns `true` if the buffer has length 0.
-  #[inline(always)]
+  #[cfg_attr(not(coverage), inline(always))]
   pub fn is_empty(&self) -> bool {
     self.inner.is_empty()
   }
