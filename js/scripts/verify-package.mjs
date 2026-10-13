@@ -163,7 +163,9 @@ void values;
 function main() {
   const tempRoot = mkdtempSync(join(tmpdir(), 'smol-bytes-package-'));
   try {
-    const packDirectory = join(tempRoot, 'pack');
+    const packDirectory = process.env.SMOL_BYTES_PACKAGE_OUTPUT
+      ? resolve(packageRoot, process.env.SMOL_BYTES_PACKAGE_OUTPUT)
+      : join(tempRoot, 'pack');
     const consumerDirectory = join(tempRoot, 'consumer');
     const npmEnvironment = {
       ...process.env,
