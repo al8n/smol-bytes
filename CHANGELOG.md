@@ -6,7 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-13
+
+### Added
+
+- Iterator collection and extension support for `Utf8Bytes` and `Utf8BytesMut`.
+
+### Security
+
+- PyPI and npm releases use GitHub Actions OIDC trusted publishing from their
+  protected environments.
+
 ## [0.1.7] - 2026-10-13
+
+### Added
+
+- `format_utf8bytes!` and `format_compact_utf8bytes!` macros, `ToUtf8Bytes`
+  formatting conversions, and `StrExt` case-conversion and replacement helpers
+  for both immutable strategies.
 
 ### Changed
 
@@ -145,7 +162,8 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/al8n/smol-bytes/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/al8n/smol-bytes/compare/a56cfeca004c750ef4df7b42af05a9c8d6b981ba...v0.1.7
 [0.1.6]: https://github.com/al8n/smol-bytes/compare/8d88fde61726dd195d0aee3f707a4862bf9097e3...a56cfeca004c750ef4df7b42af05a9c8d6b981ba
 [0.1.5]: https://github.com/al8n/smol-bytes/compare/v0.1.4...v0.1.5
