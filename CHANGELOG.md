@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-13
+
+### Changed
+
+- Replaced the unmaintained `paste` package with maintained `pastey` through a
+  Cargo package alias, preserving `paste::paste!` call sites and the public API.
+
+### Security
+
+- Crate releases use GitHub Actions OIDC trusted publishing from the protected
+  `crates-io` environment.
+
 ## [0.1.6] - 2026-09-30
 
 ### Added
@@ -133,7 +145,9 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/al8n/smol-bytes/compare/a56cfeca004c750ef4df7b42af05a9c8d6b981ba...v0.1.7
+[0.1.6]: https://github.com/al8n/smol-bytes/compare/8d88fde61726dd195d0aee3f707a4862bf9097e3...a56cfeca004c750ef4df7b42af05a9c8d6b981ba
 [0.1.5]: https://github.com/al8n/smol-bytes/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/al8n/smol-bytes/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/al8n/smol-bytes/compare/v0.1.2...v0.1.3
