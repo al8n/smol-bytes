@@ -114,7 +114,7 @@ jobs:
       - name: Publish npm package
         run: |
           if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
-            npm publish npm-package/smol-bytes.tgz --ignore-scripts --access public --tag next --registry https://registry.npmjs.org
+            npm publish ./npm-package/smol-bytes.tgz --ignore-scripts --access public --tag next --registry https://registry.npmjs.org
           else
-            npm publish npm-package/smol-bytes.tgz --ignore-scripts --access public --registry https://registry.npmjs.org
+            npm publish ./npm-package/smol-bytes.tgz --ignore-scripts --access public --registry https://registry.npmjs.org
           fi
