@@ -315,9 +315,11 @@ pub(super) use forward_buf;
 pub(super) use forward_buf_mut;
 pub(super) use method_forward;
 
-/// Formats arguments into a shared [`Utf8Bytes`](crate::Utf8Bytes).
+/// Formats arguments into the default shared [`Utf8Bytes`](crate::Utf8Bytes).
 ///
-/// This is similar to `format!`, but returns [`Utf8Bytes`](crate::Utf8Bytes).
+/// This is similar to `format!`, but returns a value that retains heap storage
+/// when later shortened. Use `format_compact_utf8bytes!` when short results
+/// should use inline storage.
 ///
 /// # Examples
 ///
@@ -335,5 +337,30 @@ macro_rules! format_utf8bytes {
     ::core::fmt::Write::write_fmt(&mut value, ::core::format_args!($($tt)*))
       .expect("a formatting trait implementation returned an error");
     value.freeze_shared()
+  }};
+}
+
+/// Formats arguments into compact [`Utf8Bytes`](crate::compact::Utf8Bytes).
+///
+/// This is similar to `format!`, but returns a value that uses inline storage
+/// when its contents fit, including after a larger value is later shortened.
+/// Use `format_utf8bytes!` when retaining heap storage after shrinking is preferred.
+///
+/// # Examples
+///
+/// ```
+/// use smol_bytes::{compact, format_compact_utf8bytes};
+///
+/// let name = "Ada";
+/// let greeting: compact::Utf8Bytes = format_compact_utf8bytes!("hello, {name}!");
+/// assert_eq!(greeting.as_str(), "hello, Ada!");
+/// ```
+#[macro_export]
+macro_rules! format_compact_utf8bytes {
+  ($($tt:tt)*) => {{
+    let mut value = $crate::Utf8BytesMut::new();
+    ::core::fmt::Write::write_fmt(&mut value, ::core::format_args!($($tt)*))
+      .expect("a formatting trait implementation returned an error");
+    value.freeze_compact()
   }};
 }
