@@ -6,6 +6,12 @@ on:
     tags:
       - 'v*'
   pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version to publish without the leading v
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,8 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Verify release version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            python3 scripts/check-release-version.py --tag "v${RELEASE_VERSION}" --check-js
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             python3 scripts/check-release-version.py --tag "$GITHUB_REF_NAME" --check-js
           else
             python3 scripts/check-release-version.py
@@ -59,7 +69,7 @@ jobs:
         env:
           SMOL_BYTES_PACKAGE_OUTPUT: ${{ github.workspace }}/npm-package
       - name: Upload tested npm package
-        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
         uses: actions/upload-artifact@v7
         with:
           name: npm-package
@@ -67,7 +77,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
     needs: test
     runs-on: ubuntu-latest
     environment: npm
@@ -87,6 +97,8 @@ jobs:
         run: npm install --global npm@11.15.0
       - name: Validate npm package artifact
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           tarball_count="$(find npm-package -type f -name '*.tgz' -exec printf x \; | wc -c | tr -d ' ')"
           if [[ "$tarball_count" -ne 1 ]]; then
@@ -104,16 +116,21 @@ jobs:
           package_json="$(tar -xOf "$tarball" package/package.json)"
           package_name="$(node -p 'JSON.parse(process.argv[1]).name' "$package_json")"
           package_version="$(node -p 'JSON.parse(process.argv[1]).version' "$package_json")"
-          expected_version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            expected_version="$RELEASE_VERSION"
+          else
+            expected_version="${GITHUB_REF_NAME#v}"
+          fi
           if [[ "$package_name" != "smol-bytes" || "$package_version" != "$expected_version" ]]; then
             echo "expected smol-bytes@$expected_version, found $package_name@$package_version" >&2
             exit 1
           fi
 
+          echo "EXPECTED_VERSION=$expected_version" >> "$GITHUB_ENV"
           mv -- "$tarball" npm-package/smol-bytes.tgz
       - name: Publish npm package
         run: |
-          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+          if [[ "$EXPECTED_VERSION" == *-* ]]; then
             npm publish ./npm-package/smol-bytes.tgz --ignore-scripts --access public --tag next --registry https://registry.npmjs.org
           else
             npm publish ./npm-package/smol-bytes.tgz --ignore-scripts --access public --registry https://registry.npmjs.org
