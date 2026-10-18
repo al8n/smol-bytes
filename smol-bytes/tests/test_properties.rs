@@ -5,7 +5,7 @@
 //! regressions; these compare short operation sequences to standard types.
 
 use proptest::prelude::*;
-use smol_bytes::{Buf, Buffer, BytesMut, INLINE_CAP, Utf8BytesMut};
+use smol_bytes::{Buf, Buffer, Bytes, BytesMut, INLINE_CAP, Utf8Bytes, Utf8BytesMut, compact};
 
 fn bytes_cases() -> impl Strategy<Value = Vec<u8>> {
   prop_oneof![
@@ -154,6 +154,18 @@ proptest! {
     if source.len() > INLINE_CAP {
       prop_assert!(shared.slice(0..1).is_heap());
     }
+  }
+
+  #[test]
+  fn owned_utf8_lossy_matches_standard_for_arbitrary_bytes(source in prop::collection::vec(any::<u8>(), 0..128)) {
+    let expected = String::from_utf8_lossy(&source).into_owned();
+    let shared = Utf8Bytes::from_utf8_lossy(Bytes::from(source.clone()));
+    let compact = compact::Utf8Bytes::from_utf8_lossy(compact::Bytes::from(source.clone()));
+    let mutable = Utf8BytesMut::from_utf8_lossy(BytesMut::from(source));
+
+    prop_assert_eq!(shared.as_str(), expected.as_str());
+    prop_assert_eq!(compact.as_str(), expected.as_str());
+    prop_assert_eq!(mutable.as_str(), expected.as_str());
   }
 
   #[test]

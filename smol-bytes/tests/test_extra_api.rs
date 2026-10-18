@@ -1,4 +1,4 @@
-use smol_bytes::{Buf, BytesMut, INLINE_CAP, Utf8Buffer, Utf8Bytes, Utf8BytesMut, compact};
+use smol_bytes::{Buf, Bytes, BytesMut, INLINE_CAP, Utf8Buffer, Utf8Bytes, Utf8BytesMut, compact};
 
 fn consumed_fixed() -> Utf8Buffer {
   let mut value = Utf8Buffer::try_from("abcdef").unwrap();
@@ -179,4 +179,161 @@ fn bytes_mut_reclaim_keeps_content_on_success_and_failure() {
   assert_eq!(bytes.as_slice(), b"c");
   assert!(bytes.try_reclaim(63));
   assert_eq!(bytes.as_slice(), b"c");
+}
+
+#[test]
+fn bytes_mut_try_make_inline_leaves_inline_cursor_unchanged() {
+  let mut bytes = BytesMut::from(&b"abcdef"[..]);
+  bytes.advance(2);
+  let pointer = bytes.as_slice().as_ptr();
+  let capacity = bytes.capacity();
+
+  assert!(bytes.try_make_inline());
+  assert!(bytes.is_inline());
+  assert_eq!(bytes.as_slice(), b"cdef");
+  assert_eq!(bytes.as_slice().as_ptr(), pointer);
+  assert_eq!(bytes.capacity(), capacity);
+}
+
+#[test]
+fn bytes_mut_try_make_inline_rejects_large_views_and_compacts_short_views() {
+  let mut too_long = BytesMut::from(vec![b'x'; INLINE_CAP + 1]);
+  let too_long_pointer = too_long.as_slice().as_ptr();
+  let too_long_capacity = too_long.capacity();
+  assert!(too_long.is_heap());
+  assert!(!too_long.try_make_inline());
+  assert!(too_long.is_heap());
+  assert_eq!(too_long.as_slice().as_ptr(), too_long_pointer);
+  assert_eq!(too_long.capacity(), too_long_capacity);
+
+  let mut short = BytesMut::with_capacity(128);
+  short.extend_from_slice(b"short");
+  assert!(short.is_heap());
+  assert!(short.try_make_inline());
+  assert_eq!(short.as_slice(), b"short");
+  assert_eq!(short.capacity(), INLINE_CAP);
+
+  let mut empty = BytesMut::with_capacity(128);
+  assert!(empty.is_heap());
+  assert!(empty.try_make_inline());
+  assert!(empty.is_empty());
+  assert_eq!(empty.capacity(), INLINE_CAP);
+
+  let mut advanced = BytesMut::with_capacity(128);
+  advanced.extend_from_slice(b"prefix-visible");
+  advanced.advance(b"prefix-".len());
+  assert!(advanced.is_heap());
+  assert!(advanced.capacity() > INLINE_CAP);
+  assert!(advanced.try_make_inline());
+  assert_eq!(advanced.as_slice(), b"visible");
+  assert_eq!(advanced.capacity(), INLINE_CAP);
+
+  let payload = vec![b's'; 80];
+  let mut split = BytesMut::with_capacity(128);
+  split.extend_from_slice(&payload);
+  let sibling = split.split_to(18);
+  let sibling_pointer = sibling.as_slice().as_ptr();
+  let sibling_capacity = sibling.capacity();
+  assert!(split.is_heap());
+  assert_eq!(split.as_slice(), &payload[18..]);
+  assert!(split.try_make_inline());
+  assert_eq!(split.as_slice(), &payload[18..]);
+  assert_eq!(split.capacity(), INLINE_CAP);
+  assert_eq!(sibling.as_slice(), &payload[..18]);
+  assert_eq!(sibling.as_slice().as_ptr(), sibling_pointer);
+  assert_eq!(sibling.capacity(), sibling_capacity);
+}
+
+#[test]
+fn utf8_bytes_mut_try_make_inline_forwards_multibyte_heap_views() {
+  let mut text = Utf8BytesMut::with_capacity(128);
+  text.push_str("prefix-é🦀");
+  let sibling = text.split_to("prefix-".len());
+  let sibling_pointer = sibling.as_str().as_ptr();
+  let sibling_capacity = sibling.capacity();
+
+  assert!(text.is_heap());
+  assert!(text.try_make_inline());
+  assert!(text.is_inline());
+  assert_eq!(text.as_str(), "é🦀");
+  assert_eq!(text.capacity(), INLINE_CAP);
+  assert_eq!(sibling.as_str(), "prefix-");
+  assert_eq!(sibling.as_str().as_ptr(), sibling_pointer);
+  assert_eq!(sibling.capacity(), sibling_capacity);
+}
+
+#[test]
+fn owned_utf8_lossy_matches_standard_for_malformed_sequences() {
+  let cases: &[&[u8]] = &[
+    &[0x80],
+    &[0xe2, 0x82],
+    &[0xc0, 0xaf],
+    &[0xed, 0xa0, 0x80],
+    &[0xf4, 0x90, 0x80, 0x80],
+  ];
+
+  for input in cases {
+    let expected = String::from_utf8_lossy(input).into_owned();
+    assert_eq!(
+      Utf8Bytes::from_utf8_lossy(Bytes::from(*input)).as_str(),
+      expected.as_str()
+    );
+    assert_eq!(
+      compact::Utf8Bytes::from_utf8_lossy(compact::Bytes::from(*input)).as_str(),
+      expected.as_str()
+    );
+    assert_eq!(
+      Utf8BytesMut::from_utf8_lossy(BytesMut::from(*input)).as_str(),
+      expected.as_str()
+    );
+  }
+}
+
+#[test]
+fn owned_utf8_lossy_valid_fast_path_preserves_owned_views() {
+  let shared_empty = Utf8Bytes::from_utf8_lossy(Bytes::new());
+  let compact_empty = compact::Utf8Bytes::from_utf8_lossy(compact::Bytes::new());
+  let mutable_empty = Utf8BytesMut::from_utf8_lossy(BytesMut::new());
+  assert!(shared_empty.is_inline());
+  assert!(compact_empty.is_inline());
+  assert!(mutable_empty.is_inline());
+
+  let shared_inline = Utf8Bytes::from_utf8_lossy(Bytes::from(&b"inline"[..]));
+  let compact_inline = compact::Utf8Bytes::from_utf8_lossy(compact::Bytes::from(&b"inline"[..]));
+  let mutable_inline = Utf8BytesMut::from_utf8_lossy(BytesMut::from(&b"inline"[..]));
+  assert!(shared_inline.is_inline());
+  assert!(compact_inline.is_inline());
+  assert!(mutable_inline.is_inline());
+
+  let payload = "a".repeat(80);
+  let mut shared_input = BytesMut::with_capacity(128);
+  shared_input.extend_from_slice(payload.as_bytes());
+  let _shared_head = shared_input.split_to(20);
+  let shared_raw = shared_input.freeze_shared();
+  let shared_pointer = shared_raw.as_slice().as_ptr();
+  let shared = Utf8Bytes::from_utf8_lossy(shared_raw);
+  assert!(shared.is_heap());
+  assert_eq!(shared.as_str(), &payload[20..]);
+  assert_eq!(shared.as_str().as_ptr(), shared_pointer);
+
+  let mut compact_input = BytesMut::with_capacity(128);
+  compact_input.extend_from_slice(b"short heap");
+  let compact_raw = compact_input.freeze_compact();
+  let compact_pointer = compact_raw.as_slice().as_ptr();
+  assert!(compact_raw.is_heap());
+  let compact = compact::Utf8Bytes::from_utf8_lossy(compact_raw);
+  assert!(compact.is_heap());
+  assert_eq!(compact.as_str(), "short heap");
+  assert_eq!(compact.as_str().as_ptr(), compact_pointer);
+
+  let mut mutable_input = BytesMut::with_capacity(128);
+  mutable_input.extend_from_slice(b"prefix-visible");
+  let _mutable_head = mutable_input.split_to(b"prefix-".len());
+  let mutable_pointer = mutable_input.as_slice().as_ptr();
+  let mutable_capacity = mutable_input.capacity();
+  let mutable = Utf8BytesMut::from_utf8_lossy(mutable_input);
+  assert!(mutable.is_heap());
+  assert_eq!(mutable.as_str(), "visible");
+  assert_eq!(mutable.as_str().as_ptr(), mutable_pointer);
+  assert_eq!(mutable.capacity(), mutable_capacity);
 }

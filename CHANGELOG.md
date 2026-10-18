@@ -40,8 +40,10 @@ The complete Rust, Python, and JavaScript migration guide is included below.
 ### Added
 
 - **Rust:** `FromUtf8Error<B>` preserves owned invalid input for recovery;
-  owned UTF-8 wrappers expose `from_utf8`. `TryGetError` and
-  `TryGetIntegerError` provide crate-owned inherent-reader errors.
+  owned UTF-8 wrappers expose `from_utf8`. `Utf8BytesMut`, `Utf8Bytes`, and
+  `compact::Utf8Bytes` also expose `from_utf8_lossy`, preserving the owned
+  representation for valid input. `TryGetError` and `TryGetIntegerError`
+  provide crate-owned inherent-reader errors.
 - **Rust:** safe mutable `str` access for `Utf8Buffer` and `Utf8BytesMut`,
   fallible UTF-8 mutation through `Utf8BufMut::CapacityError`, and
   `fmt::Write` for `Utf8Buffer`.
@@ -62,6 +64,13 @@ The complete Rust, Python, and JavaScript migration guide is included below.
   UTF-8 forwarding methods. Fixed `Utf8Buffer` values convert directly into
   mutable or either immutable UTF-8 strategy, and all UTF-8 storage types have
   scalar-value `pop`.
+- **Rust:** `BytesMut::try_make_inline` and
+  `Utf8BytesMut::try_make_inline` explicitly compact a current short heap view
+  into inline storage without allocating.
+- **Rust:** `Utf8Buffer` and `Utf8BytesMut` now offer `insert_str`/
+  `try_insert_str`, `replace_range`/`try_replace_range`, and `retain`; fixed
+  edit failures use `Utf8EditError`. Their `drain`/`try_drain` methods return
+  `Utf8Drain`, whose drop removes its full selected range.
 - **Python:** canonical root shared `Bytes` and `Utf8Bytes`, with exact shared
   aliases that preserve historic shared-module pickle loading; `py.typed` and
   complete stubs; bytes-like input support; independent mutable slices;

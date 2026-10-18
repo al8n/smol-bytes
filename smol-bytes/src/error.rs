@@ -363,6 +363,45 @@ impl From<RangeOutOfBounds> for Utf8IndexError {
   }
 }
 
+/// Error type for fixed-capacity UTF-8 editing operations.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Utf8EditError {
+  /// The requested index or range is invalid.
+  Index(Utf8IndexError),
+  /// The replacement cannot fit in the fixed-capacity buffer.
+  Capacity(TryPutError),
+}
+
+impl core::fmt::Display for Utf8EditError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::Index(error) => error.fmt(f),
+      Self::Capacity(error) => error.fmt(f),
+    }
+  }
+}
+
+impl core::error::Error for Utf8EditError {
+  fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+    match self {
+      Self::Index(error) => Some(error),
+      Self::Capacity(error) => Some(error),
+    }
+  }
+}
+
+impl From<Utf8IndexError> for Utf8EditError {
+  fn from(value: Utf8IndexError) -> Self {
+    Self::Index(value)
+  }
+}
+
+impl From<TryPutError> for Utf8EditError {
+  fn from(value: TryPutError) -> Self {
+    Self::Capacity(value)
+  }
+}
+
 #[cfg(feature = "std")]
 impl From<Utf8IndexError> for std::io::Error {
   fn from(value: Utf8IndexError) -> Self {

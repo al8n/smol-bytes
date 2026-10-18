@@ -118,6 +118,25 @@ where
     }
   }
 
+  /// Decodes owned bytes as UTF-8, replacing malformed sequences with
+  /// `U+FFFD`.
+  ///
+  /// Valid input keeps its storage strategy and current view. Invalid input is
+  /// converted through an owned [`String`](std::string::String).
+  ///
+  /// ```
+  /// use smol_bytes::{Bytes, Utf8Bytes};
+  ///
+  /// let text = Utf8Bytes::from_utf8_lossy(Bytes::from(&b"hi\xff"[..]));
+  /// assert_eq!(text.as_str(), "hi\u{FFFD}");
+  /// ```
+  pub fn from_utf8_lossy(bytes: RawBytes<S>) -> Self {
+    match Self::from_utf8(bytes) {
+      Ok(value) => value,
+      Err(error) => Self::from(std::string::String::from_utf8_lossy(error.as_bytes()).into_owned()),
+    }
+  }
+
   /// Returns a reference to the inner `RawBytes`.
   ///
   /// Note: named `as_inner` (not `as_bytes`) to avoid shadowing

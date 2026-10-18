@@ -29,7 +29,12 @@ mod wasm;
 #[doc = "Growable mutable byte buffer with inline/heap storage."]
 #[doc = ""]
 #[doc = "Stores up to 62 bytes inline on the stack. Larger data automatically"]
-#[doc = "promotes to heap allocation. Once on heap, stays on heap."]
+#[doc = "promotes to heap allocation. Heap storage does not automatically return"]
+#[doc = "to inline storage."]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = " Call [`try_make_inline`](Self::try_make_inline) to compact an eligible Rust value."
+)]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
 #[cfg_attr(not(feature = "wasm"), doc = "# Inline vs Heap Storage")]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
@@ -428,6 +433,36 @@ impl BytesMut {
       }
       Repr::Heap(_) => {}
     }
+  }
+
+  /// Copies the current heap view into inline storage when it fits.
+  ///
+  /// Returns `false` without changing the buffer when the current view is
+  /// larger than [`INLINE_CAP`]. Existing inline buffers are left unchanged
+  /// and return `true`. This never allocates, but a successful conversion
+  /// discards hidden heap bytes and excess capacity.
+  ///
+  /// ```
+  /// use smol_bytes::{BytesMut, INLINE_CAP};
+  ///
+  /// let mut bytes = BytesMut::with_capacity(128);
+  /// bytes.extend_from_slice(b"short");
+  /// assert!(bytes.try_make_inline());
+  /// assert!(bytes.is_inline());
+  /// assert_eq!(bytes.capacity(), INLINE_CAP);
+  /// ```
+  pub fn try_make_inline(&mut self) -> bool {
+    let inline = match &self.0 {
+      Repr::Inline(_) => return true,
+      Repr::Heap(bytes) if bytes.len() > INLINE_CAP => return false,
+      Repr::Heap(bytes) => {
+        let visible: &[u8] = bytes.as_ref();
+        Buffer::try_from(visible).expect("heap view fits inline capacity")
+      }
+    };
+
+    self.0 = Repr::Inline(inline);
+    true
   }
 
   /// Splits the bytes into two at the given index.

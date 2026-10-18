@@ -4,6 +4,8 @@ use super::{
   buffer::Buffer,
   error::*,
   utf8_buf::{Utf8Buf, Utf8BufMut, range_bounds_to_start_end, sealed, validate_char_boundary},
+  utf8_drain::Utf8Drain,
+  utf8_edit::{RawUtf8Storage, RetainGuard, replace_range as raw_replace_range},
 };
 
 mod cmp;
@@ -231,6 +233,132 @@ impl Utf8Buffer {
   /// ```
   pub fn try_reclaim(&mut self, additional: usize) -> bool {
     self.inner.try_reclaim(additional)
+  }
+
+  /// Inserts `s` at a UTF-8 character boundary.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut text = Utf8Buffer::try_from("aé").unwrap();
+  /// text.insert_str(1, "🦀");
+  /// assert_eq!(text.as_str(), "a🦀é");
+  /// ```
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is invalid or the inserted bytes do not fit.
+  pub fn insert_str(&mut self, idx: usize, s: &str) {
+    self
+      .try_insert_str(idx, s)
+      .unwrap_or_else(|error| panic!("insert_str failed: {error}"));
+  }
+
+  /// Tries to insert `s` at a UTF-8 character boundary.
+  ///
+  /// The buffer is unchanged on error. A capacity error reports only the
+  /// positive amount by which the edit would grow the current view.
+  pub fn try_insert_str(&mut self, idx: usize, s: &str) -> Result<(), Utf8EditError> {
+    validate_char_boundary(self.as_str(), idx).map_err(Utf8EditError::Index)?;
+    self.replace_range_validated(idx, idx, s)
+  }
+
+  /// Replaces a UTF-8 character-boundary range with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or the replacement does not fit.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &str) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a UTF-8 character-boundary range with `replacement`.
+  ///
+  /// Validation and capacity checks happen before mutation, so this buffer is
+  /// unchanged when an error is returned.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &str,
+  ) -> Result<(), Utf8EditError> {
+    let (start, end) =
+      range_bounds_to_start_end(self.as_str(), range).map_err(Utf8EditError::Index)?;
+    self.replace_range_validated(start, end, replacement)
+  }
+
+  fn replace_range_validated(
+    &mut self,
+    start: usize,
+    end: usize,
+    replacement: &str,
+  ) -> Result<(), Utf8EditError> {
+    let old_len = self.inner.len();
+    let removed = end - start;
+    let growth = replacement.len().saturating_sub(removed);
+    let available = self.inner.capacity() - old_len;
+    if growth > available {
+      return Err(
+        TryPutError {
+          requested: growth,
+          available,
+        }
+        .into(),
+      );
+    }
+
+    let mut storage = RawUtf8Storage::fixed(&mut self.inner);
+    raw_replace_range(&mut storage, start, end, replacement);
+    Ok(())
+  }
+
+  /// Retains only the characters for which `predicate` returns `true`.
+  ///
+  /// The predicate runs once per character in original order without
+  /// allocating. If it panics, decisions already returned from the predicate
+  /// are kept, while the current character and unvisited suffix remain.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut text = Utf8Buffer::try_from("aé🦀").unwrap();
+  /// text.retain(|character| character != 'é');
+  /// assert_eq!(text.as_str(), "a🦀");
+  /// ```
+  pub fn retain<F>(&mut self, mut predicate: F)
+  where
+    F: FnMut(char) -> bool,
+  {
+    let mut guard = RetainGuard::new(RawUtf8Storage::fixed(&mut self.inner));
+    guard.retain(&mut predicate);
+  }
+
+  /// Returns an iterator over a range that is removed when the iterator drops.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is out of bounds or not on UTF-8 character boundaries.
+  pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Utf8Drain<'_> {
+    self.try_drain(range).expect("drain range failed")
+  }
+
+  /// Tries to return an iterator over a range removed when it drops.
+  ///
+  /// The selected range is not removed eagerly. Dropping this iterator removes
+  /// the entire original range, even if it was only partly consumed.
+  pub fn try_drain(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<Utf8Drain<'_>, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
+    Ok(Utf8Drain::new(
+      RawUtf8Storage::fixed(&mut self.inner),
+      start,
+      end,
+    ))
   }
 
   /// Appends a character to the buffer.
