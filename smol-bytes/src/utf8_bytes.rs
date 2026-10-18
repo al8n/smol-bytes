@@ -133,6 +133,18 @@ where
     self.inner
   }
 
+  /// Tries to convert this view into mutable UTF-8 bytes without copying.
+  ///
+  /// The conversion succeeds when the underlying immutable bytes are uniquely
+  /// owned and cover their full allocation. On failure, this exact view and
+  /// storage strategy are returned unchanged.
+  pub fn try_into_mut(self) -> Result<crate::Utf8BytesMut, Self> {
+    match self.inner.try_into_mut() {
+      Ok(inner) => Ok(crate::Utf8BytesMut { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
+  }
+
   /// Returns the contents as a string slice.
   #[inline]
   pub fn as_str(&self) -> &str {
@@ -162,6 +174,49 @@ where
   #[inline]
   pub fn is_heap(&self) -> bool {
     self.inner.is_heap()
+  }
+
+  /// Returns whether this is the only reference to its heap allocation.
+  ///
+  /// Inline values and static backing never report uniqueness.
+  #[inline]
+  pub fn is_unique(&self) -> bool {
+    self.inner.is_unique()
+  }
+
+  /// Clears this value's visible view without changing the immutable payload.
+  #[inline]
+  pub fn clear(&mut self) {
+    self.inner.clear();
+  }
+
+  /// Truncates this value's visible view at a UTF-8 character boundary.
+  pub fn truncate(&mut self, new_len: usize) {
+    self
+      .try_truncate(new_len)
+      .expect("new_len must lie on a UTF-8 character boundary");
+  }
+
+  /// Tries to truncate this value's visible view at a UTF-8 character boundary.
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
+    if new_len >= self.len() {
+      return Ok(());
+    }
+    validate_char_boundary(self.as_str(), new_len)?;
+    self.inner.truncate(new_len);
+    Ok(())
+  }
+
+  /// Advances this value's visible view by `cnt` UTF-8 bytes.
+  pub fn advance(&mut self, cnt: usize) {
+    self.try_advance(cnt).expect("advance failed");
+  }
+
+  /// Tries to advance this value's visible view by `cnt` UTF-8 bytes.
+  pub fn try_advance(&mut self, cnt: usize) -> Result<(), Utf8IndexError> {
+    validate_char_boundary(self.as_str(), cnt)?;
+    self.inner.try_advance(cnt).expect("already checked bounds");
+    Ok(())
   }
 
   /// Splits the bytes at the given index.
@@ -289,6 +344,26 @@ where
 
   fn deref(&self) -> &Self::Target {
     self.as_str()
+  }
+}
+
+#[cfg(feature = "std")]
+impl<S> AsRef<std::ffi::OsStr> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn as_ref(&self) -> &std::ffi::OsStr {
+    std::ffi::OsStr::new(self.as_str())
+  }
+}
+
+#[cfg(feature = "std")]
+impl<S> AsRef<std::path::Path> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn as_ref(&self) -> &std::path::Path {
+    std::path::Path::new(self.as_str())
   }
 }
 

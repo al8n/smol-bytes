@@ -535,6 +535,12 @@ impl<S> RawBytes<S> {
     self.repr.into_vec()
   }
 
+  /// Converts this value into a boxed byte slice.
+  #[inline]
+  pub fn into_boxed_slice(self) -> Box<[u8]> {
+    self.into_vec().into_boxed_slice()
+  }
+
   /// Converts `self` into a [`Bytes`], reusing the allocation if possible.
   #[inline]
   pub fn into_bytes(self) -> Bytes {

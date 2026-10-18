@@ -136,6 +136,24 @@ pub mod compact;
 /// See [`shared::Bytes`] for usage examples and detailed documentation.
 pub mod shared;
 
+impl From<compact::Bytes> for shared::Bytes {
+  fn from(value: compact::Bytes) -> Self {
+    match value.repr {
+      crate::bytes::raw::Repr::Inline(storage) => Self::inline(storage),
+      crate::bytes::raw::Repr::Heap(bytes) => Self::heap(bytes),
+    }
+  }
+}
+
+impl From<shared::Bytes> for compact::Bytes {
+  fn from(value: shared::Bytes) -> Self {
+    match value.repr {
+      crate::bytes::raw::Repr::Inline(storage) => Self::inline(storage),
+      crate::bytes::raw::Repr::Heap(bytes) => Self::from(bytes),
+    }
+  }
+}
+
 mod sealed {
   use crate::error::*;
   use core::ops::RangeBounds;

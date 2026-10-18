@@ -1,22 +1,24 @@
 use super::*;
 
-impl<S> PartialEq for Utf8Bytes<S>
+impl<S, T> PartialEq<Utf8Bytes<T>> for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
+  RawBytes<T>: ImmutableStorage,
 {
-  fn eq(&self, other: &Self) -> bool {
+  fn eq(&self, other: &Utf8Bytes<T>) -> bool {
     self.as_str() == other.as_str()
   }
 }
 
 impl<S> Eq for Utf8Bytes<S> where RawBytes<S>: ImmutableStorage {}
 
-impl<S> PartialOrd for Utf8Bytes<S>
+impl<S, T> PartialOrd<Utf8Bytes<T>> for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
+  RawBytes<T>: ImmutableStorage,
 {
-  fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-    Some(self.cmp(other))
+  fn partial_cmp(&self, other: &Utf8Bytes<T>) -> Option<core::cmp::Ordering> {
+    Some(self.as_str().cmp(other.as_str()))
   }
 }
 
@@ -113,6 +115,24 @@ const _: () = {
     #[cfg_attr(not(coverage), inline(always))]
     fn eq(&self, other: &Utf8Bytes<S>) -> bool {
       self.as_str() == other.as_str()
+    }
+  }
+
+  impl<S> PartialOrd<Utf8BytesMut> for Utf8Bytes<S>
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    fn partial_cmp(&self, other: &Utf8BytesMut) -> Option<core::cmp::Ordering> {
+      self.as_str().partial_cmp(other.as_str())
+    }
+  }
+
+  impl<S> PartialOrd<Utf8Bytes<S>> for Utf8BytesMut
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    fn partial_cmp(&self, other: &Utf8Bytes<S>) -> Option<core::cmp::Ordering> {
+      self.as_str().partial_cmp(other.as_str())
     }
   }
 };

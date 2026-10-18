@@ -133,6 +133,24 @@ const _: () = {
     }
   }
 
+  impl<S> PartialOrd<crate::utf8_bytes::Utf8Bytes<S>> for Utf8Buffer
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    fn partial_cmp(&self, other: &crate::utf8_bytes::Utf8Bytes<S>) -> Option<Ordering> {
+      self.as_str().partial_cmp(other.as_str())
+    }
+  }
+
+  impl<S> PartialOrd<Utf8Buffer> for crate::utf8_bytes::Utf8Bytes<S>
+  where
+    RawBytes<S>: ImmutableStorage,
+  {
+    fn partial_cmp(&self, other: &Utf8Buffer) -> Option<Ordering> {
+      self.as_str().partial_cmp(other.as_str())
+    }
+  }
+
   impl PartialEq<Utf8BytesMut> for Utf8Buffer {
     #[cfg_attr(not(coverage), inline(always))]
     fn eq(&self, other: &Utf8BytesMut) -> bool {
@@ -144,6 +162,18 @@ const _: () = {
     #[cfg_attr(not(coverage), inline(always))]
     fn eq(&self, other: &Utf8Buffer) -> bool {
       self.as_str() == other.as_str()
+    }
+  }
+
+  impl PartialOrd<Utf8BytesMut> for Utf8Buffer {
+    fn partial_cmp(&self, other: &Utf8BytesMut) -> Option<Ordering> {
+      self.as_str().partial_cmp(other.as_str())
+    }
+  }
+
+  impl PartialOrd<Utf8Buffer> for Utf8BytesMut {
+    fn partial_cmp(&self, other: &Utf8Buffer) -> Option<Ordering> {
+      self.as_str().partial_cmp(other.as_str())
     }
   }
 };

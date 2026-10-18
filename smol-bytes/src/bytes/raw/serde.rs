@@ -39,7 +39,7 @@ where
       while let Some(value) = seq.next_element()? {
         values.put_u8(value);
       }
-      Ok(values.freeze())
+      Ok(values.freeze_with())
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

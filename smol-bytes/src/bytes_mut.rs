@@ -705,7 +705,7 @@ impl BytesMut {
   }
 
   #[inline]
-  pub(crate) fn freeze<S>(self) -> RawBytes<S>
+  pub(crate) fn freeze_with<S>(self) -> RawBytes<S>
   where
     RawBytes<S>: crate::strategy::ImmutableStorage,
   {
@@ -713,6 +713,22 @@ impl BytesMut {
       Repr::Inline(storage) => RawBytes::inline(storage),
       Repr::Heap(b) => RawBytes::heap(b.freeze()),
     }
+  }
+
+  /// Converts this mutable buffer into the default shared immutable [`Bytes`](crate::Bytes).
+  ///
+  /// Heap-backed values retain their allocation. [`freeze_compact`](Self::freeze_compact)
+  /// also transfers existing heap storage without copying, including a short current view;
+  /// its compact strategy applies to later shortening or view operations.
+  ///
+  /// ```
+  /// use smol_bytes::BytesMut;
+  ///
+  /// let bytes = BytesMut::from(&b"hello"[..]).freeze();
+  /// assert_eq!(bytes, b"hello"[..]);
+  /// ```
+  pub fn freeze(self) -> crate::Bytes {
+    self.freeze_with()
   }
 
   /// Converts `self` into an immutable [`shared::Bytes`](crate::shared::Bytes).
@@ -740,7 +756,7 @@ impl BytesMut {
   /// th.join().unwrap();
   /// ```
   pub fn freeze_shared(self) -> crate::shared::Bytes {
-    self.freeze()
+    self.freeze_with()
   }
 
   /// Converts `self` into an immutable [`compact::Bytes`](crate::compact::Bytes).
@@ -748,6 +764,10 @@ impl BytesMut {
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion
   /// is done, the handle can be cloned and shared across threads.
+  ///
+  /// Existing heap storage is transferred without copying. In particular, a
+  /// short heap view is not immediately canonicalized; the compact strategy
+  /// applies to subsequent shortening or view operations.
   ///
   /// ## Examples
   ///
@@ -768,7 +788,7 @@ impl BytesMut {
   /// th.join().unwrap();
   /// ```
   pub fn freeze_compact(self) -> crate::compact::Bytes {
-    self.freeze()
+    self.freeze_with()
   }
 
   /// Returns the remaining spare capacity of the buffer as a slice of [`MaybeUninit<u8>`].

@@ -64,11 +64,29 @@ impl TryFrom<&[u8]> for Utf8Buffer {
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 const _: () = {
-  use std::{boxed::Box, rc::Rc, string::String, sync::Arc};
+  use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 
   impl From<Utf8Buffer> for String {
     fn from(value: Utf8Buffer) -> Self {
       value.as_str().to_string()
+    }
+  }
+
+  impl From<Utf8Buffer> for Vec<u8> {
+    fn from(value: Utf8Buffer) -> Self {
+      value.into_inner().as_slice().to_vec()
+    }
+  }
+
+  impl From<Utf8Buffer> for ::bytes::Bytes {
+    fn from(value: Utf8Buffer) -> Self {
+      ::bytes::Bytes::copy_from_slice(value.as_str().as_bytes())
+    }
+  }
+
+  impl From<Utf8Buffer> for ::bytes::BytesMut {
+    fn from(value: Utf8Buffer) -> Self {
+      ::bytes::BytesMut::from(value.as_str().as_bytes())
     }
   }
 

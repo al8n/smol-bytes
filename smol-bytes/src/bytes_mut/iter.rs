@@ -81,6 +81,27 @@ impl<'a> FromIterator<&'a [u8]> for BytesMut {
   }
 }
 
+impl FromIterator<bytes::Bytes> for BytesMut {
+  #[cfg_attr(not(coverage), inline(always))]
+  fn from_iter<T: IntoIterator<Item = bytes::Bytes>>(iter: T) -> Self {
+    let mut smol_bytes_mut = BytesMut::new();
+    smol_bytes_mut.extend(iter);
+    smol_bytes_mut
+  }
+}
+
+impl<S> FromIterator<RawBytes<S>> for BytesMut
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  #[cfg_attr(not(coverage), inline(always))]
+  fn from_iter<T: IntoIterator<Item = RawBytes<S>>>(iter: T) -> Self {
+    let mut smol_bytes_mut = BytesMut::new();
+    smol_bytes_mut.extend(iter);
+    smol_bytes_mut
+  }
+}
+
 impl IntoIterator for BytesMut {
   type Item = u8;
   type IntoIter = ::bytes::buf::IntoIter<BytesMut>;

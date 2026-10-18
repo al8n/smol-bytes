@@ -103,8 +103,16 @@ Rule of thumb: use `shared` (the default) for I/O and `bytes` interop; use
 | `Utf8Bytes` / `compact::Utf8Bytes` | Shared or compacting UTF-8 bytes | No | Immutable UTF-8 value |
 | `Utf8BytesMut` | Inline or growable valid UTF-8 bytes | Yes | Mutable UTF-8 value |
 
-Every handle is 64 bytes. All byte types implement `bytes::Buf`, and the
-mutable ones implement `bytes::BufMut`.
+Every handle is 64 bytes. With the `bytes` dependency enabled, all byte types
+implement `bytes::Buf`, and the mutable ones implement `bytes::BufMut`.
+
+The immutable strategy types have immutable payloads but mutable views:
+`advance`, `truncate`, and `clear` change only the visible cursor/window.
+`Utf8Bytes` offers the same byte-indexed, UTF-8-boundary-checked view
+operations and can reclaim unique full heap allocations with `try_into_mut`.
+`Utf8Buffer` and `Utf8BytesMut` expose `as_mut_str`, `AsMut<str>`,
+`BorrowMut<str>`, `DerefMut<Target = str>`, and mutable string-range indexing;
+the standard `str` rules preserve UTF-8 validity.
 
 `BytesMut::split_to`, `split_off`, and `split` always return `BytesMut`.
 Inline results stay inline; splitting an inline value's reserved-but-unwritten
@@ -160,27 +168,57 @@ allows:
 - `compact::Bytes::from(bytes::Bytes)` inlines payloads of at most 62 bytes
   and shares larger ones.
 - `BytesMut::freeze_shared` / `freeze_compact` convert without copying heap
-  contents; `Bytes::try_into_mut` reclaims unique heap allocations.
+  contents; `BytesMut::freeze` is the root-default shared conversion.
+- `Utf8BytesMut::freeze` similarly returns the root-default `Utf8Bytes`;
+  `freeze_shared` and `freeze_compact` remain available for explicit targets.
+- Consuming `shared::Bytes`/`compact::Bytes` and UTF-8 strategy conversions
+  apply the target strategy: large heap values keep their allocation and small
+  values compact when converted to the compact strategy.
+- `Bytes::try_into_mut` and `Utf8Bytes::try_into_mut` reclaim unique full heap
+  allocations; a shared or sliced view is returned unchanged on failure.
+
+```rust
+use smol_bytes::{BytesMut, Utf8Bytes, Utf8BytesMut, compact};
+
+let bytes = BytesMut::from(&b"payload"[..]).freeze();
+assert_eq!(bytes, b"payload"[..]);
+
+let mut text = Utf8Bytes::from("header: value");
+text.advance(8);
+assert_eq!(text.as_str(), "value"); // only this view moved
+
+let compact: compact::Bytes = bytes.into();
+assert_eq!(compact, b"payload"[..]);
+
+let frozen = Utf8BytesMut::from("done").freeze();
+assert_eq!(frozen.as_str(), "done");
+```
 
 ## Features and MSRV
 
 | Feature | Description |
 | --- | --- |
-| `std` (default) | Standard-library support and the heap-backed types |
-| `alloc` | Heap-backed types without `std` |
+| `std` (default) | Enables `alloc`, `bytes/std`, and Serde's `std`/`result` support |
+| `alloc` | Heap-backed types and the optional `bytes` dependency without `std` |
+| `bytes` | Compatibility alias for `alloc` |
 | `serde` | Serde support |
-| `schemars` | Schemars v1 string schemas for UTF-8 wrappers; implies `alloc` |
+| `schemars` | Schemars v1 schemas; UTF-8 wrappers are strings and byte wrappers serialize as `array<u8>`; implies `alloc` |
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
-| `quickcheck` | QuickCheck support |
+| `quickcheck` | QuickCheck support; implies `std` |
 | `async-graphql` | `Bytes` and `String` GraphQL scalars for `Bytes` and `Utf8Bytes`; implies `std` |
 | `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
 With no features enabled the crate is `no_std` and provides the fixed
-`Buffer` and `Utf8Buffer` types; `alloc` adds the heap-backed types without
-`std`.
+`Buffer` and `Utf8Buffer` types. `bytes::Buf`/`BufMut` are available once
+`alloc`, `std`, or the compatibility `bytes` feature is selected; `alloc` adds
+the heap-backed types without `std`.
+
+Byte wrapper JSON schemas describe serialization as `array<u8>` and accept an
+array or string under Schemars' deserialization contract. `Buffer` additionally
+sets `maxItems` to `INLINE_CAP`; UTF-8 wrappers remain ordinary string schemas.
 
 The `sqlx` bindings decode by borrowing from the row, so a value of at most 62
 bytes is built inline with no heap allocation at all. That costs one thing:

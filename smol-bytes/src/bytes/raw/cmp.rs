@@ -79,25 +79,27 @@ where
   }
 }
 
-impl<S> PartialEq for RawBytes<S>
+impl<S, T> PartialEq<RawBytes<T>> for RawBytes<S>
 where
   Self: ImmutableStorage,
+  RawBytes<T>: ImmutableStorage,
 {
   #[inline]
-  fn eq(&self, other: &Self) -> bool {
+  fn eq(&self, other: &RawBytes<T>) -> bool {
     self.repr.ptr_eq(&other.repr) || self.as_slice() == other.as_slice()
   }
 }
 
 impl<S> Eq for RawBytes<S> where Self: ImmutableStorage {}
 
-impl<S> PartialOrd for RawBytes<S>
+impl<S, T> PartialOrd<RawBytes<T>> for RawBytes<S>
 where
   Self: ImmutableStorage,
+  RawBytes<T>: ImmutableStorage,
 {
   #[inline]
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
+  fn partial_cmp(&self, other: &RawBytes<T>) -> Option<Ordering> {
+    Some(self.as_slice().cmp(other.as_slice()))
   }
 }
 

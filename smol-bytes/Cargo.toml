@@ -18,13 +18,16 @@ workspace = true
 
 [features]
 default = ["std"]
-alloc = ["serde_core?/alloc", "bytes"]
-std = ["bytes/default", "serde_core?/default"]
+alloc = ["dep:bytes", "serde_core?/alloc"]
+std = ["alloc", "bytes/std", "serde_core?/std", "serde_core?/result"]
+# Compatibility feature for callers that previously selected bytes directly.
+bytes = ["alloc"]
 serde = ["dep:serde_core"]
 # Schemars needs allocation for schema documents, but not std or wrapper Serde impls.
 schemars = ["dep:schemars", "alloc"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]
+quickcheck = ["dep:quickcheck", "std"]
 # `async-graphql`'s derives expand to `::std::` paths, so this integration
 # cannot be built without `std`.
 async-graphql = ["dep:async-graphql", "std"]

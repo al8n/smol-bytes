@@ -155,6 +155,14 @@ impl Utf8Buffer {
     unsafe { str::from_utf8_unchecked(self.inner.as_slice()) }
   }
 
+  /// Returns the contents as a mutable string slice.
+  ///
+  /// Mutations must preserve UTF-8 validity and the byte length of edited
+  /// ranges, as required by [`prim@str`].
+  pub fn as_mut_str(&mut self) -> &mut str {
+    str::from_utf8_mut(self.inner.as_mut_slice()).expect("UTF-8 invariant")
+  }
+
   /// Returns the length of the buffer in bytes.
   ///
   /// # Examples
@@ -445,6 +453,20 @@ impl core::ops::Deref for Utf8Buffer {
   #[cfg_attr(not(coverage), inline(always))]
   fn deref(&self) -> &Self::Target {
     self.as_str()
+  }
+}
+
+#[cfg(feature = "std")]
+impl AsRef<std::ffi::OsStr> for Utf8Buffer {
+  fn as_ref(&self) -> &std::ffi::OsStr {
+    std::ffi::OsStr::new(self.as_str())
+  }
+}
+
+#[cfg(feature = "std")]
+impl AsRef<std::path::Path> for Utf8Buffer {
+  fn as_ref(&self) -> &std::path::Path {
+    std::path::Path::new(self.as_str())
   }
 }
 

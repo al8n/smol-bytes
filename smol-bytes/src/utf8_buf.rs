@@ -108,9 +108,14 @@ pub trait Utf8Buf: sealed::Sealed + AsRef<str> + Sized {
 ///
 /// This trait provides common mutable operations for buffer types that can be
 /// modified while maintaining UTF-8 validity.
-pub trait Utf8BufMut: Utf8Buf {
+pub trait Utf8BufMut: Utf8Buf + AsMut<str> {
   /// The error returned when an append cannot fit.
   type CapacityError: core::error::Error;
+
+  /// Returns the contents as a mutable string slice.
+  fn as_mut_str(&mut self) -> &mut str {
+    self.as_mut()
+  }
 
   /// Truncates at a UTF-8 character boundary.
   ///

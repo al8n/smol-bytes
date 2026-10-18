@@ -1,5 +1,5 @@
 use core::{convert::Infallible, str::FromStr};
-use std::string::String;
+use std::{borrow::Cow, string::String, vec::Vec};
 
 use super::*;
 
@@ -27,6 +27,15 @@ impl From<String> for Utf8BytesMut {
   }
 }
 
+impl<'a> From<Cow<'a, str>> for Utf8BytesMut {
+  fn from(value: Cow<'a, str>) -> Self {
+    match value {
+      Cow::Borrowed(value) => Self::from(value),
+      Cow::Owned(value) => Self::from(value),
+    }
+  }
+}
+
 impl TryFrom<BytesMut> for Utf8BytesMut {
   type Error = FromUtf8Error<BytesMut>;
 
@@ -45,6 +54,45 @@ impl TryFrom<&[u8]> for Utf8BytesMut {
   }
 }
 
+impl TryFrom<Vec<u8>> for Utf8BytesMut {
+  type Error = FromUtf8Error<Vec<u8>>;
+
+  fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+    match core::str::from_utf8(&bytes) {
+      Ok(_) => Ok(Self {
+        inner: BytesMut::from(bytes),
+      }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+}
+
+impl TryFrom<::bytes::Bytes> for Utf8BytesMut {
+  type Error = FromUtf8Error<::bytes::Bytes>;
+
+  fn try_from(bytes: ::bytes::Bytes) -> Result<Self, Self::Error> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self {
+        inner: BytesMut::from(bytes),
+      }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+}
+
+impl TryFrom<::bytes::BytesMut> for Utf8BytesMut {
+  type Error = FromUtf8Error<::bytes::BytesMut>;
+
+  fn try_from(bytes: ::bytes::BytesMut) -> Result<Self, Self::Error> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self {
+        inner: BytesMut::from(bytes),
+      }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+}
+
 impl From<Utf8BytesMut> for BytesMut {
   fn from(value: Utf8BytesMut) -> Self {
     value.inner
@@ -57,13 +105,31 @@ impl From<Utf8BytesMut> for String {
   }
 }
 
+impl From<Utf8BytesMut> for Vec<u8> {
+  fn from(value: Utf8BytesMut) -> Self {
+    value.into_inner().into()
+  }
+}
+
+impl From<Utf8BytesMut> for ::bytes::Bytes {
+  fn from(value: Utf8BytesMut) -> Self {
+    value.into_inner().into()
+  }
+}
+
+impl From<Utf8BytesMut> for ::bytes::BytesMut {
+  fn from(value: Utf8BytesMut) -> Self {
+    value.into_inner().into()
+  }
+}
+
 #[cfg(any(feature = "std", feature = "alloc"))]
 const _: () = {
   use std::{boxed::Box, rc::Rc, sync::Arc};
 
   impl From<Utf8BytesMut> for Box<str> {
     fn from(value: Utf8BytesMut) -> Self {
-      value.as_str().into()
+      String::from(value).into_boxed_str()
     }
   }
 
@@ -87,7 +153,7 @@ const _: () = {
 
   impl From<Box<str>> for Utf8BytesMut {
     fn from(s: Box<str>) -> Self {
-      Self::from(s.as_ref())
+      Self::from(String::from(s))
     }
   }
 

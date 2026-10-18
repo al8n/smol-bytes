@@ -154,6 +154,14 @@ impl Utf8BytesMut {
     unsafe { str::from_utf8_unchecked(self.inner.as_ref()) }
   }
 
+  /// Returns the contents as a mutable string slice.
+  ///
+  /// Mutations must preserve UTF-8 validity and the byte length of edited
+  /// ranges, as required by [`prim@str`].
+  pub fn as_mut_str(&mut self) -> &mut str {
+    str::from_utf8_mut(self.inner.as_mut_slice()).expect("UTF-8 invariant")
+  }
+
   /// Returns the length in bytes.
   #[inline(always)]
   pub fn len(&self) -> usize {
@@ -273,17 +281,39 @@ impl Utf8BytesMut {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
   }
 
+  /// Freezes this mutable value using the default shared immutable strategy.
+  ///
+  /// Heap-backed values retain their allocation. [`freeze_compact`](Self::freeze_compact)
+  /// also transfers existing heap storage without copying, including a short current view;
+  /// its compact strategy applies to later shortening or view operations.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let text = Utf8BytesMut::from("hello").freeze();
+  /// assert_eq!(text.as_str(), "hello");
+  /// ```
+  pub fn freeze(self) -> crate::Utf8Bytes {
+    crate::utf8_bytes::Utf8Bytes {
+      inner: self.inner.freeze(),
+    }
+  }
+
   /// Freezes this mutable value using the shared immutable strategy.
   pub fn freeze_shared(self) -> crate::shared::Utf8Bytes {
     crate::utf8_bytes::Utf8Bytes {
-      inner: self.inner.freeze_shared(),
+      inner: self.inner.freeze_with(),
     }
   }
 
   /// Freezes this mutable value using the compact immutable strategy.
+  ///
+  /// Existing heap storage is transferred without copying. In particular, a
+  /// short heap view is not immediately canonicalized; the compact strategy
+  /// applies to subsequent shortening or view operations.
   pub fn freeze_compact(self) -> crate::compact::Utf8Bytes {
     crate::utf8_bytes::Utf8Bytes {
-      inner: self.inner.freeze_compact(),
+      inner: self.inner.freeze_with(),
     }
   }
 
@@ -468,6 +498,20 @@ impl core::ops::Deref for Utf8BytesMut {
 
   fn deref(&self) -> &Self::Target {
     self.as_str()
+  }
+}
+
+#[cfg(feature = "std")]
+impl AsRef<std::ffi::OsStr> for Utf8BytesMut {
+  fn as_ref(&self) -> &std::ffi::OsStr {
+    std::ffi::OsStr::new(self.as_str())
+  }
+}
+
+#[cfg(feature = "std")]
+impl AsRef<std::path::Path> for Utf8BytesMut {
+  fn as_ref(&self) -> &std::path::Path {
+    std::path::Path::new(self.as_str())
   }
 }
 

@@ -30,6 +30,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Utf8Buf` and `Utf8BufMut` are now sealed. `Utf8BufMut` exposes fallible
   append operations with `CapacityError`; `Utf8Buffer` uses `TryPutError`, and
   `Utf8BytesMut` uses `Infallible`. `Utf8Buffer` also implements `fmt::Write`.
+- Added safe mutable `str` access (`as_mut_str`, `AsMut<str>`, `BorrowMut<str>`,
+  `DerefMut`, and mutable range indexing) for `Utf8Buffer` and `Utf8BytesMut`.
+- Added immutable UTF-8 view operations (`clear`, `truncate`, `advance`),
+  `is_unique`, and recoverable `try_into_mut` for `Utf8Bytes`.
+- Added root-default `BytesMut::freeze` and `Utf8BytesMut::freeze`; explicit
+  shared and compact freeze methods remain available. Shared/compact raw and
+  UTF-8 values now convert directly with target-strategy storage behavior.
+- Added selected ownership-preserving byte/UTF-8 conversions, chunk collection,
+  `Cow` input support, `OsStr`/`Path` views under `std`, and cross-strategy
+  equality/ordering.
+- Added byte schemas for `Buffer`, `BytesMut`, and both `Bytes` strategies:
+  serialization is `array<u8>`, deserialization also accepts strings, and
+  `Buffer` carries its inline-capacity `maxItems` constraint.
+- The feature graph now makes `std` imply `alloc`, preserves `bytes` as an
+  explicit compatibility feature, and makes `quickcheck` imply `std`.
 
 ## [0.1.8] - 2026-10-13
 
