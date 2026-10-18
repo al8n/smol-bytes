@@ -1,5 +1,5 @@
-"""Shared strategy -- preserves heap allocations for fast bytes::Bytes interop."""
+"""Historical aliases for the canonical shared immutable root classes."""
 
-from .._smol_bytes.shared import Bytes, Utf8Bytes
+from .. import Bytes, Utf8Bytes
 
 __all__ = ["Bytes", "Utf8Bytes"]

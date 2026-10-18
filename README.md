@@ -266,28 +266,43 @@ maturin develop --features pyo3 --manifest-path smol-bytes-py/Cargo.toml
 python -m pytest tests/python -v
 ```
 
-The root `smol_bytes` module exposes `Buffer`, `BytesMut`, `Utf8Buffer`,
-`Utf8Bytes`, and `Utf8BytesMut`; `smol_bytes.shared` and `smol_bytes.compact`
-expose the immutable `Bytes` and `Utf8Bytes` strategy types.
+The root `smol_bytes` module exposes canonical shared `Bytes` and `Utf8Bytes`
+alongside `Buffer`, `BytesMut`, `Utf8Buffer`, and `Utf8BytesMut`.
+`smol_bytes.shared.Bytes` and `smol_bytes.shared.Utf8Bytes` are aliases of
+those exact root classes (including their root `__module__`), while
+`smol_bytes.compact` remains a distinct compact strategy.
 
-The UTF-8 classes are string-like from Python: `len()`, indexing, and the
-`truncate`/`split_to`/`split_off`/`slice` methods all work in Unicode
-characters, while `byte_len()` and the explicitly byte-oriented `Buf`-style
-methods (`advance`, `get_*`) work in bytes.
+Raw byte classes use `from_utf8()` and `decode_utf8()` for explicit text
+conversion; `str(raw)` is always the same total representation as
+`str(bytes(raw))`. Their `from_bytes()` and mutable `put_slice()` methods
+accept `bytes`, `bytearray`, and readable one-dimensional C-contiguous byte
+`memoryview` values, copying the input before mutation.
+
+The UTF-8 classes are string-like from Python: `len()`, indexing, and
+iteration use Unicode scalar values. Their explicit APIs are `char_len()`,
+`byte_len()`, `split_to_chars()`, `split_off_chars()`, `slice_chars()`, and
+for mutable/fixed classes `truncate_chars()`. `remaining_bytes()` and
+`advance_bytes()` are deliberately byte-oriented, as are `get_*` methods.
 
 ```python
-from smol_bytes import Utf8Bytes
-from smol_bytes.shared import Bytes
+from smol_bytes import Bytes, BytesMut, Utf8Bytes
 
 raw = Bytes.from_bytes(b"abc")
 assert raw.is_inline()
 assert bytes(raw) == b"abc"
+assert raw.decode_utf8() == "abc"
 
 text = Utf8Bytes.from_str("café")
 assert len(text) == 4        # Unicode characters
+assert text.char_len() == 4
 assert text.byte_len() == 5  # UTF-8 bytes
 assert str(text) == "café"
-assert str(text.split_to(3)) == "caf"
+assert str(text.split_to_chars(3)) == "caf"
+
+mutable = BytesMut.from_bytes(bytearray(b"abc"))
+frozen = mutable.freeze_shared()
+assert bytes(mutable) == b""  # source remains reusable
+assert bytes(frozen.to_mutable()) == b"abc"
 ```
 
 Binding behavior worth knowing:
@@ -299,6 +314,9 @@ Binding behavior worth knowing:
   snapshot copy, not a live view.
 - Slice assignment on the mutable classes requires matching lengths, and
   contiguous assignments take a direct copy fast path.
+- Python `unsplit()` uses non-consuming snapshot semantics: it appends the
+  call-entry contents while leaving the argument unchanged. Passing the same
+  mutable object as both operands raises `RuntimeError` atomically.
 
 ## JavaScript / WebAssembly
 

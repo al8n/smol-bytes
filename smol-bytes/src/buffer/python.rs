@@ -1,7 +1,10 @@
-use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt, py_check_alloc};
+use crate::python::{
+  PyBufCmp, PyBufExt, PyBufMutExt, py_byte_range, py_check_alloc, py_offset, py_raw_str,
+  py_readable_buffer_snapshot,
+};
 use pyo3::{
   basic::CompareOp,
-  exceptions::{PyBufferError, PyUnicodeDecodeError},
+  exceptions::PyBufferError,
   prelude::{Bound, *},
   types::{PyBytes, PyString},
 };
@@ -59,8 +62,9 @@ impl Buffer {
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
-    Self::try_from(py_bytes).map_err(|e| {
+  fn __python_from_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
+    Self::try_from(data.as_slice()).map_err(|e| {
       PyBufferError::new_err(format!(
         "overflow the buffer capacity: requested {} but only {} available",
         e.requested, e.available
@@ -82,13 +86,13 @@ impl Buffer {
   ///     BufferError: If the encoded string exceeds the 62-byte inline capacity.
   ///
   /// Example:
-  ///     >>> buf = Buffer.from_str("Hello")
+  ///     >>> buf = Buffer.from_utf8("Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
-  #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> PyResult<Self> {
-    Self::try_from(py_str.as_bytes()).map_err(|e| {
+  #[pyo3(name = "from_utf8")]
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    Self::try_from(s.as_bytes()).map_err(|e| {
       PyBufferError::new_err(format!(
         "overflow the buffer capacity: requested {} but only {} available",
         e.requested, e.available
@@ -122,10 +126,9 @@ impl Buffer {
     self.py_richcmp(other, op)
   }
 
-  /// Interpret the buffer as UTF-8, raising `UnicodeDecodeError` if invalid.
-  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
-    <&str>::try_from(self)
-      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.as_ref(), err))
+  /// Return the same total representation as `str(bytes(self))`.
+  fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+    py_raw_str(self.as_ref(), py)
   }
 
   /// Return a debug representation of the buffer.
@@ -190,7 +193,7 @@ impl Buffer {
   ///
   /// Raises:
   ///     UnicodeDecodeError: If the buffer contains invalid UTF-8.
-  #[pyo3(name = "to_string")]
+  #[pyo3(name = "decode_utf8")]
   fn __python_to_string<'py>(&self, py: Python<'py>) -> ::pyo3::PyResult<Bound<'py, PyString>> {
     self.py_to_string(py)
   }
@@ -531,8 +534,8 @@ impl Buffer {
   /// Raises:
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
-  fn __python_advance(&mut self, cnt: usize) -> ::pyo3::PyResult<()> {
-    self.py_advance(cnt)
+  fn __python_advance(&mut self, cnt: &Bound<'_, PyAny>) -> ::pyo3::PyResult<()> {
+    self.py_advance(py_offset(cnt, "cnt")?)
   }
 
   // ==================== Put methods ====================
@@ -544,27 +547,28 @@ impl Buffer {
   /// Raises:
   ///   BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_slice")]
-  fn __python_put_slice(&mut self, data: &Bound<'_, PyBytes>) -> ::pyo3::PyResult<()> {
-    self.try_put_slice(data.as_ref()).map_err(Into::into)
+  fn __python_put_slice(&mut self, data: &Bound<'_, PyAny>) -> ::pyo3::PyResult<()> {
+    let data = py_readable_buffer_snapshot(data)?;
+    self.try_put_slice(&data).map_err(Into::into)
   }
 
   /// Write a byte value to the buffer multiple times.
   ///
   /// Args:
-  ///    val: The byte value to write.
-  ///    cnt: Number of times to write the byte.
+  ///    value: The byte value to write.
+  ///    count: Number of times to write the byte.
   ///
   /// Raises:
   ///    BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_bytes")]
-  fn __python_put_bytes(&mut self, val: u8, cnt: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_bytes(val, cnt).map_err(Into::into)
+  fn __python_put_bytes(&mut self, value: u8, count: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_bytes(value, count).map_err(Into::into)
   }
 
   /// Write an unsigned 8-bit integer to the buffer.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -576,19 +580,19 @@ impl Buffer {
   /// Write a signed 8-bit integer to the buffer.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_i8")]
-  fn __python_put_i8(&mut self, val: i8) -> ::pyo3::PyResult<()> {
-    self.try_put_i8(val).map_err(Into::into)
+  fn __python_put_i8(&mut self, value: i8) -> ::pyo3::PyResult<()> {
+    self.try_put_i8(value).map_err(Into::into)
   }
 
   /// Write an unsigned 16-bit integer in big-endian order.
   ///
   /// Args:
-  ///    val: The value to write.
+  ///    value: The value to write.
   ///
   /// Raises:
   ///    BufferError: If there is not enough space in the buffer.
@@ -600,7 +604,7 @@ impl Buffer {
   /// Write an unsigned 16-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -612,7 +616,7 @@ impl Buffer {
   /// Write a signed 16-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_i16")]
@@ -623,7 +627,7 @@ impl Buffer {
   /// Write a signed 16-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_i16_le")]
@@ -634,7 +638,7 @@ impl Buffer {
   /// Write an unsigned 32-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_u32")]
@@ -645,7 +649,7 @@ impl Buffer {
   /// Write an unsigned 32-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -657,7 +661,7 @@ impl Buffer {
   /// Write a signed 32-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_i32")]
@@ -668,7 +672,7 @@ impl Buffer {
   /// Write a signed 32-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -680,7 +684,7 @@ impl Buffer {
   /// Write a 64-bit floating point number in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -692,7 +696,7 @@ impl Buffer {
   /// Write a 64-bit floating point number in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -704,7 +708,7 @@ impl Buffer {
   /// Write a signed 64-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -716,7 +720,7 @@ impl Buffer {
   /// Write a signed 64-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -728,55 +732,55 @@ impl Buffer {
   /// Write a 32-bit floating point number in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_f32")]
-  fn __python_put_f32(&mut self, val: f32) -> ::pyo3::PyResult<()> {
-    self.try_put_f32(val).map_err(Into::into)
+  fn __python_put_f32(&mut self, value: f32) -> ::pyo3::PyResult<()> {
+    self.try_put_f32(value).map_err(Into::into)
   }
 
   /// Write a 32-bit floating point number in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_f32_le")]
-  fn __python_put_f32_le(&mut self, val: f32) -> ::pyo3::PyResult<()> {
-    self.try_put_f32_le(val).map_err(Into::into)
+  fn __python_put_f32_le(&mut self, value: f32) -> ::pyo3::PyResult<()> {
+    self.try_put_f32_le(value).map_err(Into::into)
   }
 
   /// Write a 64-bit floating point number in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_f64")]
-  fn __python_put_f64(&mut self, val: f64) -> ::pyo3::PyResult<()> {
-    self.try_put_f64(val).map_err(Into::into)
+  fn __python_put_f64(&mut self, value: f64) -> ::pyo3::PyResult<()> {
+    self.try_put_f64(value).map_err(Into::into)
   }
 
   /// Write a 64-bit floating point number in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   #[pyo3(name = "put_f64_le")]
-  fn __python_put_f64_le(&mut self, val: f64) -> ::pyo3::PyResult<()> {
-    self.try_put_f64_le(val).map_err(Into::into)
+  fn __python_put_f64_le(&mut self, value: f64) -> ::pyo3::PyResult<()> {
+    self.try_put_f64_le(value).map_err(Into::into)
   }
 
   /// Write an unsigned 128-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -788,7 +792,7 @@ impl Buffer {
   /// Write an unsigned 128-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -800,7 +804,7 @@ impl Buffer {
   /// Write a signed 128-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -812,7 +816,7 @@ impl Buffer {
   /// Write a signed 128-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
@@ -824,57 +828,57 @@ impl Buffer {
   /// Write an unsigned n-byte integer in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   ///     ValueError: If nbytes is not <= 8.
   #[pyo3(name = "put_uint")]
-  fn __python_put_uint(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_uint(val, nbytes).map_err(Into::into)
+  fn __python_put_uint(&mut self, value: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_uint(value, nbytes).map_err(Into::into)
   }
 
   /// Write an unsigned n-byte integer in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   ///     ValueError: If nbytes is not <= 8.
   #[pyo3(name = "put_uint_le")]
-  fn __python_put_uint_le(&mut self, val: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_uint_le(val, nbytes).map_err(Into::into)
+  fn __python_put_uint_le(&mut self, value: u64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_uint_le(value, nbytes).map_err(Into::into)
   }
 
   /// Write a signed n-byte integer in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   ///     ValueError: If nbytes is not <= 8.
   #[pyo3(name = "put_int")]
-  fn __python_put_int(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_int(val, nbytes).map_err(Into::into)
+  fn __python_put_int(&mut self, value: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_int(value, nbytes).map_err(Into::into)
   }
 
   /// Write a signed n-byte integer in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   ///
   /// Raises:
   ///     BufferError: If there is not enough space in the buffer.
   ///     ValueError: If nbytes is not <= 8.
   #[pyo3(name = "put_int_le")]
-  fn __python_put_int_le(&mut self, val: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
-    self.try_put_int_le(val, nbytes).map_err(Into::into)
+  fn __python_put_int_le(&mut self, value: i64, nbytes: usize) -> ::pyo3::PyResult<()> {
+    self.try_put_int_le(value, nbytes).map_err(Into::into)
   }
 
   // ==================== Buffer management methods ====================
@@ -894,8 +898,10 @@ impl Buffer {
   /// Args:
   ///     new_len: The new length of the buffer.
   #[pyo3(name = "truncate")]
-  fn __python_truncate(&mut self, new_len: usize) {
+  fn __python_truncate(&mut self, new_len: &Bound<'_, PyAny>) -> ::pyo3::PyResult<()> {
+    let new_len = py_offset(new_len, "new_len")?;
     self.truncate(new_len);
+    Ok(())
   }
 
   /// Get the capacity of the buffer.
@@ -949,8 +955,8 @@ impl Buffer {
   ///     >>> bytes(buf)
   ///     b' world'
   #[pyo3(name = "split_to")]
-  fn __python_split_to(&mut self, at: usize) -> ::pyo3::PyResult<Buffer> {
-    self.py_split_to(at)
+  fn __python_split_to(&mut self, at: &Bound<'_, PyAny>) -> ::pyo3::PyResult<Buffer> {
+    self.py_split_to(py_offset(at, "at")?)
   }
 
   /// Split the buffer at the given position, returning the tail.
@@ -975,8 +981,8 @@ impl Buffer {
   ///     >>> bytes(tail)
   ///     b'world'
   #[pyo3(name = "split_off")]
-  fn __python_split_off(&mut self, at: usize) -> ::pyo3::PyResult<Buffer> {
-    self.py_split_off(at)
+  fn __python_split_off(&mut self, at: &Bound<'_, PyAny>) -> ::pyo3::PyResult<Buffer> {
+    self.py_split_off(py_offset(at, "at")?)
   }
 
   /// Get a slice of the buffer as a new Buffer.
@@ -991,7 +997,8 @@ impl Buffer {
   ///     Buffer: A new buffer containing the specified range.
   ///
   /// Raises:
-  ///     IndexError: If the range is invalid.
+  ///     ValueError: If `start` exceeds `end`.
+  ///     IndexError: If either endpoint is out of bounds.
   ///
   /// Example:
   ///     >>> buf = Buffer.from_bytes(b"hello world")
@@ -999,7 +1006,12 @@ impl Buffer {
   ///     >>> bytes(slice)
   ///     b'hello'
   #[pyo3(name = "slice")]
-  fn __python_slice(&self, start: usize, end: usize) -> ::pyo3::PyResult<Buffer> {
+  fn __python_slice(
+    &self,
+    start: &Bound<'_, PyAny>,
+    end: &Bound<'_, PyAny>,
+  ) -> ::pyo3::PyResult<Buffer> {
+    let (start, end) = py_byte_range(self.len(), start, end)?;
     self.py_slice(start, end)
   }
 

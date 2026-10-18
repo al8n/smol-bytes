@@ -11,7 +11,7 @@ fn _smol_bytes(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
   smol_bytes::register_classes(m, "smol_bytes")?;
 
   let shared = PyModule::new(m.py(), "shared")?;
-  smol_bytes::register_shared(&shared, "smol_bytes.shared")?;
+  smol_bytes::register_shared_aliases(&shared, m)?;
   m.add_submodule(&shared)?;
   py.import("sys")?
     .getattr("modules")?

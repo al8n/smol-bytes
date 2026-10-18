@@ -1,5 +1,8 @@
 use super::*;
-use crate::python::{py_check_alloc, py_str_contains, py_str_getitem, py_str_richcmp};
+use crate::python::{
+  py_char_offset, py_char_range, py_check_alloc, py_offset, py_str_contains, py_str_getitem,
+  py_str_richcmp,
+};
 use crate::utf8_buf::char_offset_to_byte;
 use pyo3::{basic::CompareOp, exceptions::PyValueError, prelude::*, types::PyBytes};
 
@@ -153,8 +156,9 @@ impl Utf8BytesMut {
   ///
   /// A length at or beyond the current character count leaves the buffer
   /// unchanged.
-  #[pyo3(name = "truncate")]
-  fn __python_truncate(&mut self, new_len: usize) -> PyResult<()> {
+  #[pyo3(name = "truncate_chars")]
+  fn __python_truncate(&mut self, new_len: &Bound<'_, PyAny>) -> PyResult<()> {
+    let new_len = py_offset(new_len, "new_len")?;
     match char_offset_to_byte(self.as_str(), new_len) {
       Some(byte_len) => self
         .try_truncate(byte_len)
@@ -172,14 +176,11 @@ impl Utf8BytesMut {
   ///     Utf8BytesMut: The content before the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is out of range.
-  #[pyo3(name = "split_to")]
-  fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    let byte_at = char_offset_to_byte(self.as_str(), at)
-      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
-    self
-      .try_split_to(byte_at)
-      .map_err(|e| PyValueError::new_err(e.to_string()))
+  ///     IndexError: If `at` is out of range.
+  #[pyo3(name = "split_to_chars")]
+  fn __python_split_to(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let byte_at = py_char_offset(self.as_str(), at, "split index")?;
+    self.try_split_to(byte_at).map_err(Into::into)
   }
 
   /// Split at the given Unicode scalar value (character) offset, returning the tail.
@@ -191,14 +192,20 @@ impl Utf8BytesMut {
   ///     Utf8BytesMut: The content after the split point.
   ///
   /// Raises:
-  ///     ValueError: If `at` is out of range.
-  #[pyo3(name = "split_off")]
-  fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    let byte_at = char_offset_to_byte(self.as_str(), at)
-      .ok_or_else(|| PyValueError::new_err(format!("split index {} out of range", at)))?;
-    self
-      .try_split_off(byte_at)
-      .map_err(|e| PyValueError::new_err(e.to_string()))
+  ///     IndexError: If `at` is out of range.
+  #[pyo3(name = "split_off_chars")]
+  fn __python_split_off(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let byte_at = py_char_offset(self.as_str(), at, "split index")?;
+    self.try_split_off(byte_at).map_err(Into::into)
+  }
+
+  /// Return an independent mutable copy of the Unicode scalar range `[start, end)`.
+  #[pyo3(name = "slice_chars")]
+  fn __python_slice(&self, start: &Bound<'_, PyAny>, end: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let (start, end) = py_char_range(self.as_str(), start, end)?;
+    let value = &self.as_str()[start..end];
+    py_check_alloc(value.len())?;
+    Ok(Self::from(value))
   }
 
   /// Split and return all bytes.
@@ -230,6 +237,20 @@ impl Utf8BytesMut {
     Ok(())
   }
 
+  /// Freeze the current contents with the shared strategy, leaving this
+  /// mutable UTF-8 buffer empty and reusable.
+  #[pyo3(name = "freeze_shared")]
+  fn __python_freeze_shared(&mut self) -> crate::utf8_bytes::PySharedUtf8Bytes {
+    crate::utf8_bytes::PySharedUtf8Bytes::from(core::mem::take(self).freeze_shared())
+  }
+
+  /// Freeze the current contents with the compact strategy, leaving this
+  /// mutable UTF-8 buffer empty and reusable.
+  #[pyo3(name = "freeze_compact")]
+  fn __python_freeze_compact(&mut self) -> crate::utf8_bytes::PyCompactUtf8Bytes {
+    crate::utf8_bytes::PyCompactUtf8Bytes::from(core::mem::take(self).freeze_compact())
+  }
+
   /// Reserve capacity.
   ///
   /// Args:
@@ -248,6 +269,12 @@ impl Utf8BytesMut {
   #[pyo3(name = "capacity")]
   fn __python_capacity(&self) -> usize {
     self.capacity()
+  }
+
+  /// Return the number of Unicode scalar values.
+  #[pyo3(name = "char_len")]
+  fn __python_char_len(&self) -> usize {
+    self.as_str().chars().count()
   }
 
   /// Return the length in bytes.
@@ -300,7 +327,7 @@ impl Utf8BytesMut {
   ///
   /// Returns:
   ///     int: Number of bytes available for reading.
-  #[pyo3(name = "remaining")]
+  #[pyo3(name = "remaining_bytes")]
   fn __python_remaining(&self) -> usize {
     use bytes::Buf;
     self.inner.remaining()
@@ -312,10 +339,12 @@ impl Utf8BytesMut {
   ///     cnt: Number of bytes to advance.
   ///
   /// Raises:
-  ///     BufferError: If `cnt` exceeds available data or would end inside a UTF-8 character.
-  #[pyo3(name = "advance")]
-  fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
+  ///     BufferError: If `cnt` exceeds available data.
+  ///     ValueError: If it would end inside a UTF-8 character.
+  #[pyo3(name = "advance_bytes")]
+  fn __python_advance(&mut self, cnt: &Bound<'_, PyAny>) -> PyResult<()> {
     use bytes::Buf;
+    let cnt = py_offset(cnt, "cnt")?;
     if cnt > self.inner.remaining() {
       return Err(pyo3::exceptions::PyBufferError::new_err(format!(
         "cannot advance past remaining: {} > {}",
@@ -336,7 +365,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 1 byte remains.
+  ///     ValueError: If consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_u8")]
   fn __python_get_u8(&mut self) -> PyResult<u8> {
     use bytes::Buf;
@@ -357,7 +387,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 1 byte remains or consuming it would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 1 byte remains.
+  ///     ValueError: If consuming it would end inside a UTF-8 character.
   #[pyo3(name = "get_i8")]
   fn __python_get_i8(&mut self) -> PyResult<i8> {
     use bytes::Buf;
@@ -378,7 +409,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 2 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16")]
   fn __python_get_u16(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -399,7 +431,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 2 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u16_le")]
   fn __python_get_u16_le(&mut self) -> PyResult<u16> {
     use bytes::Buf;
@@ -420,7 +453,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 2 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16")]
   fn __python_get_i16(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -441,7 +475,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 2 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 2 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i16_le")]
   fn __python_get_i16_le(&mut self) -> PyResult<i16> {
     use bytes::Buf;
@@ -462,7 +497,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32")]
   fn __python_get_u32(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -483,7 +519,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u32_le")]
   fn __python_get_u32_le(&mut self) -> PyResult<u32> {
     use bytes::Buf;
@@ -504,7 +541,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32")]
   fn __python_get_i32(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -525,7 +563,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i32_le")]
   fn __python_get_i32_le(&mut self) -> PyResult<i32> {
     use bytes::Buf;
@@ -546,7 +585,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64")]
   fn __python_get_u64(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -567,7 +607,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u64_le")]
   fn __python_get_u64_le(&mut self) -> PyResult<u64> {
     use bytes::Buf;
@@ -588,7 +629,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64")]
   fn __python_get_i64(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -609,7 +651,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i64_le")]
   fn __python_get_i64_le(&mut self) -> PyResult<i64> {
     use bytes::Buf;
@@ -630,7 +673,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 16 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128")]
   fn __python_get_u128(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -651,7 +695,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 16 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_u128_le")]
   fn __python_get_u128_le(&mut self) -> PyResult<u128> {
     use bytes::Buf;
@@ -672,7 +717,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 16 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128")]
   fn __python_get_i128(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -693,7 +739,8 @@ impl Utf8BytesMut {
   ///     int: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 16 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 16 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_i128_le")]
   fn __python_get_i128_le(&mut self) -> PyResult<i128> {
     use bytes::Buf;
@@ -714,7 +761,8 @@ impl Utf8BytesMut {
   ///     float: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32")]
   fn __python_get_f32(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -735,7 +783,8 @@ impl Utf8BytesMut {
   ///     float: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 4 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 4 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f32_le")]
   fn __python_get_f32_le(&mut self) -> PyResult<f32> {
     use bytes::Buf;
@@ -756,7 +805,8 @@ impl Utf8BytesMut {
   ///     float: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64")]
   fn __python_get_f64(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -777,7 +827,8 @@ impl Utf8BytesMut {
   ///     float: The decoded value.
   ///
   /// Raises:
-  ///     BufferError: If fewer than 8 bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than 8 bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_f64_le")]
   fn __python_get_f64_le(&mut self) -> PyResult<f64> {
     use bytes::Buf;
@@ -802,7 +853,8 @@ impl Utf8BytesMut {
   ///
   /// Raises:
   ///     ValueError: If `nbytes` is outside 0-8.
-  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than `nbytes` bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint")]
   fn __python_get_uint(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
     use bytes::Buf;
@@ -826,7 +878,8 @@ impl Utf8BytesMut {
   ///
   /// Raises:
   ///     ValueError: If `nbytes` is outside 0-8.
-  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than `nbytes` bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_uint_le")]
   fn __python_get_uint_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<u64> {
     use bytes::Buf;
@@ -850,7 +903,8 @@ impl Utf8BytesMut {
   ///
   /// Raises:
   ///     ValueError: If `nbytes` is outside 0-8.
-  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than `nbytes` bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int")]
   fn __python_get_int(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
     use bytes::Buf;
@@ -874,7 +928,8 @@ impl Utf8BytesMut {
   ///
   /// Raises:
   ///     ValueError: If `nbytes` is outside 0-8.
-  ///     BufferError: If fewer than `nbytes` bytes remain or consuming them would end inside a UTF-8 character.
+  ///     BufferError: If fewer than `nbytes` bytes remain.
+  ///     ValueError: If consuming them would end inside a UTF-8 character.
   #[pyo3(name = "get_int_le")]
   fn __python_get_int_le(&mut self, nbytes: &Bound<'_, PyAny>) -> PyResult<i64> {
     use bytes::Buf;

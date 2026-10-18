@@ -77,7 +77,7 @@ mod wasm_iter;
 
 #[cfg(feature = "pyo3")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
-pub use python::{register_classes, register_compact, register_shared};
+pub use python::{register_classes, register_compact, register_shared, register_shared_aliases};
 
 mod buffer;
 
