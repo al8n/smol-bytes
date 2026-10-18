@@ -55,6 +55,13 @@ The complete Rust, Python, and JavaScript migration guide is included below.
   scalar-count bound and byte capacity remains enforced during deserialization.
   The `std` feature now implies `alloc`; `bytes` remains a compatibility alias
   and `quickcheck` implies `std`.
+- **Rust:** `RawBytes<S>` and `Utf8Bytes<S>` now have reference-checked
+  `slice_ref`/`try_slice_ref` view creation; non-empty references must belong
+  to the current visible view, while empty references produce a canonical empty
+  value. `Buffer::try_reclaim` is available without `alloc`, with inherent
+  UTF-8 forwarding methods. Fixed `Utf8Buffer` values convert directly into
+  mutable or either immutable UTF-8 strategy, and all UTF-8 storage types have
+  scalar-value `pop`.
 - **Python:** canonical root shared `Bytes` and `Utf8Bytes`, with exact shared
   aliases that preserve historic shared-module pickle loading; `py.typed` and
   complete stubs; bytes-like input support; independent mutable slices;
@@ -100,6 +107,10 @@ the migration is primarily an API migration.
 | `smol_bytes::TryGetError` used as `bytes::TryGetError` | `smol_bytes::BufTryGetError` | Use this upstream alias for `bytes::Buf` readers when `alloc` or `std` is enabled. |
 | fixed-width inherent `Buffer::try_get_*` underflow | new crate-owned `smol_bytes::TryGetError` | This is no longer the upstream bytes alias. |
 | inherent variable-width reader error | `TryGetIntegerError` | `try_get_uint{,_le,_ne}` and `try_get_int{,_le,_ne}` distinguish invalid widths from missing bytes. |
+| derive a view from a borrowed subslice | `slice_ref(subset)` or `try_slice_ref(subset)` | Non-empty subsets must be address-contained in the current visible view; empty subsets return a canonical empty value. |
+| reuse a consumed fixed-buffer prefix | `try_reclaim(additional)` | Available on `Buffer` without `alloc`, and forwarded by `Utf8Buffer` and `Utf8BytesMut`; it never allocates. |
+| remove the final UTF-8 scalar manually | `pop()` | Available on `Utf8Buffer`, `Utf8BytesMut`, and both `Utf8Bytes` strategies; it removes one Unicode scalar, not a grapheme. |
+| turn a fixed UTF-8 buffer immutable or growable | `Utf8BytesMut::from(buffer)`, `Utf8Bytes::from(buffer)`, or `compact::Utf8Bytes::from(buffer)` | These move the validated inline storage without UTF-8 revalidation or heap allocation. |
 
 ```rust
 use smol_bytes::{BytesMut, Utf8Buffer};
@@ -111,6 +122,29 @@ let mut bytes = BytesMut::from(&b"abcdef"[..]);
 let head = bytes.try_split_to(3)?;
 assert_eq!(&head[..], b"abc");
 # Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+##### New view, reclamation, and scalar helpers
+
+```rust
+use smol_bytes::{compact, Buffer, Utf8Buffer, Utf8Bytes, Utf8BytesMut};
+
+let source = Utf8Bytes::from("  café  ");
+let view = source.slice_ref(source.as_str().trim());
+assert_eq!(view.as_str(), "café");
+
+let mut buffer = Buffer::from(*b"abcd");
+buffer.advance(2);
+assert!(!buffer.try_reclaim(usize::MAX));
+assert!(buffer.try_reclaim(60));
+
+let fixed = Utf8Buffer::try_from("aé").unwrap();
+let mut mutable: Utf8BytesMut = fixed.into();
+assert_eq!(mutable.pop(), Some('é'));
+
+let shared: Utf8Bytes = Utf8Buffer::try_from("café").unwrap().into();
+let compact: compact::Utf8Bytes = Utf8Buffer::try_from("café").unwrap().into();
+assert_eq!(shared.as_str(), compact.as_str());
 ```
 
 ##### Strategies, UTF-8 views, and features

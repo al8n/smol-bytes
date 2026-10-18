@@ -1,7 +1,7 @@
 use core::{
   hash::{Hash, Hasher},
   marker::PhantomData,
-  ops::RangeBounds,
+  ops::{Range, RangeBounds},
 };
 
 use bytes::{Buf, Bytes};
@@ -14,6 +14,39 @@ use crate::{
 };
 
 use super::strategy::ImmutableStorage;
+
+/// Returns the range occupied by `subset` when it is address-contained in
+/// `container`'s current visible view.
+///
+/// Empty subsets intentionally need no provenance relationship to the
+/// container. The caller maps that range to its canonical empty value.
+pub(crate) fn visible_subslice_range(container: &[u8], subset: &[u8]) -> Option<Range<usize>> {
+  if subset.is_empty() {
+    return Some(0..0);
+  }
+
+  contained_address_range(
+    container.as_ptr().addr(),
+    container.len(),
+    subset.as_ptr().addr(),
+    subset.len(),
+  )
+}
+
+fn contained_address_range(
+  container_start: usize,
+  container_len: usize,
+  subset_start: usize,
+  subset_len: usize,
+) -> Option<Range<usize>> {
+  let container_end = container_start.checked_add(container_len)?;
+  let subset_end = subset_start.checked_add(subset_len)?;
+  if subset_start < container_start || subset_end > container_end {
+    return None;
+  }
+
+  Some(subset_start.checked_sub(container_start)?..subset_end.checked_sub(container_start)?)
+}
 
 mod cmp;
 mod fmt;
@@ -272,6 +305,60 @@ where
   /// Returns `Err(RangeOutOfBounds)` if the range is invalid.
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeOutOfBounds> {
     ImmutableStorage::try_slice(self, range)
+  }
+
+  /// Returns a slice identified by a reference into this value's current view.
+  ///
+  /// A non-empty `subset` must be address-contained in this value's visible
+  /// bytes. Equal bytes from another allocation are rejected. Empty subsets
+  /// always return the canonical empty value. The containment check is `O(1)`;
+  /// the resulting storage follows this value's strategy, so shared heap views
+  /// retain their allocation while compact short views may be inlined.
+  ///
+  /// # Panics
+  ///
+  /// Panics when a non-empty subset is not contained in the current visible
+  /// view.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let bytes = Bytes::from(&b"abcdef"[..]);
+  /// let middle = bytes.slice_ref(&bytes[2..4]);
+  /// assert_eq!(&middle[..], b"cd");
+  /// ```
+  pub fn slice_ref(&self, subset: &[u8]) -> Self {
+    self
+      .try_slice_ref(subset)
+      .expect("slice_ref subset must be contained in the current visible view")
+  }
+
+  /// Attempts to return a slice identified by a reference into this value's
+  /// current visible view.
+  ///
+  /// Empty subsets are accepted regardless of origin and return the canonical
+  /// empty value. A non-empty subset from another allocation, or from a hidden
+  /// prefix or suffix outside this value's current view, returns `None`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Bytes;
+  ///
+  /// let bytes = Bytes::from(&b"abcdef"[..]);
+  /// let middle = bytes.try_slice_ref(&bytes[2..4]).unwrap();
+  /// assert_eq!(&middle[..], b"cd");
+  /// assert!(bytes.try_slice_ref(b"cd").is_none());
+  /// ```
+  pub fn try_slice_ref(&self, subset: &[u8]) -> Option<Self> {
+    if subset.is_empty() {
+      return Some(Self::new());
+    }
+
+    let range = visible_subslice_range(self.as_ref(), subset)?;
+    self.try_slice(range).ok()
   }
 
   /// Splits the bytes into two at the given index.
@@ -745,5 +832,23 @@ impl Repr {
       Self::Inline(storage) => Arc::from(storage.as_slice()),
       Self::Heap(bytes) => Arc::from(Vec::<u8>::from(bytes)),
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::contained_address_range;
+
+  #[test]
+  fn contained_address_range_checks_bounds_and_overflow() {
+    assert_eq!(contained_address_range(10, 8, 10, 3), Some(0..3));
+    assert_eq!(contained_address_range(10, 8, 14, 4), Some(4..8));
+    assert_eq!(contained_address_range(10, 8, 9, 1), None);
+    assert_eq!(contained_address_range(10, 8, 17, 2), None);
+    assert_eq!(
+      contained_address_range(usize::MAX - 1, 2, usize::MAX - 1, 1),
+      None
+    );
+    assert_eq!(contained_address_range(0, 1, usize::MAX, 2), None);
   }
 }

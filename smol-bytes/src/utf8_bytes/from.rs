@@ -38,6 +38,29 @@ where
   }
 }
 
+impl<S> From<crate::Utf8Buffer> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  /// Moves the validated fixed buffer directly into inline immutable UTF-8
+  /// storage without revalidating or allocating.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Utf8Buffer, Utf8Bytes};
+  ///
+  /// let buffer = Utf8Buffer::try_from("café").unwrap();
+  /// let bytes: Utf8Bytes = buffer.into();
+  /// assert_eq!(bytes.as_str(), "café");
+  /// ```
+  fn from(value: crate::Utf8Buffer) -> Self {
+    Self {
+      inner: value.into_inner().into(),
+    }
+  }
+}
+
 impl<'a, S> From<Cow<'a, str>> for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,

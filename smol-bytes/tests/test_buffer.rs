@@ -104,6 +104,26 @@ fn advanced_splits_are_bounded_by_visible_length() {
 }
 
 #[test]
+fn try_reclaim_is_public_and_preserves_the_visible_view() {
+  let mut buffer = Buffer::from(*b"abcd");
+  assert!(buffer.try_reclaim(0));
+
+  buffer.advance(2);
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 58);
+
+  let pointer = buffer.as_ptr();
+  assert!(!buffer.try_reclaim(usize::MAX));
+  assert_eq!(buffer.as_ptr(), pointer);
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 58);
+
+  assert!(buffer.try_reclaim(60));
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 60);
+}
+
+#[test]
 fn fallible_signed_reads_sign_extend_and_advance_like_infallible_reads() {
   const BIG_ENDIAN: [u8; 3] = [0xff, 0x00, 0x01];
   const LITTLE_ENDIAN: [u8; 3] = [0x01, 0x00, 0xff];

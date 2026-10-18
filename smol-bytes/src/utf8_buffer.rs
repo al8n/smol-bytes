@@ -216,6 +216,23 @@ impl Utf8Buffer {
     self.inner.capacity()
   }
 
+  /// Reclaims consumed fixed-buffer prefix space without allocating.
+  ///
+  /// Returns `true` when the writable tail can hold `additional` bytes. On
+  /// `false`, this value is unchanged.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut text = Utf8Buffer::try_from("abcd").unwrap();
+  /// let _ = text.split_to(2);
+  /// assert!(text.try_reclaim(60));
+  /// assert_eq!(text.as_str(), "cd");
+  /// ```
+  pub fn try_reclaim(&mut self, additional: usize) -> bool {
+    self.inner.try_reclaim(additional)
+  }
+
   /// Appends a character to the buffer.
   ///
   /// `Utf8Buffer` is backed by a fixed 62-byte inline [`Buffer`]; this
@@ -329,6 +346,24 @@ impl Utf8Buffer {
   /// Truncates the buffer at a UTF-8 character boundary.
   pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
+  }
+
+  /// Removes and returns the last Unicode scalar value.
+  ///
+  /// This operates on Unicode scalar values, not grapheme clusters, and never
+  /// allocates.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Buffer;
+  ///
+  /// let mut text = Utf8Buffer::try_from("aé").unwrap();
+  /// assert_eq!(text.pop(), Some('é'));
+  /// assert_eq!(text.as_str(), "a");
+  /// ```
+  pub fn pop(&mut self) -> Option<char> {
+    let ch = self.as_str().chars().next_back()?;
+    self.truncate(self.len() - ch.len_utf8());
+    Some(ch)
   }
 
   /// Splits the buffer at `at`, returning the head `[0, at)` and leaving

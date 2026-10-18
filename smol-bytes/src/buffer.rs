@@ -328,9 +328,26 @@ impl Buffer {
 
   /// Reclaims consumed prefix space when doing so provides `additional`
   /// bytes of writable tail without allocating.
-  #[cfg(any(feature = "alloc", feature = "std"))]
+  ///
+  /// Returns `false` without changing the buffer when `additional` cannot
+  /// fit after reclaiming the consumed prefix.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Buffer, INLINE_CAP};
+  ///
+  /// let mut buffer = Buffer::from(*b"abcd");
+  /// buffer.advance(2);
+  /// assert!(!buffer.try_reclaim(usize::MAX));
+  /// assert_eq!(buffer.as_slice(), b"cd");
+  /// assert_eq!(buffer.capacity(), INLINE_CAP - 2);
+  /// assert!(buffer.try_reclaim(60));
+  /// assert_eq!(buffer.as_slice(), b"cd");
+  /// assert_eq!(buffer.capacity(), INLINE_CAP);
+  /// ```
   #[cfg_attr(not(coverage), inline(always))]
-  pub(crate) fn try_reclaim(&mut self, additional: usize) -> bool {
+  pub fn try_reclaim(&mut self, additional: usize) -> bool {
     if additional <= self.remaining_mut() {
       return true;
     }

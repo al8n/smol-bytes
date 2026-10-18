@@ -1,7 +1,7 @@
 use core::{borrow::Borrow, ops::RangeBounds, str};
 
 use super::{
-  bytes::{RawBytes, strategy::ImmutableStorage},
+  bytes::{RawBytes, strategy::ImmutableStorage, visible_subslice_range},
   error::*,
   utf8_buf::{Utf8Buf, range_bounds_to_start_end, sealed, validate_char_boundary},
 };
@@ -207,6 +207,24 @@ where
     Ok(())
   }
 
+  /// Removes and returns the last Unicode scalar value.
+  ///
+  /// This operates on Unicode scalar values, not grapheme clusters. It never
+  /// allocates; storage changes continue to follow the selected strategy.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let mut text = Utf8Bytes::from("aé");
+  /// assert_eq!(text.pop(), Some('é'));
+  /// assert_eq!(text.as_str(), "a");
+  /// ```
+  pub fn pop(&mut self) -> Option<char> {
+    let ch = self.as_str().chars().next_back()?;
+    self.truncate(self.len() - ch.len_utf8());
+    Some(ch)
+  }
+
   /// Advances this value's visible view by `cnt` UTF-8 bytes.
   pub fn advance(&mut self, cnt: usize) {
     self.try_advance(cnt).expect("advance failed");
@@ -306,6 +324,59 @@ where
   /// Returns an error if the range is out of bounds or not on character boundaries.
   pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
+  }
+
+  /// Returns a slice identified by a string reference into this value's
+  /// current visible view.
+  ///
+  /// A non-empty `subset` must be address-contained in the current view.
+  /// Empty subsets always return the canonical empty value. The containment
+  /// check is `O(1)`; shared heap views retain their allocation while compact
+  /// short views may be inlined by the existing slice strategy.
+  ///
+  /// # Panics
+  ///
+  /// Panics when a non-empty subset is not contained in the current visible
+  /// view.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let text = Utf8Bytes::from("café");
+  /// let accent = text.slice_ref(&text.as_str()[3..]);
+  /// assert_eq!(accent.as_str(), "é");
+  /// ```
+  pub fn slice_ref(&self, subset: &str) -> Self {
+    self
+      .try_slice_ref(subset)
+      .expect("slice_ref subset must be contained in the current visible view")
+  }
+
+  /// Attempts to return a slice identified by a string reference into this
+  /// value's current visible view.
+  ///
+  /// Empty subsets are accepted regardless of origin. Existing UTF-8 slice
+  /// validation remains responsible for validating the resulting byte range.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let text = Utf8Bytes::from("  café  ");
+  /// let trimmed = text.try_slice_ref(text.as_str().trim()).unwrap();
+  /// assert_eq!(trimmed.as_str(), "café");
+  /// assert!(text.try_slice_ref("café").is_none());
+  /// ```
+  pub fn try_slice_ref(&self, subset: &str) -> Option<Self> {
+    if subset.is_empty() {
+      return Some(Self::new());
+    }
+
+    let range = visible_subslice_range(self.as_str().as_bytes(), subset.as_bytes())?;
+    self.try_slice(range).ok()
   }
 }
 

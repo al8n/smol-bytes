@@ -27,6 +27,27 @@ impl From<String> for Utf8BytesMut {
   }
 }
 
+impl From<crate::Utf8Buffer> for Utf8BytesMut {
+  /// Moves the validated fixed buffer directly into inline mutable UTF-8
+  /// storage without revalidating or allocating.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Utf8Buffer, Utf8BytesMut};
+  ///
+  /// let buffer = Utf8Buffer::try_from("café").unwrap();
+  /// let mut bytes: Utf8BytesMut = buffer.into();
+  /// bytes.push('!');
+  /// assert_eq!(bytes.as_str(), "café!");
+  /// ```
+  fn from(value: crate::Utf8Buffer) -> Self {
+    Self {
+      inner: value.into_inner().into(),
+    }
+  }
+}
+
 impl<'a> From<Cow<'a, str>> for Utf8BytesMut {
   fn from(value: Cow<'a, str>) -> Self {
     match value {

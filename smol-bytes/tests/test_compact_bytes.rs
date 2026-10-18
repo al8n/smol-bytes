@@ -1486,68 +1486,66 @@ fn split_to_empty_addr_mut() {
   let _ = &buf[..];
 }
 
-// Uncomment these tests when `slice_ref` is implemented.
+fn test_slice_ref(bytes: &Bytes, start: usize, end: usize, expected: &[u8]) {
+  let slice = &bytes.as_ref()[start..end];
+  let sub = bytes.slice_ref(slice);
+  assert_eq!(&sub[..], expected);
+}
 
-// fn test_slice_ref(bytes: &Bytes, start: usize, end: usize, expected: &[u8]) {
-//   let slice = &(bytes.as_ref()[start..end]);
-//   let sub = bytes.slice_ref(slice);
-//   assert_eq!(&sub[..], expected);
-// }
+#[test]
+fn slice_ref_works_for_visible_inline_subsets() {
+  let bytes = Bytes::from(&b"012345678"[..]);
 
-// #[test]
-// fn slice_ref_works() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
+  test_slice_ref(&bytes, 0, 0, b"");
+  test_slice_ref(&bytes, 0, 3, b"012");
+  test_slice_ref(&bytes, 2, 6, b"2345");
+  test_slice_ref(&bytes, 7, 9, b"78");
+  test_slice_ref(&bytes, 9, 9, b"");
+}
 
-//   test_slice_ref(&bytes, 0, 0, b"");
-//   test_slice_ref(&bytes, 0, 3, b"012");
-//   test_slice_ref(&bytes, 2, 6, b"2345");
-//   test_slice_ref(&bytes, 7, 9, b"78");
-//   test_slice_ref(&bytes, 9, 9, b"");
-// }
+#[test]
+fn slice_ref_empty_is_canonical_even_when_unrelated() {
+  let bytes = Bytes::from(&b"abcde"[..]);
+  let external = &b"unrelated"[0..0];
 
-// #[test]
-// fn slice_ref_empty() {
-//   let bytes = Bytes::from(&b""[..]);
-//   let slice = &(bytes.as_ref()[0..0]);
+  assert_eq!(Bytes::new(), bytes.slice_ref(external));
+  assert_eq!(Some(Bytes::new()), bytes.try_slice_ref(external));
+}
 
-//   let sub = bytes.slice_ref(slice);
-//   assert_eq!(&sub[..], b"");
-// }
+#[test]
+fn slice_ref_rejects_equal_bytes_from_another_allocation() {
+  let bytes = Bytes::from(&b"012345678"[..]);
+  let unrelated = Vec::from(&b"2345"[..]);
 
-// #[test]
-// fn slice_ref_empty_subslice() {
-//   let bytes = Bytes::from(&b"abcde"[..]);
-//   let subbytes = bytes.slice(0..0);
-//   let slice = &subbytes[..];
-//   // The `slice` object is derived from the original `bytes` object
-//   // so `slice_ref` should work.
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+  assert!(bytes.try_slice_ref(&unrelated).is_none());
+}
 
-// #[test]
-// #[should_panic]
-// fn slice_ref_catches_not_a_subset() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
-//   let slice = &b"012345"[0..4];
+#[test]
+fn slice_ref_compactly_inlines_short_heap_subsets() {
+  let bytes = Bytes::from(vec![b'x'; 128]);
+  let large = bytes.slice_ref(&bytes.as_ref()[16..112]);
+  let short = bytes.slice_ref(&bytes.as_ref()[16..32]);
 
-//   bytes.slice_ref(slice);
-// }
+  assert!(large.is_heap());
+  assert_eq!(large.as_ptr(), bytes.as_ptr().wrapping_add(16));
+  assert!(short.is_inline());
+  assert_eq!(short.as_ref(), &bytes.as_ref()[16..32]);
 
-// #[test]
-// fn slice_ref_not_an_empty_subset() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
-//   let slice = &b""[0..0];
+  let mut view = bytes.clone();
+  view.advance(16);
+  view.truncate(64);
+  assert!(view.try_slice_ref(&bytes.as_ref()[..16]).is_none());
+  assert!(view.try_slice_ref(&bytes.as_ref()[80..]).is_none());
+}
 
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+#[test]
+#[should_panic(expected = "slice_ref subset must be contained")]
+fn slice_ref_panics_for_nonempty_unrelated_subset() {
+  let bytes = Bytes::from(&b"012345678"[..]);
+  let unrelated = Vec::from(&b"2345"[..]);
 
-// #[test]
-// fn empty_slice_ref_not_an_empty_subset() {
-//   let bytes = Bytes::new();
-//   let slice = &b"some other slice"[0..0];
-
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+  let _ = bytes.slice_ref(&unrelated);
+}
 
 #[test]
 fn from_bytes_crate_small_is_inlined() {

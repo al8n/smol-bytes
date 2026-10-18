@@ -281,6 +281,24 @@ impl Utf8BytesMut {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
   }
 
+  /// Removes and returns the last Unicode scalar value.
+  ///
+  /// This operates on Unicode scalar values, not grapheme clusters, and never
+  /// allocates.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let mut text = Utf8BytesMut::from("aé");
+  /// assert_eq!(text.pop(), Some('é'));
+  /// assert_eq!(text.as_str(), "a");
+  /// ```
+  pub fn pop(&mut self) -> Option<char> {
+    let ch = self.as_str().chars().next_back()?;
+    self.truncate(self.len() - ch.len_utf8());
+    Some(ch)
+  }
+
   /// Freezes this mutable value using the default shared immutable strategy.
   ///
   /// Heap-backed values retain their allocation. [`freeze_compact`](Self::freeze_compact)
@@ -330,6 +348,24 @@ impl Utf8BytesMut {
   /// ```
   pub fn reserve(&mut self, additional: usize) {
     self.inner.reserve(additional);
+  }
+
+  /// Attempts to reclaim consumed storage for `additional` more bytes without
+  /// allocating.
+  ///
+  /// Returns `true` when the inner [`BytesMut`](crate::BytesMut) can provide
+  /// that writable space, and leaves this value unchanged on `false`.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let mut text = Utf8BytesMut::with_capacity(64);
+  /// text.push_str("abc");
+  /// assert!(text.try_reclaim(61));
+  /// assert_eq!(text.as_str(), "abc");
+  /// ```
+  pub fn try_reclaim(&mut self, additional: usize) -> bool {
+    self.inner.try_reclaim(additional)
   }
 
   /// Splits the buffer at the given index.
