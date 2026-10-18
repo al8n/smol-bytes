@@ -1,1 +1,2 @@
-export { SharedBytes as Bytes, Utf8Bytes } from '../pkg/smol_bytes.js';
+/** Shared entry point aliases the root immutable class objects exactly. */
+export { Bytes, Utf8Bytes } from './index.js';

@@ -2,6 +2,34 @@ use js_sys::JsString;
 use wasm_bindgen::JsError;
 
 const PUSH_ERROR: &str = "push expects exactly one Unicode scalar value";
+const STRING_ERROR: &str = "strings must not contain isolated UTF-16 surrogates";
+
+/// Converts a well-formed JavaScript UTF-16 string to Rust `String`.
+///
+/// JavaScript permits isolated surrogate code units while Rust strings do not.
+/// Validate the code units before asking wasm-bindgen to convert them so it
+/// cannot silently replace malformed input with U+FFFD.
+pub(crate) fn js_string_to_string(value: &JsString) -> Result<String, JsError> {
+  let code_unit = |index| value.char_code_at(index) as u16;
+  let len = value.length();
+  let mut index = 0;
+
+  while index < len {
+    let current = code_unit(index);
+    if (0xD800..=0xDBFF).contains(&current) {
+      if index + 1 >= len || !(0xDC00..=0xDFFF).contains(&code_unit(index + 1)) {
+        return Err(JsError::new(STRING_ERROR));
+      }
+      index += 2;
+    } else if (0xDC00..=0xDFFF).contains(&current) {
+      return Err(JsError::new(STRING_ERROR));
+    } else {
+      index += 1;
+    }
+  }
+
+  value.as_string().ok_or_else(|| JsError::new(STRING_ERROR))
+}
 
 /// Converts exactly one well-formed JavaScript UTF-16 scalar to Rust `char`.
 ///

@@ -248,7 +248,7 @@ mod python;
 pub use python::PyCompactBytes;
 
 #[cfg(feature = "wasm")]
-mod wasm;
+pub(crate) mod wasm;
 
 /// A strategy that aggressively inlines data to minimize heap allocations and memory usage.
 ///

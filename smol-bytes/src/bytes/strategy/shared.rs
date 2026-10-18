@@ -394,7 +394,7 @@ mod python;
 pub use python::PySharedBytes;
 
 #[cfg(feature = "wasm")]
-mod wasm;
+pub(crate) mod wasm;
 
 /// A space-efficient byte buffer that shares heap allocations with [`bytes::Bytes`].
 ///

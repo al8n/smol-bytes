@@ -38,21 +38,11 @@ impl WasmUtf8Bytes {
   ///
   /// @param s - The source string whose bytes are copied.
   #[wasm_bindgen(js_name = "fromString")]
-  pub fn from_string_wasm(s: &str) -> WasmUtf8Bytes {
-    WasmUtf8Bytes {
+  pub fn from_string_wasm(s: js_sys::JsString) -> Result<WasmUtf8Bytes, JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    Ok(WasmUtf8Bytes {
       inner: SharedUtf8Bytes::from(s),
-    }
-  }
-
-  /// Create a `Utf8Bytes` from a static string.
-  ///
-  /// Note: In WASM, this copies the data (true static references cannot cross the JS boundary).
-  #[wasm_bindgen(js_name = "fromStatic")]
-  pub fn from_static_wasm(s: &str) -> WasmUtf8Bytes {
-    // NOTE: we cannot truly take a &'static str from JS, so we copy via From.
-    WasmUtf8Bytes {
-      inner: SharedUtf8Bytes::from(s),
-    }
+    })
   }
 
   /// Return contents as a UTF-8 string.
@@ -68,9 +58,15 @@ impl WasmUtf8Bytes {
   }
 
   /// Return the byte length of the buffer.
-  #[wasm_bindgen(js_name = "len")]
+  #[wasm_bindgen(js_name = "byteLength")]
   pub fn len_wasm(&self) -> usize {
     self.inner.len()
+  }
+
+  /// Return the number of Unicode scalar values in this view.
+  #[wasm_bindgen(js_name = "charLength")]
+  pub fn char_length_wasm(&self) -> usize {
+    self.inner.as_str().chars().count()
   }
 
   /// Return `true` if the buffer has no bytes.
@@ -92,7 +88,7 @@ impl WasmUtf8Bytes {
   }
 
   /// Return the number of readable bytes remaining.
-  #[wasm_bindgen(js_name = "remaining")]
+  #[wasm_bindgen(js_name = "remainingBytes")]
   pub fn remaining_wasm(&self) -> usize {
     bytes::Buf::remaining(self.inner.as_inner())
   }
@@ -100,7 +96,7 @@ impl WasmUtf8Bytes {
   /// Advance the read cursor by `cnt` bytes.
   ///
   /// @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
-  #[wasm_bindgen(js_name = "advance")]
+  #[wasm_bindgen(js_name = "advanceBytes")]
   pub fn advance_wasm(&mut self, cnt: usize) -> Result<(), JsError> {
     validate_char_boundary(self.inner.as_str(), cnt).map_err(|e| JsError::new(&e.to_string()))?;
     self
@@ -110,11 +106,26 @@ impl WasmUtf8Bytes {
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
+  /// Clear this visible UTF-8 view.
+  #[wasm_bindgen(js_name = "clear")]
+  pub fn clear_wasm(&mut self) {
+    self.inner.clear();
+  }
+
+  /// Truncate this view at a UTF-8 byte boundary.
+  #[wasm_bindgen(js_name = "truncateBytes")]
+  pub fn truncate_wasm(&mut self, new_len: usize) -> Result<(), JsError> {
+    self
+      .inner
+      .try_truncate(new_len)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
   /// Split the buffer at position `at`, returning bytes `[0, at)`.
   /// Self becomes `[at, len)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitTo")]
+  #[wasm_bindgen(js_name = "splitToBytes")]
   pub fn split_to_wasm(&mut self, at: usize) -> Result<WasmUtf8Bytes, JsError> {
     self
       .inner
@@ -127,7 +138,7 @@ impl WasmUtf8Bytes {
   /// Self becomes `[0, at)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitOff")]
+  #[wasm_bindgen(js_name = "splitOffBytes")]
   pub fn split_off_wasm(&mut self, at: usize) -> Result<WasmUtf8Bytes, JsError> {
     self
       .inner
@@ -139,13 +150,27 @@ impl WasmUtf8Bytes {
   /// Return a copy of bytes in range `[start, end)`.
   ///
   /// @throws {Error} If the range is out of bounds or not on UTF-8 char boundaries.
-  #[wasm_bindgen(js_name = "slice")]
+  #[wasm_bindgen(js_name = "sliceBytes")]
   pub fn slice_wasm(&self, start: usize, end: usize) -> Result<WasmUtf8Bytes, JsError> {
     self
       .inner
       .try_slice(start..end)
       .map(Into::into)
       .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Return a cheap strategy-preserving clone of this immutable view.
+  #[wasm_bindgen(js_name = "clone")]
+  pub fn clone_wasm(&self) -> WasmUtf8Bytes {
+    WasmUtf8Bytes {
+      inner: self.inner.clone(),
+    }
+  }
+
+  /// Return an independent mutable copy of this view.
+  #[wasm_bindgen(js_name = "toMutable")]
+  pub fn to_mutable_wasm(&self) -> crate::Utf8BytesMut {
+    crate::Utf8BytesMut::from(self.inner.as_str())
   }
 
   // -- Iterator --
@@ -188,21 +213,11 @@ impl WasmCompactUtf8Bytes {
   ///
   /// @param s - The source string whose bytes are copied.
   #[wasm_bindgen(js_name = "fromString")]
-  pub fn from_string_wasm(s: &str) -> WasmCompactUtf8Bytes {
-    WasmCompactUtf8Bytes {
+  pub fn from_string_wasm(s: js_sys::JsString) -> Result<WasmCompactUtf8Bytes, JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    Ok(WasmCompactUtf8Bytes {
       inner: CompactUtf8BytesInner::from(s),
-    }
-  }
-
-  /// Create a `CompactUtf8Bytes` from a static string.
-  ///
-  /// Note: In WASM, this copies the data (true static references cannot cross the JS boundary).
-  #[wasm_bindgen(js_name = "fromStatic")]
-  pub fn from_static_wasm(s: &str) -> WasmCompactUtf8Bytes {
-    // NOTE: we cannot truly take a &'static str from JS, so we copy via From.
-    WasmCompactUtf8Bytes {
-      inner: CompactUtf8BytesInner::from(s),
-    }
+    })
   }
 
   /// Return contents as a UTF-8 string.
@@ -218,9 +233,15 @@ impl WasmCompactUtf8Bytes {
   }
 
   /// Return the byte length of the buffer.
-  #[wasm_bindgen(js_name = "len")]
+  #[wasm_bindgen(js_name = "byteLength")]
   pub fn len_wasm(&self) -> usize {
     self.inner.len()
+  }
+
+  /// Return the number of Unicode scalar values in this view.
+  #[wasm_bindgen(js_name = "charLength")]
+  pub fn char_length_wasm(&self) -> usize {
+    self.inner.as_str().chars().count()
   }
 
   /// Return `true` if the buffer has no bytes.
@@ -242,7 +263,7 @@ impl WasmCompactUtf8Bytes {
   }
 
   /// Return the number of readable bytes remaining.
-  #[wasm_bindgen(js_name = "remaining")]
+  #[wasm_bindgen(js_name = "remainingBytes")]
   pub fn remaining_wasm(&self) -> usize {
     bytes::Buf::remaining(self.inner.as_inner())
   }
@@ -250,7 +271,7 @@ impl WasmCompactUtf8Bytes {
   /// Advance the read cursor by `cnt` bytes.
   ///
   /// @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
-  #[wasm_bindgen(js_name = "advance")]
+  #[wasm_bindgen(js_name = "advanceBytes")]
   pub fn advance_wasm(&mut self, cnt: usize) -> Result<(), JsError> {
     validate_char_boundary(self.inner.as_str(), cnt).map_err(|e| JsError::new(&e.to_string()))?;
     self
@@ -260,11 +281,26 @@ impl WasmCompactUtf8Bytes {
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
+  /// Clear this visible UTF-8 view.
+  #[wasm_bindgen(js_name = "clear")]
+  pub fn clear_wasm(&mut self) {
+    self.inner.clear();
+  }
+
+  /// Truncate this view at a UTF-8 byte boundary.
+  #[wasm_bindgen(js_name = "truncateBytes")]
+  pub fn truncate_wasm(&mut self, new_len: usize) -> Result<(), JsError> {
+    self
+      .inner
+      .try_truncate(new_len)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
   /// Split the buffer at position `at`, returning bytes `[0, at)`.
   /// Self becomes `[at, len)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitTo")]
+  #[wasm_bindgen(js_name = "splitToBytes")]
   pub fn split_to_wasm(&mut self, at: usize) -> Result<WasmCompactUtf8Bytes, JsError> {
     self
       .inner
@@ -277,7 +313,7 @@ impl WasmCompactUtf8Bytes {
   /// Self becomes `[0, at)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitOff")]
+  #[wasm_bindgen(js_name = "splitOffBytes")]
   pub fn split_off_wasm(&mut self, at: usize) -> Result<WasmCompactUtf8Bytes, JsError> {
     self
       .inner
@@ -289,13 +325,27 @@ impl WasmCompactUtf8Bytes {
   /// Return a copy of bytes in range `[start, end)`.
   ///
   /// @throws {Error} If the range is out of bounds or not on UTF-8 char boundaries.
-  #[wasm_bindgen(js_name = "slice")]
+  #[wasm_bindgen(js_name = "sliceBytes")]
   pub fn slice_wasm(&self, start: usize, end: usize) -> Result<WasmCompactUtf8Bytes, JsError> {
     self
       .inner
       .try_slice(start..end)
       .map(Into::into)
       .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Return a cheap strategy-preserving clone of this immutable view.
+  #[wasm_bindgen(js_name = "clone")]
+  pub fn clone_wasm(&self) -> WasmCompactUtf8Bytes {
+    WasmCompactUtf8Bytes {
+      inner: self.inner.clone(),
+    }
+  }
+
+  /// Return an independent mutable copy of this view.
+  #[wasm_bindgen(js_name = "toMutable")]
+  pub fn to_mutable_wasm(&self) -> crate::Utf8BytesMut {
+    crate::Utf8BytesMut::from(self.inner.as_str())
   }
 
   // -- Iterator --

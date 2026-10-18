@@ -340,22 +340,46 @@ The Wasm build entry point is:
 wasm-pack build smol-bytes-wasm --target bundler --out-dir ../js/pkg --out-name smol_bytes -- --features wasm
 ```
 
-The root export contains the core, mutable, and shared UTF-8 types; the
-`smol-bytes/shared` and `smol-bytes/compact` exports provide the strategy
-types. Byte conversions at the Wasm boundary return copies, offsets are byte
-offsets, and fallible operations throw catchable errors rather than trapping
-the instance.
+The root export canonically contains `Bytes` and `Utf8Bytes` using the shared
+strategy, alongside `Buffer`, `BytesMut`, `Utf8Buffer`, and `Utf8BytesMut`.
+`smol-bytes/shared` exports the exact same immutable class objects; the
+`smol-bytes/compact` entry point exports distinct compact classes. Every entry
+point initializes iteration, disposal, and input validation independently.
+
+Raw bytes use `fromUtf8()` and `decodeUtf8()`; they deliberately have no
+string-like `fromString()`, raw `toString()`, or `fromStatic()` API. UTF-8
+classes retain `fromString()` / `toString()`, but make byte units explicit:
+`byteLength()`, `charLength()`, `remainingBytes()`, `advanceBytes()`,
+`splitToBytes()`, `splitOffBytes()`, `sliceBytes()`, and `truncateBytes()`.
+Byte offsets must land at UTF-8 scalar boundaries. Numeric arguments are
+checked before WebAssembly coercion, and malformed JavaScript UTF-16 strings
+are rejected before encoding.
+
+Byte conversions at the Wasm boundary return copies. `clone()` is available on
+every public class. Mutable `freezeShared()` / `freezeCompact()` drain their
+source into the selected immutable strategy, while immutable `toMutable()`
+returns an independent mutable value. JavaScript `unsplit()` snapshots and
+appends `other` without consuming it; self-aliasing deterministically doubles
+the value.
 
 ```typescript
-import { Utf8Bytes } from "smol-bytes";
+import { Bytes, BytesMut, Utf8Bytes } from "smol-bytes";
 import { Bytes as CompactBytes } from "smol-bytes/compact";
 
 const raw = CompactBytes.fromBytes(new Uint8Array([1, 2, 3]));
 console.assert(raw.isInline());
 console.assert(raw.toBytes()[2] === 3);
 
+const shared = Bytes.fromUtf8("hello");
+console.assert(shared.decodeUtf8() === "hello");
+
+const mutable = BytesMut.fromUtf8("ready");
+const frozen = mutable.freezeShared();
+console.assert(mutable.isEmpty() && frozen.decodeUtf8() === "ready");
+
 const text = Utf8Bytes.fromString("café");
-console.assert(text.len() === 5); // byte length
+console.assert(text.byteLength() === 5);
+console.assert(text.charLength() === 4);
 console.assert(text.toString() === "café");
 ```
 

@@ -29,7 +29,7 @@ pub use python::PyCompactUtf8Bytes;
 pub use python::PySharedUtf8Bytes;
 
 #[cfg(feature = "wasm")]
-mod wasm;
+pub(crate) mod wasm;
 
 /// Immutable UTF-8 string with inline/heap storage, generic over the
 /// immutable storage strategy `S`.

@@ -25,8 +25,9 @@ impl Utf8BytesMut {
   ///
   /// @param s - The source string whose bytes are copied.
   #[wasm_bindgen(js_name = "fromString")]
-  pub fn from_string_wasm(s: &str) -> Utf8BytesMut {
-    Utf8BytesMut::from(s)
+  pub fn from_string_wasm(s: js_sys::JsString) -> Result<Utf8BytesMut, JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    Ok(Utf8BytesMut::from(s))
   }
 
   /// Return contents as a UTF-8 string.
@@ -42,9 +43,15 @@ impl Utf8BytesMut {
   }
 
   /// Return the byte length of the buffer.
-  #[wasm_bindgen(js_name = "len")]
+  #[wasm_bindgen(js_name = "byteLength")]
   pub fn len_wasm(&self) -> usize {
     self.len()
+  }
+
+  /// Return the number of Unicode scalar values in the buffer.
+  #[wasm_bindgen(js_name = "charLength")]
+  pub fn char_length_wasm(&self) -> usize {
+    self.as_str().chars().count()
   }
 
   /// Return `true` if the buffer has no bytes.
@@ -71,6 +78,23 @@ impl Utf8BytesMut {
     self.is_heap()
   }
 
+  /// Return the number of readable UTF-8 bytes remaining.
+  #[wasm_bindgen(js_name = "remainingBytes")]
+  pub fn remaining_bytes_wasm(&self) -> usize {
+    bytes::Buf::remaining(&self.inner)
+  }
+
+  /// Advance the read cursor by a UTF-8 byte count at a scalar boundary.
+  #[wasm_bindgen(js_name = "advanceBytes")]
+  pub fn advance_bytes_wasm(&mut self, count: usize) -> Result<(), JsError> {
+    crate::utf8_buf::validate_char_boundary(self.as_str(), count)
+      .map_err(|e| JsError::new(&e.to_string()))?;
+    self
+      .inner
+      .try_advance(count)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
   /// Append a single character.
   ///
   /// @param ch - A string containing exactly one Unicode scalar value.
@@ -87,8 +111,10 @@ impl Utf8BytesMut {
   ///
   /// @param s - The string to append.
   #[wasm_bindgen(js_name = "pushStr")]
-  pub fn push_str_wasm(&mut self, s: &str) {
-    self.push_str(s);
+  pub fn push_str_wasm(&mut self, s: js_sys::JsString) -> Result<(), JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    self.push_str(&s);
+    Ok(())
   }
 
   /// Clear the buffer, removing all data.
@@ -101,7 +127,7 @@ impl Utf8BytesMut {
   ///
   /// Throws if `new_len` is inside a UTF-8 scalar. Lengths beyond the current
   /// byte length leave the value unchanged.
-  #[wasm_bindgen(js_name = "truncate")]
+  #[wasm_bindgen(js_name = "truncateBytes")]
   pub fn truncate_wasm(&mut self, new_len: usize) -> Result<(), JsError> {
     self
       .try_truncate(new_len)
@@ -118,7 +144,7 @@ impl Utf8BytesMut {
   /// Self becomes `[at, len)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitTo")]
+  #[wasm_bindgen(js_name = "splitToBytes")]
   pub fn split_to_wasm(&mut self, at: usize) -> Result<Utf8BytesMut, JsError> {
     self
       .try_split_to(at)
@@ -129,7 +155,7 @@ impl Utf8BytesMut {
   /// Self becomes `[0, at)`.
   ///
   /// @throws {Error} If `at` is out of bounds or not on a UTF-8 char boundary.
-  #[wasm_bindgen(js_name = "splitOff")]
+  #[wasm_bindgen(js_name = "splitOffBytes")]
   pub fn split_off_wasm(&mut self, at: usize) -> Result<Utf8BytesMut, JsError> {
     self
       .try_split_off(at)
@@ -142,20 +168,32 @@ impl Utf8BytesMut {
     self.split()
   }
 
-  /// Merge another buffer back into this one.
-  #[wasm_bindgen(js_name = "unsplit")]
-  pub fn unsplit_wasm(&mut self, other: Utf8BytesMut) {
-    self.unsplit(other)
-  }
-
   /// Return a copy of bytes in range `[start, end)`.
   ///
   /// @throws {Error} If the range is out of bounds or not on UTF-8 char boundaries.
-  #[wasm_bindgen(js_name = "slice")]
+  #[wasm_bindgen(js_name = "sliceBytes")]
   pub fn slice_wasm(&self, start: usize, end: usize) -> Result<Utf8BytesMut, JsError> {
     self
       .try_slice(start..end)
       .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Return an independent mutable clone.
+  #[wasm_bindgen(js_name = "clone")]
+  pub fn clone_wasm(&self) -> Utf8BytesMut {
+    self.clone()
+  }
+
+  /// Freeze the current contents using the shared strategy and reset this buffer.
+  #[wasm_bindgen(js_name = "freezeShared")]
+  pub fn freeze_shared_wasm(&mut self) -> crate::utf8_bytes::wasm::WasmUtf8Bytes {
+    core::mem::take(self).freeze_shared().into()
+  }
+
+  /// Freeze the current contents using the compact strategy and reset this buffer.
+  #[wasm_bindgen(js_name = "freezeCompact")]
+  pub fn freeze_compact_wasm(&mut self) -> crate::utf8_bytes::wasm::WasmCompactUtf8Bytes {
+    core::mem::take(self).freeze_compact().into()
   }
 
   // -- Iterator --
