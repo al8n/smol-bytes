@@ -1,6 +1,6 @@
 {
   "name": "smol-bytes",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "type": "module",
   "description": "High-performance, clone-efficient byte buffers for JavaScript/TypeScript",
   "license": "MIT OR Apache-2.0",

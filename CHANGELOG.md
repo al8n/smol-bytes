@@ -6,45 +6,77 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### 0.2 migration
+## [0.2.0] - 2026-10-18
 
-- **Breaking:** `BytesMut::split`, `split_to`, and `split_off` now always
-  return `BytesMut`; `try_split_to` and `try_split_off` return
-  `Result<BytesMut, OutOfBounds>`, and `try_split` is removed. `unsplit` is
-  total, always consumes its argument, and returns `()`; it appends inline and
-  mixed storage rather than rejecting it.
-- **Breaking:** removed `From<&str>` for `Utf8Buffer`. Use
-  `Utf8Buffer::try_from`, `try_from_str`, or `FromStr`, all of which report
-  `TryPutError` for text larger than the fixed inline capacity.
-- **Breaking:** `Buffer::resize` and `try_resize` now require a fill byte:
-  `resize(new_len, value)` and `try_resize(new_len, value)`. Failed fallible
-  resizes leave the buffer untouched.
-- **Breaking:** `Utf8Error` is replaced by `Utf8IndexError`, which preserves
-  invalid-character-boundary, index-bound, and full-range-bound context.
-- Added `FromUtf8Error<B>` and owned `from_utf8` constructors for the UTF-8
-  wrappers. Failed owned conversions preserve the original buffer, visible
-  view, and storage strategy for recovery through `into_bytes()`.
-- Added crate-owned `TryGetError` and `TryGetIntegerError` for `Buffer`'s
-  inherent variable-width readers. The `bytes::Buf` trait still uses the
-  upstream `bytes::TryGetError` behavior.
-- `Utf8Buf` and `Utf8BufMut` are now sealed. `Utf8BufMut` exposes fallible
-  append operations with `CapacityError`; `Utf8Buffer` uses `TryPutError`, and
-  `Utf8BytesMut` uses `Infallible`. `Utf8Buffer` also implements `fmt::Write`.
-- Added safe mutable `str` access (`as_mut_str`, `AsMut<str>`, `BorrowMut<str>`,
-  `DerefMut`, and mutable range indexing) for `Utf8Buffer` and `Utf8BytesMut`.
-- Added immutable UTF-8 view operations (`clear`, `truncate`, `advance`),
-  `is_unique`, and recoverable `try_into_mut` for `Utf8Bytes`.
-- Added root-default `BytesMut::freeze` and `Utf8BytesMut::freeze`; explicit
-  shared and compact freeze methods remain available. Shared/compact raw and
-  UTF-8 values now convert directly with target-strategy storage behavior.
-- Added selected ownership-preserving byte/UTF-8 conversions, chunk collection,
-  `Cow` input support, `OsStr`/`Path` views under `std`, and cross-strategy
-  equality/ordering.
-- Added byte schemas for `Buffer`, `BytesMut`, and both `Bytes` strategies:
-  serialization is `array<u8>`, deserialization also accepts strings, and
-  `Buffer` carries its inline-capacity `maxItems` constraint.
-- The feature graph now makes `std` imply `alloc`, preserves `bytes` as an
-  explicit compatibility feature, and makes `quickcheck` imply `std`.
+See the [0.2 migration guide](MIGRATING-0.2.md) for side-by-side Rust, Python,
+and JavaScript migration examples.
+
+### Breaking
+
+- **Rust:** `BytesMut::split`, `split_to`, and `split_off` now return
+  `BytesMut` directly; `try_split_to` and `try_split_off` return
+  `Result<BytesMut, OutOfBounds>`, `try_split` is removed, and total
+  `unsplit` consumes its argument and returns `()`.
+- **Rust:** `Utf8Buffer` no longer implements `From<&str>`; use `TryFrom`,
+  `try_from_str`, or `FromStr` to handle its fixed 62-byte capacity.
+- **Rust:** `Buffer::resize` and `try_resize` require an explicit fill byte,
+  and `Utf8Error` is replaced by `Utf8IndexError` with boundary and full-range
+  context.
+- **Rust:** `smol_bytes::TryGetError` is now a crate-owned fixed-width
+  inherent `Buffer` underflow error, not the old upstream `bytes` alias. Code
+  that handles `bytes::TryGetError` should use `smol_bytes::BufTryGetError`
+  when `alloc` or `std` is enabled; variable-width inherent readers return
+  `TryGetIntegerError`. `Utf8Buf` and `Utf8BufMut` are sealed.
+- **Python:** raw classes rename `from_str`/`to_string` to
+  `from_utf8`/`decode_utf8`; `str(raw)` is now a total byte representation.
+  Ambiguous UTF-8 byte/character methods are replaced by explicit
+  `*_chars` and `*_bytes` names. In particular, removed
+  `Utf8Buffer.len()` (the 0.1 byte count) becomes `byte_len()`; built-in
+  `len(value)` is the Unicode scalar count.
+- **JavaScript/Wasm:** raw classes rename `fromString`/raw `toString` to
+  `fromUtf8`/`decodeUtf8`; `fromStatic` is removed from both raw and UTF-8
+  public classes, while UTF-8 construction uses `fromString`. UTF-8 byte
+  operations use explicit `byteLength`, `charLength`, and `*Bytes` names.
+
+### Added
+
+- **Rust:** `FromUtf8Error<B>` preserves owned invalid input for recovery;
+  owned UTF-8 wrappers expose `from_utf8`. `TryGetError` and
+  `TryGetIntegerError` provide crate-owned inherent-reader errors.
+- **Rust:** safe mutable `str` access for `Utf8Buffer` and `Utf8BytesMut`,
+  fallible UTF-8 mutation through `Utf8BufMut::CapacityError`, and
+  `fmt::Write` for `Utf8Buffer`.
+- **Rust:** immutable `Utf8Bytes<S>` view operations, uniqueness and
+  recoverable mutable conversion; root-default freeze methods; strategy-aware
+  consuming conversions; `Cow`/chunk collection support; and `OsStr`/`Path`
+  views under `std`.
+- **Rust:** cross-strategy raw/UTF-8 comparisons and conversions, plus byte
+  JSON schemas for fixed/mutable/immutable raw buffers. The `std` feature now
+  implies `alloc`; `bytes` remains a compatibility alias and `quickcheck`
+  implies `std`.
+- **Python:** canonical root shared `Bytes` and `Utf8Bytes`, with exact shared
+  aliases that preserve historic shared-module pickle loading; `py.typed` and
+  complete stubs; bytes-like input support; independent mutable slices;
+  destructive `freeze_shared`/`freeze_compact`; and immutable `to_mutable`.
+- **Python:** explicit Unicode-scalar and byte-unit APIs, normalized exception
+  taxonomy, and non-consuming snapshot `unsplit` (self-alias raises
+  `RuntimeError` atomically).
+- **JavaScript/Wasm:** canonical root shared immutable classes and exact shared
+  aliases, distinct compact classes, `clone`, mutable `slice`, destructive
+  freeze methods, immutable `toMutable`, snapshot `unsplit`, raw
+  variable-width integer operations, and additional Buffer/BytesMut parity.
+- **JavaScript/Wasm:** strict number/BigInt and malformed UTF-16 validation,
+  iterable and disposable values/iterators, TypeScript 5.2 declarations, and
+  packed-package verification across all entry points.
+
+### Changed
+
+- **Python:** raw constructors and mutable writes accept bytes, bytearray, and
+  readable contiguous byte buffers; UTF-8 classes retain string-oriented APIs
+  while indexing and iteration consistently use Unicode scalar values.
+- **JavaScript/Wasm:** root, shared, and compact entry points independently
+  install validation, iteration, and disposal behavior. Numeric and boundary
+  failures are checked before Wasm coercion where deterministic.
 
 ## [0.1.8] - 2026-10-13
 
@@ -202,7 +234,8 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/al8n/smol-bytes/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/al8n/smol-bytes/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/al8n/smol-bytes/compare/a56cfeca004c750ef4df7b42af05a9c8d6b981ba...v0.1.7
 [0.1.6]: https://github.com/al8n/smol-bytes/compare/8d88fde61726dd195d0aee3f707a4862bf9097e3...a56cfeca004c750ef4df7b42af05a9c8d6b981ba

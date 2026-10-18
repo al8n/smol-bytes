@@ -36,7 +36,7 @@ matters.
 
 ```toml
 [dependencies]
-smol-bytes = "0.1"
+smol-bytes = "0.2"
 ```
 
 Python (`pip install smol-bytes`) and JavaScript (`npm install smol-bytes`)
@@ -134,6 +134,8 @@ inline capacity.
 ## 0.2 API migration
 
 0.2 intentionally removes several ambiguous or lossy APIs.
+For complete Rust, Python, and JavaScript examples, see
+[the 0.2 migration guide](https://github.com/al8n/smol-bytes/blob/main/MIGRATING-0.2.md).
 
 - Replace `Utf8Buffer::from(text)` with `Utf8Buffer::try_from(text)?` (or
   `Utf8Buffer::try_from_str(text)?`). `FromStr` remains available. This makes
@@ -150,7 +152,8 @@ inline capacity.
   Converting owned `Buffer`, `BytesMut`, or raw strategy bytes into a UTF-8
   wrapper returns `FromUtf8Error<B>` on invalid input; call `into_bytes()` to
   recover the original allocation and view.
-- Variable-width inherent `Buffer::try_get_{u,int}{,_le,_ne}` methods now
+- Variable-width inherent `Buffer::try_get_uint{,_le,_ne}` and
+  `Buffer::try_get_int{,_le,_ne}` methods now
   return `TryGetIntegerError`, distinguishing an invalid width from missing
   bytes. The `bytes::Buf` trait methods retain `bytes`' own error type and
   panic contract.
@@ -347,8 +350,9 @@ strategy, alongside `Buffer`, `BytesMut`, `Utf8Buffer`, and `Utf8BytesMut`.
 point initializes iteration, disposal, and input validation independently.
 
 Raw bytes use `fromUtf8()` and `decodeUtf8()`; they deliberately have no
-string-like `fromString()`, raw `toString()`, or `fromStatic()` API. UTF-8
-classes retain `fromString()` / `toString()`, but make byte units explicit:
+string-like `fromString()` or raw `toString()` API. Neither raw nor UTF-8
+public classes expose `fromStatic()`; UTF-8 classes retain
+`fromString()` / `toString()` and make byte units explicit:
 `byteLength()`, `charLength()`, `remainingBytes()`, `advanceBytes()`,
 `splitToBytes()`, `splitOffBytes()`, `sliceBytes()`, and `truncateBytes()`.
 Byte offsets must land at UTF-8 scalar boundaries. Numeric arguments are
@@ -356,7 +360,7 @@ checked before WebAssembly coercion, and malformed JavaScript UTF-16 strings
 are rejected before encoding.
 
 Byte conversions at the Wasm boundary return copies. `clone()` is available on
-every public class. Mutable `freezeShared()` / `freezeCompact()` drain their
+each public byte/string value class. Mutable `freezeShared()` / `freezeCompact()` drain their
 source into the selected immutable strategy, while immutable `toMutable()`
 returns an independent mutable value. JavaScript `unsplit()` snapshots and
 appends `other` without consuming it; self-aliasing deterministically doubles
