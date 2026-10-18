@@ -135,7 +135,7 @@ inline capacity.
 
 0.2 intentionally removes several ambiguous or lossy APIs.
 For complete Rust, Python, and JavaScript examples, see
-[the 0.2 migration guide](https://github.com/al8n/smol-bytes/blob/main/MIGRATING-0.2.md).
+[the 0.2.0 changelog and migration guide](https://github.com/al8n/smol-bytes/blob/main/CHANGELOG.md#020---2026-10-18).
 
 - Replace `Utf8Buffer::from(text)` with `Utf8Buffer::try_from(text)?` (or
   `Utf8Buffer::try_from_str(text)?`). `FromStr` remains available. This makes

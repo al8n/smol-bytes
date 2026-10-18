@@ -69,9 +69,9 @@ npm test
 npm pack --dry-run
 ```
 
-Review `CHANGELOG.md`, [MIGRATING-0.2.md](MIGRATING-0.2.md), and release-facing
-README examples. Confirm the candidate has no unrelated changes, then create
-and push the exact version tag:
+Review the migration guide within `CHANGELOG.md` and the release-facing README
+examples. Confirm the candidate has no unrelated changes, then create and push
+the exact version tag:
 
 ```bash
 git tag -a v0.2.0 -m "v0.2.0"
