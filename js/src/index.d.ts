@@ -97,6 +97,7 @@ interface RawWritable {
 
 export interface Buffer extends RawReadable<Buffer>, RawWritable {
   capacity(): number;
+  /** Actual writable bytes in this fixed buffer's current inline tail. */
   remainingMut(): number;
   resize(newLen: number, value?: number): void;
 }
@@ -109,6 +110,10 @@ export declare const Buffer: {
 
 export interface BytesMut extends RawReadable<BytesMut>, RawWritable {
   capacity(): number;
+  /**
+   * `bytes::BufMut`'s growable writable limit (`usize::MAX - len` on Rust,
+   * bounded by wasm32 in this binding), not current allocation spare capacity.
+   */
   remainingMut(): number;
   isInline(): boolean;
   isHeap(): boolean;

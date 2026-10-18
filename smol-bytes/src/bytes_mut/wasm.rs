@@ -96,7 +96,10 @@ impl BytesMut {
     bytes::Buf::remaining(self)
   }
 
-  /// Return the number of bytes that can be appended without growing.
+  /// Return the growable `bytes::BufMut` writable limit.
+  ///
+  /// This is `usize::MAX - len`, not the current allocation's spare capacity.
+  /// On Wasm it is bounded by the wasm32 `usize` range.
   #[wasm_bindgen(js_name = "remainingMut")]
   pub fn remaining_mut_wasm(&self) -> usize {
     bytes::BufMut::remaining_mut(self)

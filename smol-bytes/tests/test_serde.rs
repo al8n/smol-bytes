@@ -284,3 +284,18 @@ fn buffer_json_string_uses_visit_str() {
   let back: Buffer = serde_json::from_str("\"hi\"").unwrap();
   assert_eq!(back, Buffer::try_from(&b"hi"[..]).unwrap());
 }
+
+#[test]
+fn buffer_json_string_enforces_inline_byte_capacity() {
+  use smol_bytes::Buffer;
+
+  let at_limit = "a".repeat(62);
+  let decoded: Buffer = serde_json::from_str(&serde_json::to_string(&at_limit).unwrap()).unwrap();
+  assert_eq!(decoded.as_slice(), at_limit.as_bytes());
+
+  let oversize = "a".repeat(63);
+  let error = serde_json::from_str::<Buffer>(&serde_json::to_string(&oversize).unwrap())
+    .unwrap_err()
+    .to_string();
+  assert!(error.contains("requested 63 but only 62 available"));
+}

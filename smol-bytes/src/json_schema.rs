@@ -33,6 +33,9 @@ impl JsonSchema for Buffer {
   fn json_schema(generator: &mut SchemaGenerator) -> Schema {
     let mut schema = byte_schema(generator);
     schema.insert("maxItems".to_owned(), (crate::INLINE_CAP as u64).into());
+    if generator.contract().is_deserialize() {
+      schema.insert("maxLength".to_owned(), (crate::INLINE_CAP as u64).into());
+    }
     schema
   }
 }
@@ -162,8 +165,28 @@ mod tests {
       assert_eq!(schema.get("type"), Some(&json!(["array", "string"])));
     }
 
-    let buffer_schema = schema_for_contract::<Buffer>(Contract::Serialize);
-    assert_eq!(buffer_schema.get("maxItems"), Some(&json!(INLINE_CAP)));
+    let buffer_serialize = schema_for_contract::<Buffer>(Contract::Serialize);
+    assert_eq!(buffer_serialize.get("maxItems"), Some(&json!(INLINE_CAP)));
+    assert!(buffer_serialize.get("maxLength").is_none());
+
+    let buffer_deserialize = schema_for_contract::<Buffer>(Contract::Deserialize);
+    assert_eq!(buffer_deserialize.get("maxItems"), Some(&json!(INLINE_CAP)));
+    assert_eq!(
+      buffer_deserialize.get("maxLength"),
+      Some(&json!(INLINE_CAP))
+    );
+
+    for schema in [
+      schema_for_contract::<BytesMut>(Contract::Serialize),
+      schema_for_contract::<BytesMut>(Contract::Deserialize),
+      schema_for_contract::<Bytes>(Contract::Serialize),
+      schema_for_contract::<Bytes>(Contract::Deserialize),
+      schema_for_contract::<compact::Bytes>(Contract::Serialize),
+      schema_for_contract::<compact::Bytes>(Contract::Deserialize),
+    ] {
+      assert!(schema.get("maxItems").is_none());
+      assert!(schema.get("maxLength").is_none());
+    }
   }
 
   #[test]

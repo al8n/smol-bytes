@@ -51,9 +51,11 @@ and JavaScript migration examples.
   consuming conversions; `Cow`/chunk collection support; and `OsStr`/`Path`
   views under `std`.
 - **Rust:** cross-strategy raw/UTF-8 comparisons and conversions, plus byte
-  JSON schemas for fixed/mutable/immutable raw buffers. The `std` feature now
-  implies `alloc`; `bytes` remains a compatibility alias and `quickcheck`
-  implies `std`.
+  JSON schemas for fixed/mutable/immutable raw buffers. `Buffer` bounds array
+  input with `maxItems` and string input with `maxLength`; the latter is a
+  scalar-count bound and byte capacity remains enforced during deserialization.
+  The `std` feature now implies `alloc`; `bytes` remains a compatibility alias
+  and `quickcheck` implies `std`.
 - **Python:** canonical root shared `Bytes` and `Utf8Bytes`, with exact shared
   aliases that preserve historic shared-module pickle loading; `py.typed` and
   complete stubs; bytes-like input support; independent mutable slices;

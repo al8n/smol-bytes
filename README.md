@@ -221,7 +221,10 @@ the heap-backed types without `std`.
 
 Byte wrapper JSON schemas describe serialization as `array<u8>` and accept an
 array or string under Schemars' deserialization contract. `Buffer` additionally
-sets `maxItems` to `INLINE_CAP`; UTF-8 wrappers remain ordinary string schemas.
+sets `maxItems` for array input and `maxLength` for string input to `INLINE_CAP`.
+`maxLength` is a scalar-count bound; deserialization still enforces the actual
+UTF-8 byte capacity for multibyte strings. UTF-8 wrappers remain ordinary string
+schemas.
 
 The `sqlx` bindings decode by borrowing from the row, so a value of at most 62
 bytes is built inline with no heap allocation at all. That costs one thing:
@@ -326,8 +329,9 @@ Binding behavior worth knowing:
 Install the published package with `npm install smol-bytes`.
 
 To build from a checkout instead, install Node.js 20, `wasm-pack` 0.13.1, and
-the `wasm32-unknown-unknown` target. The generated package is pinned to
-wasm-bindgen 0.2.127 for reproducibility:
+the `wasm32-unknown-unknown` target. wasm-pack and Cargo resolve a compatible
+wasm-bindgen 0.2.x release; any separately installed wasm-bindgen helper must
+match the resolved crate version. CI checks the supported 0.2.x family.
 
 ```bash
 rustup target add wasm32-unknown-unknown

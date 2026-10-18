@@ -66,7 +66,7 @@ impl Buffer {
     self.capacity()
   }
 
-  /// Return the remaining writable capacity in bytes.
+  /// Return the actual writable bytes in this fixed inline buffer's tail.
   #[wasm_bindgen(js_name = "remainingMut")]
   pub fn remaining_mut_wasm(&self) -> usize {
     self.remaining_mut()
