@@ -9,8 +9,9 @@ use std::error::Error as _;
 use std::io;
 
 use smol_bytes::{
-  Buffer, FromBytesError, InvalidIntegerLength, OutOfBounds, RangeOutOfBounds, TryPutError,
-  TryPutIntegerError, Utf8Bytes, Utf8BytesMut, Utf8Error,
+  BufTryGetError, Buffer, Bytes, BytesMut, FromBytesError, FromUtf8Error, InvalidIntegerLength,
+  OutOfBounds, RangeOutOfBounds, TryGetError, TryGetIntegerError, TryPutError, TryPutIntegerError,
+  Utf8Bytes, Utf8BytesMut, Utf8IndexError,
 };
 
 // ---------------------------------------------------------------------------
@@ -182,15 +183,15 @@ fn range_out_of_bounds_reversed_and_oob() {
 }
 
 // ---------------------------------------------------------------------------
-// Utf8Error (both variants)
+// Utf8IndexError (all variants)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn utf8_error_invalid_char_boundary() {
   // "café" == [c, a, f, 0xC3, 0xA9]; byte index 4 splits the 'é'.
   let mut s = Utf8BytesMut::from("café");
-  let err: Utf8Error = s.try_split_to(4).unwrap_err();
-  assert_eq!(err, Utf8Error::InvalidCharBoundary { at: 4 });
+  let err: Utf8IndexError = s.try_split_to(4).unwrap_err();
+  assert_eq!(err, Utf8IndexError::InvalidCharBoundary { index: 4 });
   assert_eq!(
     err.to_string(),
     "index 4 does not lie on a UTF-8 character boundary"
@@ -209,11 +210,123 @@ fn utf8_error_invalid_char_boundary() {
 }
 
 #[test]
-fn utf8_error_out_of_bounds() {
-  let s = Utf8Bytes::from("hi");
-  let err: Utf8Error = s.try_slice(0..10).unwrap_err();
-  assert_eq!(err, Utf8Error::OutOfBounds { at: 10, len: 2 });
-  assert_eq!(err.to_string(), "index 10 out of bounds: length is 2");
+fn utf8_index_error_preserves_index_and_range_context() {
+  let mut s = Utf8Bytes::from("hi");
+  let index_error: Utf8IndexError = s.try_split_to(10).unwrap_err();
+  assert_eq!(
+    index_error,
+    Utf8IndexError::IndexOutOfBounds(OutOfBounds::new(10, 2))
+  );
+  assert!(index_error.source().is_some());
+
+  let (start, end) = (3, 2);
+  let range_error: Utf8IndexError = s.try_slice(start..end).unwrap_err();
+  assert_eq!(
+    range_error,
+    Utf8IndexError::RangeOutOfBounds(RangeOutOfBounds::new(3, 2, 2))
+  );
+  assert!(range_error.source().is_some());
+}
+
+// ---------------------------------------------------------------------------
+// TryGetError and TryGetIntegerError
+// ---------------------------------------------------------------------------
+
+#[test]
+fn variable_width_read_errors_are_typed_and_atomic() {
+  let mut buffer = Buffer::from(*b"abc");
+  let before = buffer.as_slice().to_vec();
+  assert_eq!(
+    buffer.try_get_uint(9),
+    Err(TryGetIntegerError::InvalidLength(InvalidIntegerLength(9)))
+  );
+  assert_eq!(buffer.as_slice(), before);
+
+  assert_eq!(
+    buffer.try_get_int_le(4),
+    Err(TryGetIntegerError::NotEnoughBytes(TryGetError {
+      requested: 4,
+      available: 3,
+    }))
+  );
+  assert_eq!(buffer.as_slice(), before);
+
+  for result in [
+    buffer.try_get_uint(9).map(|_| ()),
+    buffer.try_get_uint_le(9).map(|_| ()),
+    buffer.try_get_uint_ne(9).map(|_| ()),
+    buffer.try_get_int(9).map(|_| ()),
+    buffer.try_get_int_le(9).map(|_| ()),
+    buffer.try_get_int_ne(9).map(|_| ()),
+  ] {
+    assert_eq!(
+      result,
+      Err(TryGetIntegerError::InvalidLength(InvalidIntegerLength(9)))
+    );
+  }
+  assert_eq!(buffer.as_slice(), before);
+
+  let crate_error = TryGetError {
+    requested: 4,
+    available: 3,
+  };
+  let upstream: BufTryGetError = crate_error.into();
+  assert_eq!(TryGetError::from(upstream), crate_error);
+
+  let mut trait_buffer = Buffer::from(*b"abc");
+  let upstream: BufTryGetError = bytes::Buf::try_get_uint(&mut trait_buffer, 4).unwrap_err();
+  assert_eq!(TryGetError::from(upstream), crate_error);
+}
+
+// ---------------------------------------------------------------------------
+// FromUtf8Error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn owned_utf8_errors_recover_original_storage_without_copying() {
+  let mut raw = BytesMut::from(vec![b'x'; 80]);
+  raw.as_mut_slice()[79] = 0xff;
+  let pointer = raw.as_slice().as_ptr();
+  let error: FromUtf8Error<BytesMut> = match Utf8BytesMut::from_utf8(raw) {
+    Err(error) => error,
+    Ok(_) => panic!("invalid bytes unexpectedly validated"),
+  };
+  assert_eq!(error.as_bytes().as_ptr(), pointer);
+  assert!(error.utf8_error().valid_up_to() < error.as_bytes().len());
+  assert!(error.source().is_some());
+  let raw = error.into_bytes();
+  assert_eq!(raw.as_slice().as_ptr(), pointer);
+  assert_eq!(raw.as_slice()[79], 0xff);
+
+  let mut raw_bytes = vec![b'x'; 80];
+  raw_bytes[79] = 0xff;
+  let mut raw = Bytes::from(raw_bytes);
+  let _ = raw.split_to(5);
+  let pointer = raw.as_slice().as_ptr();
+  let error = match Utf8Bytes::from_utf8(raw) {
+    Err(error) => error,
+    Ok(_) => panic!("invalid bytes unexpectedly validated"),
+  };
+  assert_eq!(error.as_bytes().as_ptr(), pointer);
+  assert_eq!(error.into_bytes().as_slice().as_ptr(), pointer);
+
+  let buffer = Buffer::try_from(&[b'a', 0xff][..]).unwrap();
+  let error = match smol_bytes::Utf8Buffer::from_utf8(buffer) {
+    Err(error) => error,
+    Ok(_) => panic!("invalid bytes unexpectedly validated"),
+  };
+  assert_eq!(error.as_bytes(), b"a\xff");
+  assert_eq!(error.into_bytes().as_slice(), b"a\xff");
+}
+
+#[test]
+fn raw_bytes_try_into_mut_returns_the_same_strategy_on_failure() {
+  let original = Bytes::from_static(&[b'x'; 80]);
+  let recovered: Bytes = match original.try_into_mut() {
+    Ok(_) => panic!("static bytes unexpectedly became mutable without a copy"),
+    Err(bytes) => bytes,
+  };
+  assert_eq!(recovered.as_slice(), &[b'x'; 80]);
 }
 
 // ---------------------------------------------------------------------------

@@ -212,14 +212,22 @@ impl Utf8BytesMut {
 
   /// Merge another buffer back into this one.
   ///
+  /// Python uses non-consuming snapshot semantics: the call-entry contents of
+  /// `other` are appended, while `other` remains valid and unchanged. This is
+  /// intentionally distinct from the consuming Rust method.
+  /// Passing this same Python object as `other` is rejected with `RuntimeError`
+  /// by Python's mutable-borrow rules.
+  ///
   /// Args:
   ///     other: The buffer to merge.
   ///
   /// Returns:
-  ///     Utf8BytesMut or None: Returns the other buffer if merge failed, None on success.
+  ///     None: `other` remains valid and unchanged.
   #[pyo3(name = "unsplit")]
-  fn __python_unsplit(&mut self, other: Self) -> Option<Self> {
-    self.unsplit(other)
+  fn __python_unsplit(&mut self, other: PyRef<'_, Self>) -> PyResult<()> {
+    py_check_alloc(other.len())?;
+    self.unsplit((*other).clone());
+    Ok(())
   }
 
   /// Reserve capacity.

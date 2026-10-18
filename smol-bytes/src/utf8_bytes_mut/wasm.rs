@@ -142,11 +142,9 @@ impl Utf8BytesMut {
     self.split()
   }
 
-  /// Attempt to re-merge a previously split buffer back into this one.
-  ///
-  /// Returns `other` unchanged if the two buffers are not contiguous.
+  /// Merge another buffer back into this one.
   #[wasm_bindgen(js_name = "unsplit")]
-  pub fn unsplit_wasm(&mut self, other: Utf8BytesMut) -> Option<Utf8BytesMut> {
+  pub fn unsplit_wasm(&mut self, other: Utf8BytesMut) {
     self.unsplit(other)
   }
 

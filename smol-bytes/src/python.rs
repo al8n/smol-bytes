@@ -10,7 +10,7 @@ use pyo3::{
 };
 
 use crate::{
-  Buf, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetError, utf8_buf::char_offset_to_byte,
+  Buf, BufTryGetError, BytesMut, OutOfBounds, RangeOutOfBounds, utf8_buf::char_offset_to_byte,
 };
 
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -100,7 +100,7 @@ impl From<RangeOutOfBounds> for PyErr {
   }
 }
 
-fn try_get_error_parts(err: &TryGetError) -> (usize, usize) {
+fn try_get_error_parts(err: &BufTryGetError) -> (usize, usize) {
   (err.requested, err.available)
 }
 
@@ -470,18 +470,12 @@ where
 impl PyBufCommon for BytesMut {
   #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
-    match self.try_split_to(at)? {
-      Ok(bytes) => Ok(bytes),
-      Err(buffer) => Ok(BytesMut::from_inline(buffer)),
-    }
+    self.try_split_to(at)
   }
 
   #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
-    match self.try_split_off(at)? {
-      Ok(bytes) => Ok(bytes),
-      Err(buffer) => Ok(BytesMut::from_inline(buffer)),
-    }
+    self.try_split_off(at)
   }
 
   #[cfg_attr(not(coverage), inline(always))]
@@ -530,7 +524,7 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
     py_bytes_getitem(self.as_ref(), index)
   }
 
-  fn py_map_try_get_error(err: TryGetError) -> PyErr {
+  fn py_map_try_get_error(err: BufTryGetError) -> PyErr {
     let (requested, available) = try_get_error_parts(&err);
     PyBufferError::new_err(format!(
       "cannot get {} bytes, only {} bytes available",
@@ -540,7 +534,7 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
 
   fn py_try_get<T, F>(&mut self, f: F) -> PyResult<T>
   where
-    F: FnOnce(&mut Self) -> Result<T, TryGetError>,
+    F: FnOnce(&mut Self) -> Result<T, BufTryGetError>,
   {
     f(self).map_err(Self::py_map_try_get_error)
   }

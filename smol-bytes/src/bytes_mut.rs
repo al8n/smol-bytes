@@ -54,19 +54,19 @@ mod wasm;
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split_off`](Self::split_off): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split_off`](Self::split_off): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split_to`](Self::split_to): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split_to`](Self::split_to): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split`](Self::split): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split`](Self::split): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`unsplit`](Self::unsplit): Only works when both buffers are heap-allocated"
+  doc = "- [`unsplit`](Self::unsplit): Always consumes and appends the other buffer"
 )]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
 #[cfg_attr(not(feature = "wasm"), doc = "## Examples")]
@@ -438,13 +438,12 @@ impl BytesMut {
   /// semantics of [`bytes::BytesMut::split_off`].
   ///
   /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
+  /// reference count.
   ///
-  /// For inline buffers where `at` lies within the written length, the
-  /// tail is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// For inline buffers where `at` lies within the written length, the tail is
+  /// copied into another inline `BytesMut`.
   /// For inline buffers where `at > len` (splitting into uninitialized
-  /// capacity), the buffer is first promoted to heap and the split returns
-  /// `Ok(BytesMut)`.
+  /// capacity), the buffer is first promoted to heap before splitting.
   ///
   /// ## Examples
   ///
@@ -454,17 +453,9 @@ impl BytesMut {
   /// use smol_bytes::BytesMut;
   ///
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// match a.split_off(5) {
-  ///     Ok(mut b) => {
-  ///         // Heap: BytesMut can grow beyond 62 bytes
-  ///         b[0] = b'!';
-  ///         assert_eq!(&b[..], b"!world");
-  ///     }
-  ///     Err(mut b) => {
-  ///         // Inline: Buffer is limited to 62 bytes but still mutable
-  ///         assert_eq!(&b[..], b" world");
-  ///     }
-  /// }
+  /// let mut b = a.split_off(5);
+  /// b[0] = b'!';
+  /// assert_eq!(&b[..], b"!world");
   /// assert_eq!(&a[..], b"hello");
   /// ```
   ///
@@ -474,7 +465,7 @@ impl BytesMut {
   /// use smol_bytes::BytesMut;
   ///
   /// let mut a = BytesMut::with_capacity(1024);
-  /// let b = a.split_off(128).unwrap();
+  /// let b = a.split_off(128);
   /// assert_eq!(a.len(), 0);
   /// assert_eq!(a.capacity(), 128);
   /// assert_eq!(b.len(), 0);
@@ -485,7 +476,7 @@ impl BytesMut {
   ///
   /// Panics if `at > capacity`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
-  pub fn split_off(&mut self, at: usize) -> Result<Self, Buffer> {
+  pub fn split_off(&mut self, at: usize) -> Self {
     self
       .try_split_off(at)
       .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.capacity()))
@@ -496,7 +487,7 @@ impl BytesMut {
   /// Returns [`OutOfBounds`] instead of panicking when `at > capacity`.
   ///
   /// See also [`split_off`](Self::split_off).
-  pub fn try_split_off(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let cap = self.capacity();
     if at > cap {
       return Err(OutOfBounds::new(at, cap));
@@ -514,8 +505,8 @@ impl BytesMut {
     }
 
     let result = match &mut self.0 {
-      Repr::Inline(b) => Err(b.try_split_off(at).expect("validated bounds")),
-      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_off(at)))),
+      Repr::Inline(b) => Self::from_inline(b.try_split_off(at).expect("validated bounds")),
+      Repr::Heap(b) => Self(Repr::Heap(b.split_off(at))),
     };
     Ok(result)
   }
@@ -536,16 +527,14 @@ impl BytesMut {
   ///
   /// let mut buf = BytesMut::with_capacity(1024);
   /// buf.put(&b"hello world"[..]);
-  /// let other = buf.split().unwrap();
+  /// let other = buf.split();
   /// assert!(buf.is_empty());
   /// assert_eq!(other, b"hello world"[..]);
   /// ```
   #[must_use = "consider BytesMut::clear if you don't need the other half"]
-  pub fn split(&mut self) -> Result<Self, Buffer> {
+  pub fn split(&mut self) -> Self {
     let len = self.len();
-    self
-      .try_split_to(len)
-      .unwrap_or_else(|_| panic!("split out of bounds: {}", len))
+    self.split_to(len)
   }
 
   /// Splits the buffer into two at the given index.
@@ -554,10 +543,8 @@ impl BytesMut {
   /// contains elements `[0, at)`.
   ///
   /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
-  ///
-  /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
-  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
+  /// reference count. For inline buffers, the head is copied into another
+  /// inline `BytesMut`.
   ///
   /// ## Examples
   ///
@@ -566,23 +553,15 @@ impl BytesMut {
   ///
   /// // Inline buffer
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// match a.split_to(5) {
-  ///     Ok(mut b) => {
-  ///         // Heap: BytesMut can grow beyond 62 bytes
-  ///         b[0] = b'j';
-  ///         assert_eq!(&b[..], b"jello");
-  ///     }
-  ///     Err(b) => {
-  ///         // Inline: Buffer is limited to 62 bytes but still mutable
-  ///         assert_eq!(&b[..], b"hello");
-  ///     }
-  /// }
+  /// let mut b = a.split_to(5);
+  /// b[0] = b'j';
+  /// assert_eq!(&b[..], b"jello");
   /// assert_eq!(&a[..], b" world");
   ///
   /// // Heap buffer
   /// let mut a = BytesMut::with_capacity(64);
   /// a.extend_from_slice(b"hello world");
-  /// let mut b = a.split_to(5).unwrap();
+  /// let mut b = a.split_to(5);
   /// a[0] = b'!';  // Replaces the space with '!'
   /// b[0] = b'j';
   /// assert_eq!(&a[..], b"!world");
@@ -593,7 +572,7 @@ impl BytesMut {
   ///
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::advance if you don't need the other half"]
-  pub fn split_to(&mut self, at: usize) -> Result<Self, Buffer> {
+  pub fn split_to(&mut self, at: usize) -> Self {
     self
       .try_split_to(at)
       .unwrap_or_else(|_| panic!("split_to out of bounds: {} > {}", at, self.len()))
@@ -602,25 +581,17 @@ impl BytesMut {
   /// Attempts to split at `at`, returning [`OutOfBounds`] on failure instead of panicking.
   ///
   /// See also [`split_to`](Self::split_to).
-  pub fn try_split_to(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let len = self.len();
     if at > len {
       return Err(OutOfBounds::new(at, len));
     }
 
     let result = match &mut self.0 {
-      Repr::Inline(b) => Err(b.try_split_to(at).expect("validated bounds")),
-      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_to(at)))),
+      Repr::Inline(b) => Self::from_inline(b.try_split_to(at).expect("validated bounds")),
+      Repr::Heap(b) => Self(Repr::Heap(b.split_to(at))),
     };
     Ok(result)
-  }
-
-  /// Attempts to split off all remaining bytes.
-  ///
-  /// See also [`split`](Self::split).
-  pub fn try_split(&mut self) -> Result<Result<Self, Buffer>, OutOfBounds> {
-    let len = self.len();
-    self.try_split_to(len)
   }
 
   /// Attempts to advance the readable cursor by `cnt` bytes.
@@ -696,10 +667,7 @@ impl BytesMut {
 
   /// Absorbs a `BytesMut` that was previously split off.
   ///
-  /// Both `BytesMut` objects must be heap allocated for this to succeed. If one of them
-  /// is inline, the method returns `Some(other)`, leaving `self` unchanged.
-  ///
-  /// If the two `BytesMut` objects were previously contiguous and not mutated
+  /// If the two heap-backed `BytesMut` objects were previously contiguous and not mutated
   /// in a way that causes re-allocation i.e., if `other` was created by
   /// calling `split_off` on this `BytesMut`, then this is an `O(1)` operation
   /// that just decreases a reference count and sets a few indices.
@@ -714,21 +682,25 @@ impl BytesMut {
   /// let mut buf = BytesMut::with_capacity(64);
   /// buf.extend_from_slice(b"aaabbbcccddd");
   ///
-  /// let split = buf.split_off(6).unwrap();
+  /// let split = buf.split_off(6);
   /// assert_eq!(b"aaabbb", &buf[..]);
   /// assert_eq!(b"cccddd", &split[..]);
   ///
-  /// assert!(buf.unsplit(split).is_none());
+  /// buf.unsplit(split);
   /// assert_eq!(b"aaabbbcccddd", &buf[..]);
   /// ```
-  pub fn unsplit(&mut self, other: Self) -> Option<Self> {
+  pub fn unsplit(&mut self, other: Self) {
+    if self.is_empty() {
+      *self = other;
+      return;
+    }
+
     match (&mut self.0, other.0) {
       (Repr::Heap(b1), Repr::Heap(b2)) => {
         b1.unsplit(b2);
-        None
       }
-      (_, Repr::Inline(storage)) => Some(Self(Repr::Inline(storage))),
-      (_, Repr::Heap(bytes_mut)) => Some(Self(Repr::Heap(bytes_mut))),
+      (_, Repr::Inline(storage)) => self.extend_from_slice(storage.as_slice()),
+      (_, Repr::Heap(bytes_mut)) => self.extend_from_slice(bytes_mut.as_ref()),
     }
   }
 
@@ -856,7 +828,7 @@ impl BytesMut {
   /// assert_eq!(64, buf.capacity());
   ///
   /// buf.extend_from_slice(b"abcd");
-  /// let mut split = buf.split().unwrap();
+  /// let mut split = buf.split();
   /// assert_eq!(60, buf.capacity());
   /// assert_eq!(4, split.len());
   /// assert_eq!(false, split.try_reclaim(64));
@@ -1118,24 +1090,34 @@ impl Buf for BytesMut {
 
   #[cfg_attr(not(coverage), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
-    match self.split_to(len) {
-      Ok(a) => a.freeze_shared().into(),
-      Err(b) => ::bytes::Bytes::copy_from_slice(b.as_slice()),
-    }
+    self.split_to(len).freeze_shared().into()
   }
 
-  crate::macros::forward_buf! { 0 {
-    i16,
-    i32,
-    i64,
-    i128,
-    u16,
-    u32,
-    u64,
-    u128,
-    f32,
-    f64,
-  }}
+  fn get_int(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint(self, nbytes), nbytes)
+  }
+
+  fn get_int_le(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_le(self, nbytes), nbytes)
+  }
+
+  fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_ne(self, nbytes), nbytes)
+  }
+
+  fn try_get_int(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint(self, nbytes).map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_le(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_ne(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
 }
 
 unsafe impl BufMut for BytesMut {

@@ -157,6 +157,15 @@ describe('BytesMut', () => {
     buf.putSlice(new Uint8Array([1, 2, 3]));
     expect(buf.toBytes()).toEqual(new Uint8Array([1, 2, 3]));
   });
+
+  test('split and unsplit always return usable buffers and undefined', () => {
+    const buf = BytesMut.fromBytes(new TextEncoder().encode('hello world'));
+    const tail = buf.splitOff(5);
+    expect(buf.toString()).toBe('hello');
+    expect(tail.toString()).toBe(' world');
+    expect(buf.unsplit(tail)).toBeUndefined();
+    expect(buf.toString()).toBe('hello world');
+  });
 });
 
 describe('Utf8BytesMut', () => {
@@ -166,6 +175,13 @@ describe('Utf8BytesMut', () => {
     buf.push(' ');
     buf.pushStr('world');
     expect(buf.toString()).toBe('hello world');
+  });
+
+  test('unsplit appends inline values and returns undefined', () => {
+    const buf = Utf8BytesMut.fromString('hi');
+    const tail = Utf8BytesMut.fromString('!');
+    expect(buf.unsplit(tail)).toBeUndefined();
+    expect(buf.toString()).toBe('hi!');
   });
 });
 

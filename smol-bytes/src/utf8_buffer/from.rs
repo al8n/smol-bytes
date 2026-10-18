@@ -4,18 +4,27 @@ use std::string::ToString;
 
 use super::*;
 
-impl From<&str> for Utf8Buffer {
-  fn from(s: &str) -> Self {
-    let inner = Buffer::try_from(s.as_bytes()).expect("string too large for inline buffer");
-    Self { inner }
-  }
-}
-
 impl Utf8Buffer {
+  /// Validates a fixed buffer as UTF-8 without discarding it on failure.
+  pub fn from_utf8(buffer: Buffer) -> Result<Self, FromUtf8Error<Buffer>> {
+    match core::str::from_utf8(buffer.as_slice()) {
+      Ok(_) => Ok(Self { inner: buffer }),
+      Err(error) => Err(FromUtf8Error::new(buffer, error)),
+    }
+  }
+
   /// Tries to create a `Utf8Buffer` from a string slice.
   pub fn try_from_str(s: &str) -> Result<Self, TryPutError> {
     let inner = Buffer::try_from(s.as_bytes())?;
     Ok(Self { inner })
+  }
+}
+
+impl TryFrom<&str> for Utf8Buffer {
+  type Error = TryPutError;
+
+  fn try_from(s: &str) -> Result<Self, Self::Error> {
+    Self::try_from_str(s)
   }
 }
 
@@ -35,12 +44,10 @@ impl From<Utf8Buffer> for Buffer {
 }
 
 impl TryFrom<Buffer> for Utf8Buffer {
-  type Error = core::str::Utf8Error;
+  type Error = FromUtf8Error<Buffer>;
 
   fn try_from(buffer: Buffer) -> Result<Self, Self::Error> {
-    // Validate UTF-8
-    core::str::from_utf8(buffer.as_slice())?;
-    Ok(Self { inner: buffer })
+    Self::from_utf8(buffer)
   }
 }
 

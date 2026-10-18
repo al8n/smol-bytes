@@ -1,9 +1,9 @@
-use core::{borrow::Borrow, ops::RangeBounds, str};
+use core::{borrow::Borrow, convert::Infallible, ops::RangeBounds, str};
 
 use super::{
   BytesMut,
   error::*,
-  utf8_buf::{Utf8Buf, Utf8BufMut},
+  utf8_buf::{Utf8Buf, Utf8BufMut, range_bounds_to_start_end, sealed, validate_char_boundary},
 };
 use bytes::BufMut;
 
@@ -70,6 +70,8 @@ impl Default for Utf8BytesMut {
   }
 }
 
+impl sealed::Sealed for Utf8BytesMut {}
+
 impl core::fmt::Write for Utf8BytesMut {
   #[inline(always)]
   fn write_str(&mut self, s: &str) -> core::fmt::Result {
@@ -93,6 +95,15 @@ impl Utf8BytesMut {
   pub const fn new() -> Self {
     Self {
       inner: BytesMut::new(),
+    }
+  }
+
+  /// Validates owned mutable bytes as UTF-8 without discarding them on
+  /// failure.
+  pub fn from_utf8(bytes: BytesMut) -> Result<Self, FromUtf8Error<BytesMut>> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self { inner: bytes }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
     }
   }
 
@@ -216,6 +227,11 @@ impl Utf8BytesMut {
     <Self as Utf8BufMut>::push(self, ch)
   }
 
+  /// Appends a character without allocation failure.
+  pub fn try_push(&mut self, ch: char) -> Result<(), Infallible> {
+    <Self as Utf8BufMut>::try_push(self, ch)
+  }
+
   /// Appends a string slice to the buffer.
   ///
   /// # Examples
@@ -229,6 +245,11 @@ impl Utf8BytesMut {
   /// ```
   pub fn push_str(&mut self, s: &str) {
     <Self as Utf8BufMut>::push_str(self, s)
+  }
+
+  /// Appends a string slice without allocation failure.
+  pub fn try_push_str(&mut self, s: &str) -> Result<(), Infallible> {
+    <Self as Utf8BufMut>::try_push_str(self, s)
   }
 
   /// Clears the buffer, removing all contents.
@@ -248,7 +269,7 @@ impl Utf8BytesMut {
   }
 
   /// Truncates the buffer at a UTF-8 character boundary.
-  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
   }
 
@@ -307,7 +328,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_to(self, at)
   }
 
@@ -337,7 +358,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_off(self, at)
   }
 
@@ -359,24 +380,16 @@ impl Utf8BytesMut {
   /// assert_eq!(buf.len(), 0);
   /// ```
   pub fn split(&mut self) -> Self {
-    let inner = self
-      .inner
-      .try_split()
-      .expect("split always succeeds")
-      .unwrap_or_else(BytesMut::from);
+    let inner = self.inner.split();
     Self { inner }
   }
 
-  /// Attempts to merge another buffer back into this one.
+  /// Merges another buffer back into this one.
   ///
-  /// Returns `None` on success. Returns `Some(other)` when the buffers
-  /// cannot be efficiently merged — in particular, **both buffers must be
-  /// heap-allocated** (see [`BytesMut::unsplit`]). If either side is
-  /// inline, `unsplit` leaves `self` unchanged and hands `other` back.
+  /// Heap-backed contiguous halves merge without copying. Inline and mixed
+  /// pairs append their contents, promoting storage when necessary.
   ///
   /// # Examples
-  ///
-  /// Heap buffers merge successfully:
   ///
   /// ```
   /// use smol_bytes::Utf8BytesMut;
@@ -384,21 +397,22 @@ impl Utf8BytesMut {
   /// let mut buf = Utf8BytesMut::with_capacity(128);
   /// buf.push_str("hello world");
   /// let tail = buf.split_off(5);
-  /// assert!(buf.unsplit(tail).is_none());
+  /// buf.unsplit(tail);
   /// assert_eq!(buf.as_str(), "hello world");
   /// ```
   ///
-  /// Inline buffers fail to merge:
+  /// Inline buffers append too:
   ///
   /// ```
   /// use smol_bytes::Utf8BytesMut;
   ///
   /// let mut buf = Utf8BytesMut::from("hi"); // inline
   /// let tail = Utf8BytesMut::from("!");
-  /// assert!(buf.unsplit(tail).is_some()); // returned unchanged
+  /// buf.unsplit(tail);
+  /// assert_eq!(buf.as_str(), "hi!");
   /// ```
-  pub fn unsplit(&mut self, other: Self) -> Option<Self> {
-    self.inner.unsplit(other.inner).map(|inner| Self { inner })
+  pub fn unsplit(&mut self, other: Self) {
+    self.inner.unsplit(other.inner)
   }
 
   /// Returns a slice of this buffer.
@@ -426,7 +440,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if the range is out of bounds or not on character boundaries.
-  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
   }
 }
@@ -462,28 +476,20 @@ impl core::ops::Deref for Utf8BytesMut {
 // UFCS so there is no ambiguity about which impl is called and no fragile
 // reliance on the inherent-over-trait method resolution rule.
 impl Utf8Buf for Utf8BytesMut {
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-    let inner = self
-      .inner
-      .try_split_to(at)
-      .expect("already checked bounds")
-      .unwrap_or_else(BytesMut::from);
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
+    let inner = self.inner.split_to(at);
     Ok(Self { inner })
   }
 
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-    let inner = self
-      .inner
-      .try_split_off(at)
-      .expect("already checked bounds")
-      .unwrap_or_else(BytesMut::from);
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
+    let inner = self.inner.split_off(at);
     Ok(Self { inner })
   }
 
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
     Ok(Self {
       inner: BytesMut::from(&self.inner.as_slice()[start..end]),
     })
@@ -491,25 +497,29 @@ impl Utf8Buf for Utf8BytesMut {
 }
 
 impl Utf8BufMut for Utf8BytesMut {
-  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  type CapacityError = Infallible;
+
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     if new_len >= self.len() {
       return Ok(());
     }
     if !self.as_str().is_char_boundary(new_len) {
-      return Err(Utf8Error::InvalidCharBoundary { at: new_len });
+      return Err(Utf8IndexError::InvalidCharBoundary { index: new_len });
     }
     self.inner.truncate(new_len);
     Ok(())
   }
 
-  fn push(&mut self, ch: char) {
+  fn try_push(&mut self, ch: char) -> Result<(), Self::CapacityError> {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);
     self.inner.put_slice(s.as_bytes());
+    Ok(())
   }
 
-  fn push_str(&mut self, s: &str) {
+  fn try_push_str(&mut self, s: &str) -> Result<(), Self::CapacityError> {
     self.inner.put_slice(s.as_bytes());
+    Ok(())
   }
 
   fn clear(&mut self) {

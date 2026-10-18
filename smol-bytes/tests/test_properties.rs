@@ -112,10 +112,8 @@ proptest! {
         }
         3 => {
           let at = usize::from(argument) % (expected.len() + 1);
-          match actual.try_split_to(at).expect("bounded split") {
-            Ok(head) => prop_assert_eq!(head.as_slice(), &expected[..at]),
-            Err(head) => prop_assert_eq!(head.as_slice(), &expected[..at]),
-          }
+          let head = actual.try_split_to(at).expect("bounded split");
+          prop_assert_eq!(head.as_slice(), &expected[..at]);
           expected.drain(..at);
         }
         4 => {

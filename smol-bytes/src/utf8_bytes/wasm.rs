@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 
-use crate::Utf8Buf as _;
 use crate::bytes::strategy::compact::Compact;
 use crate::bytes::strategy::shared::Shared;
+use crate::utf8_buf::validate_char_boundary;
 use crate::wasm_iter::CharIterator;
 
 /// Concrete shared Utf8Bytes type for WASM bindings.
@@ -102,10 +102,7 @@ impl WasmUtf8Bytes {
   /// @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
   #[wasm_bindgen(js_name = "advance")]
   pub fn advance_wasm(&mut self, cnt: usize) -> Result<(), JsError> {
-    self
-      .inner
-      .validate_char_boundary(cnt)
-      .map_err(|e| JsError::new(&e.to_string()))?;
+    validate_char_boundary(self.inner.as_str(), cnt).map_err(|e| JsError::new(&e.to_string()))?;
     self
       .inner
       .inner
@@ -255,10 +252,7 @@ impl WasmCompactUtf8Bytes {
   /// @throws {Error} If `cnt` exceeds the number of remaining bytes or is not a UTF-8 character boundary.
   #[wasm_bindgen(js_name = "advance")]
   pub fn advance_wasm(&mut self, cnt: usize) -> Result<(), JsError> {
-    self
-      .inner
-      .validate_char_boundary(cnt)
-      .map_err(|e| JsError::new(&e.to_string()))?;
+    validate_char_boundary(self.inner.as_str(), cnt).map_err(|e| JsError::new(&e.to_string()))?;
     self
       .inner
       .inner

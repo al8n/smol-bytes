@@ -28,11 +28,10 @@ impl From<String> for Utf8BytesMut {
 }
 
 impl TryFrom<BytesMut> for Utf8BytesMut {
-  type Error = core::str::Utf8Error;
+  type Error = FromUtf8Error<BytesMut>;
 
   fn try_from(bytes: BytesMut) -> Result<Self, Self::Error> {
-    core::str::from_utf8(bytes.as_ref())?;
-    Ok(Self { inner: bytes })
+    Self::from_utf8(bytes)
   }
 }
 

@@ -840,13 +840,7 @@ impl BytesMut {
   ///     b'World!'
   #[pyo3(name = "split_to")]
   fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self
-      .try_split_to(at)
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+    self.try_split_to(at).map_err(Into::into)
   }
 
   /// Split off and return bytes from index `at` onwards as a new buffer.
@@ -875,13 +869,7 @@ impl BytesMut {
   ///     b'World!'
   #[pyo3(name = "split_off")]
   fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self
-      .try_split_off(at)
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+    self.try_split_off(at).map_err(Into::into)
   }
 
   /// Take all bytes from the buffer, leaving it empty.
@@ -907,34 +895,24 @@ impl BytesMut {
   ///     >>> buf.capacity() >= cap  # Capacity is retained
   ///     True
   #[pyo3(name = "split")]
-  fn __python_split(&mut self) -> PyResult<Self> {
-    self
-      .try_split()
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+  fn __python_split(&mut self) -> Self {
+    self.split()
   }
 
   /// Merge another buffer back into this one.
   ///
-  /// Attempts to recombine a buffer that was previously split off. This is particularly
-  /// efficient when merging buffers that were recently split and haven't been modified
-  /// in ways that would cause reallocation.
-  ///
-  /// If the two buffers were originally contiguous (e.g., `other` was created via
-  /// `split_to()` or `split_off()` on this buffer), this can be a very efficient
-  /// zero-copy operation. Otherwise, this method will copy the data from `other`
-  /// and append it to `self`.
+  /// Python uses non-consuming snapshot semantics: the call-entry contents of
+  /// `other` are appended, while `other` remains valid and unchanged. The
+  /// binding snapshots `other` before delegating to the consuming Rust API, so
+  /// this operation does not retain Rust's zero-copy contiguous-heap fast path.
+  /// Passing this same Python object as `other` is rejected with `RuntimeError`
+  /// by Python's mutable-borrow rules.
   ///
   /// Args:
   ///     other: The buffer to merge into this one.
   ///
   /// Returns:
-  ///     None: If the merge was successful.
-  ///     BytesMut: Returns `other` unchanged if the buffers cannot be efficiently merged
-  ///         (e.g., when using inline storage). In this case, `self` remains unchanged.
+  ///     None: `other` remains valid and unchanged.
   ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
@@ -944,13 +922,17 @@ impl BytesMut {
   ///     >>> bytes(tail)
   ///     b'World!'
   ///     >>> result = buf.unsplit(tail)
-  ///     >>> result is None  # Merge succeeded
+  ///     >>> result is None
   ///     True
   ///     >>> bytes(buf)
   ///     b'Hello, World!'
+  ///     >>> bytes(tail)
+  ///     b'World!'
   #[pyo3(name = "unsplit")]
-  fn __python_unsplit(&mut self, other: Self) -> Option<Self> {
-    self.unsplit(other)
+  fn __python_unsplit(&mut self, other: PyRef<'_, Self>) -> PyResult<()> {
+    py_check_alloc(other.len())?;
+    self.unsplit((*other).clone());
+    Ok(())
   }
 
   /// Converts the `BytesMut` into a heap allocated buffer if it is currently inline.

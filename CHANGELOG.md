@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### 0.2 migration
+
+- **Breaking:** `BytesMut::split`, `split_to`, and `split_off` now always
+  return `BytesMut`; `try_split_to` and `try_split_off` return
+  `Result<BytesMut, OutOfBounds>`, and `try_split` is removed. `unsplit` is
+  total, always consumes its argument, and returns `()`; it appends inline and
+  mixed storage rather than rejecting it.
+- **Breaking:** removed `From<&str>` for `Utf8Buffer`. Use
+  `Utf8Buffer::try_from`, `try_from_str`, or `FromStr`, all of which report
+  `TryPutError` for text larger than the fixed inline capacity.
+- **Breaking:** `Buffer::resize` and `try_resize` now require a fill byte:
+  `resize(new_len, value)` and `try_resize(new_len, value)`. Failed fallible
+  resizes leave the buffer untouched.
+- **Breaking:** `Utf8Error` is replaced by `Utf8IndexError`, which preserves
+  invalid-character-boundary, index-bound, and full-range-bound context.
+- Added `FromUtf8Error<B>` and owned `from_utf8` constructors for the UTF-8
+  wrappers. Failed owned conversions preserve the original buffer, visible
+  view, and storage strategy for recovery through `into_bytes()`.
+- Added crate-owned `TryGetError` and `TryGetIntegerError` for `Buffer`'s
+  inherent variable-width readers. The `bytes::Buf` trait still uses the
+  upstream `bytes::TryGetError` behavior.
+- `Utf8Buf` and `Utf8BufMut` are now sealed. `Utf8BufMut` exposes fallible
+  append operations with `CapacityError`; `Utf8Buffer` uses `TryPutError`, and
+  `Utf8BytesMut` uses `Infallible`. `Utf8Buffer` also implements `fmt::Write`.
+
 ## [0.1.8] - 2026-10-13
 
 ### Added

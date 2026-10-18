@@ -907,16 +907,17 @@ impl Buffer {
     self.capacity()
   }
 
-  /// Resize the buffer to the specified length, filling with zeros if expanding.
+  /// Resize the buffer to the specified length, filling with `value` if expanding.
   ///
   /// Args:
   ///     new_len: The new length of the buffer.
+  ///     value: The byte used when extending the buffer.
   ///
   /// Raises:
   ///     BufferError: If the new length exceeds capacity.
   #[pyo3(name = "resize")]
-  fn __python_resize(&mut self, new_len: usize) -> ::pyo3::PyResult<()> {
-    self.try_resize(new_len).map_err(|e| {
+  fn __python_resize(&mut self, new_len: usize, value: u8) -> ::pyo3::PyResult<()> {
+    self.try_resize(new_len, value).map_err(|e| {
       pyo3::exceptions::PyBufferError::new_err(format!(
         "resize exceeds capacity: requested {} but capacity is {}",
         e.requested, e.available

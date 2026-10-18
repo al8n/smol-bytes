@@ -3,7 +3,7 @@ use core::{borrow::Borrow, ops::RangeBounds, str};
 use super::{
   buffer::Buffer,
   error::*,
-  utf8_buf::{Utf8Buf, Utf8BufMut},
+  utf8_buf::{Utf8Buf, Utf8BufMut, range_bounds_to_start_end, sealed, validate_char_boundary},
 };
 
 mod cmp;
@@ -67,6 +67,14 @@ impl Default for Utf8Buffer {
   #[cfg_attr(not(coverage), inline(always))]
   fn default() -> Self {
     Self::new()
+  }
+}
+
+impl sealed::Sealed for Utf8Buffer {}
+
+impl core::fmt::Write for Utf8Buffer {
+  fn write_str(&mut self, s: &str) -> core::fmt::Result {
+    self.try_push_str(s).map_err(|_| core::fmt::Error)
   }
 }
 
@@ -138,7 +146,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let buf = Utf8Buffer::from("hello");
+  /// let buf = Utf8Buffer::try_from("hello").unwrap();
   /// assert_eq!(buf.as_str(), "hello");
   /// ```
   #[cfg_attr(not(coverage), inline(always))]
@@ -154,7 +162,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let buf = Utf8Buffer::from("hello");
+  /// let buf = Utf8Buffer::try_from("hello").unwrap();
   /// assert_eq!(buf.len(), 5);
   /// ```
   #[cfg_attr(not(coverage), inline(always))]
@@ -186,7 +194,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let buf = Utf8Buffer::from("hi");
+  /// let buf = Utf8Buffer::try_from("hi").unwrap();
   /// assert_eq!(buf.remaining(), 2);
   /// ```
   #[cfg_attr(not(coverage), inline(always))]
@@ -223,9 +231,7 @@ impl Utf8Buffer {
   /// assert_eq!(buf.as_str(), "aé");
   /// ```
   pub fn push(&mut self, ch: char) {
-    let mut buf = [0u8; 4];
-    let s = ch.encode_utf8(&mut buf);
-    self.inner.put_slice(s.as_bytes());
+    <Self as Utf8BufMut>::push(self, ch)
   }
 
   /// Appends a string slice to the buffer.
@@ -250,7 +256,7 @@ impl Utf8Buffer {
   /// assert_eq!(buf.as_str(), "hello");
   /// ```
   pub fn push_str(&mut self, s: &str) {
-    self.inner.put_slice(s.as_bytes());
+    <Self as Utf8BufMut>::push_str(self, s)
   }
 
   /// Tries to append a character to the buffer.
@@ -265,7 +271,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let mut buf = Utf8Buffer::from("a".repeat(60).as_str());
+  /// let mut buf = Utf8Buffer::try_from("a".repeat(60).as_str()).unwrap();
   /// assert!(buf.try_push('a').is_ok());        // 61 bytes
   /// assert!(buf.try_push('a').is_ok());        // 62 bytes
   /// assert!(buf.try_push('a').is_err());       // full
@@ -313,7 +319,7 @@ impl Utf8Buffer {
   }
 
   /// Truncates the buffer at a UTF-8 character boundary.
-  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
   }
 
@@ -329,7 +335,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let mut buf = Utf8Buffer::from("hello world");
+  /// let mut buf = Utf8Buffer::try_from("hello world").unwrap();
   /// let head = buf.split_to(5);
   /// assert_eq!(head.as_str(), "hello");
   /// assert_eq!(buf.as_str(), " world");
@@ -342,9 +348,9 @@ impl Utf8Buffer {
   ///
   /// # Errors
   ///
-  /// Returns [`Utf8Error::InvalidCharBoundary`] if `at` is not on a
-  /// character boundary, or [`Utf8Error::OutOfBounds`] if `at > len`.
-  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  /// Returns [`Utf8IndexError::InvalidCharBoundary`] if `at` is not on a
+  /// character boundary, or [`Utf8IndexError::IndexOutOfBounds`] if `at > len`.
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_to(self, at)
   }
 
@@ -360,7 +366,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let mut buf = Utf8Buffer::from("hello world");
+  /// let mut buf = Utf8Buffer::try_from("hello world").unwrap();
   /// let tail = buf.split_off(6);
   /// assert_eq!(buf.as_str(), "hello ");
   /// assert_eq!(tail.as_str(), "world");
@@ -373,9 +379,9 @@ impl Utf8Buffer {
   ///
   /// # Errors
   ///
-  /// Returns [`Utf8Error::InvalidCharBoundary`] if `at` is not on a
-  /// character boundary, or [`Utf8Error::OutOfBounds`] if `at > len`.
-  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  /// Returns [`Utf8IndexError::InvalidCharBoundary`] if `at` is not on a
+  /// character boundary, or [`Utf8IndexError::IndexOutOfBounds`] if `at > len`.
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_off(self, at)
   }
 
@@ -390,7 +396,7 @@ impl Utf8Buffer {
   /// ```
   /// use smol_bytes::Utf8Buffer;
   ///
-  /// let buf = Utf8Buffer::from("hello world");
+  /// let buf = Utf8Buffer::try_from("hello world").unwrap();
   /// let slice = buf.slice(0..5);
   /// assert_eq!(slice.as_str(), "hello");
   /// ```
@@ -402,9 +408,12 @@ impl Utf8Buffer {
   ///
   /// # Errors
   ///
-  /// Returns [`Utf8Error`] if the range is out of bounds or not on
+  /// Returns [`Utf8IndexError`] if the range is out of bounds or not on
   /// character boundaries.
-  pub fn try_slice(&self, range: impl core::ops::RangeBounds<usize>) -> Result<Self, Utf8Error> {
+  pub fn try_slice(
+    &self,
+    range: impl core::ops::RangeBounds<usize>,
+  ) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
   }
 }
@@ -440,16 +449,16 @@ impl core::ops::Deref for Utf8Buffer {
 }
 
 impl Utf8Buf for Utf8Buffer {
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
 
     Ok(Self {
       inner: self.inner.try_split_to(at).expect("already checked bounds"),
     })
   }
 
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
 
     Ok(Self {
       inner: self
@@ -459,8 +468,8 @@ impl Utf8Buf for Utf8Buffer {
     })
   }
 
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
 
     Ok(Self {
       inner: self
@@ -472,25 +481,27 @@ impl Utf8Buf for Utf8Buffer {
 }
 
 impl Utf8BufMut for Utf8Buffer {
-  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  type CapacityError = TryPutError;
+
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     if new_len >= self.len() {
       return Ok(());
     }
     if !self.as_str().is_char_boundary(new_len) {
-      return Err(Utf8Error::InvalidCharBoundary { at: new_len });
+      return Err(Utf8IndexError::InvalidCharBoundary { index: new_len });
     }
     self.inner.truncate(new_len);
     Ok(())
   }
 
-  fn push(&mut self, ch: char) {
+  fn try_push(&mut self, ch: char) -> Result<(), Self::CapacityError> {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);
-    self.inner.put_slice(s.as_bytes());
+    self.inner.try_put_slice(s.as_bytes())
   }
 
-  fn push_str(&mut self, s: &str) {
-    self.inner.put_slice(s.as_bytes());
+  fn try_push_str(&mut self, s: &str) -> Result<(), Self::CapacityError> {
+    self.inner.try_put_slice(s.as_bytes())
   }
 
   fn clear(&mut self) {

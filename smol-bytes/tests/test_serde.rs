@@ -63,7 +63,7 @@ fn test_utf8_ser_de_empty() {
 fn test_utf8_ser_de_ascii() {
   use smol_bytes::{Utf8Buffer, Utf8Bytes, Utf8BytesMut};
 
-  let b = Utf8Buffer::from("hello");
+  let b = Utf8Buffer::try_from("hello").unwrap();
   assert_tokens(&b, &[Token::Str("hello")]);
   let b = Utf8Bytes::from("hello");
   assert_tokens(&b, &[Token::Str("hello")]);
@@ -77,7 +77,7 @@ fn test_utf8_ser_de_multibyte() {
 
   const MIXED: &str = "a é € 🦀";
 
-  let b = Utf8Buffer::from(MIXED);
+  let b = Utf8Buffer::try_from(MIXED).unwrap();
   assert_tokens(&b, &[Token::Str(MIXED)]);
   let b = Utf8Bytes::from(MIXED);
   assert_tokens(&b, &[Token::Str(MIXED)]);
@@ -108,7 +108,7 @@ fn test_utf8_json_roundtrip() {
 
   const S: &str = "café 🦀";
 
-  let b = Utf8Buffer::from(S);
+  let b = Utf8Buffer::try_from(S).unwrap();
   let j = serde_json::to_string(&b).unwrap();
   assert_eq!(j, format!("\"{}\"", S));
   let back: Utf8Buffer = serde_json::from_str(&j).unwrap();

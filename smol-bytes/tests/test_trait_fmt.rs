@@ -121,9 +121,12 @@ fn bytes_mut_fmt_write_appends() {
 
 #[test]
 fn utf8_buffer_debug_and_display() {
-  let buf = Utf8Buffer::from("a\"b");
+  let buf = Utf8Buffer::try_from("a\"b").unwrap();
   assert_eq!(format!("{:?}", buf), r#""a\"b""#);
-  assert_eq!(format!("{}", Utf8Buffer::from("héllo")), "héllo");
+  assert_eq!(
+    format!("{}", Utf8Buffer::try_from("héllo").unwrap()),
+    "héllo"
+  );
 }
 
 #[test]

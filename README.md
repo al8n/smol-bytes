@@ -106,10 +106,13 @@ Rule of thumb: use `shared` (the default) for I/O and `bytes` interop; use
 Every handle is 64 bytes. All byte types implement `bytes::Buf`, and the
 mutable ones implement `bytes::BufMut`.
 
-`BytesMut::split_to` and `BytesMut::split_off` return `Ok(BytesMut)` when the
-output is growable heap storage and `Err(Buffer)` when the output is fixed
-inline storage. The `try_split_*` variants add an outer bounds `Result`, so
-their shape is `Result<Result<BytesMut, Buffer>, OutOfBounds>`.
+`BytesMut::split_to`, `split_off`, and `split` always return `BytesMut`.
+Inline results stay inline; splitting an inline value's reserved-but-unwritten
+capacity promotes it to heap storage so capacity partitioning remains exact.
+`try_split_to` and `try_split_off` return `Result<BytesMut, OutOfBounds>` and
+leave the receiver unchanged on bounds failure. `unsplit` always consumes and
+appends its argument, using the zero-copy `bytes::BytesMut` path for contiguous
+heap halves and copying/promoting only when required.
 
 Rust UTF-8 split and slice indices are byte offsets that must fall on
 character boundaries; offenders panic, and the `try_split_to`,
@@ -119,6 +122,33 @@ bindings differ deliberately — see below.)
 The UTF-8 wrappers implement `FromStr`. Heap-capable wrappers parse
 infallibly; `Utf8Buffer` returns `TryPutError` when text exceeds its fixed
 inline capacity.
+
+## 0.2 API migration
+
+0.2 intentionally removes several ambiguous or lossy APIs.
+
+- Replace `Utf8Buffer::from(text)` with `Utf8Buffer::try_from(text)?` (or
+  `Utf8Buffer::try_from_str(text)?`). `FromStr` remains available. This makes
+  the 62-byte fixed-capacity limit explicit.
+- `BytesMut` split methods now return `BytesMut` directly. Remove an inner
+  `match`/`unwrap` around `split`, `split_to`, and `split_off`; use the
+  corresponding `try_split_*` method when bounds must be reported instead of
+  panicking. `try_split` is removed, and `unsplit` now returns `()`.
+- Use `Buffer::resize(new_len, value)` and
+  `Buffer::try_resize(new_len, value)` to choose the byte written during
+  extension. Failed `try_resize` calls are atomic.
+- UTF-8 index operations now use `Utf8IndexError`, preserving whether an
+  invalid character boundary, index, or full range caused the failure.
+  Converting owned `Buffer`, `BytesMut`, or raw strategy bytes into a UTF-8
+  wrapper returns `FromUtf8Error<B>` on invalid input; call `into_bytes()` to
+  recover the original allocation and view.
+- Variable-width inherent `Buffer::try_get_{u,int}{,_le,_ne}` methods now
+  return `TryGetIntegerError`, distinguishing an invalid width from missing
+  bytes. The `bytes::Buf` trait methods retain `bytes`' own error type and
+  panic contract.
+- `Utf8Buf` and `Utf8BufMut` are sealed implementation traits. Generic mutable
+  code can use `try_push`/`try_push_str` and each type's `CapacityError`;
+  `Utf8Buffer` reports `TryPutError`, while `Utf8BytesMut` uses `Infallible`.
 
 ## `bytes` interop
 

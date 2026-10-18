@@ -256,8 +256,8 @@ class Buffer:
     def capacity(self) -> int:
         """Return the writable capacity in bytes."""
         ...
-    def resize(self, new_len: int) -> None:
-        """Resize the buffer to ``new_len``, zero-filling if grown."""
+    def resize(self, new_len: int, value: int) -> None:
+        """Resize the buffer to ``new_len``, filling new bytes with ``value``."""
         ...
     def split_to(self, at: int) -> Buffer:
         """Split at ``at``, returning ``[0, at)``. Self becomes ``[at, len)``."""
@@ -565,8 +565,8 @@ class BytesMut:
     def split(self) -> BytesMut:
         """Remove and return all bytes. Self becomes empty."""
         ...
-    def unsplit(self, other: BytesMut) -> BytesMut | None:
-        """Merge ``other`` back. Returns ``other`` if merge failed (both must be heap)."""
+    def unsplit(self, other: BytesMut) -> None:
+        """Append a snapshot of ``other``; it remains unchanged. Passing ``self`` raises RuntimeError."""
         ...
     def make_heap(self) -> None:
         """Force promotion from inline to heap storage."""
@@ -1000,8 +1000,8 @@ class Utf8BytesMut:
     def split(self) -> Utf8BytesMut:
         """Remove and return all content. Self becomes empty."""
         ...
-    def unsplit(self, other: Utf8BytesMut) -> Utf8BytesMut | None:
-        """Merge ``other`` back. Returns ``other`` if merge failed."""
+    def unsplit(self, other: Utf8BytesMut) -> None:
+        """Append a snapshot of ``other``; it remains unchanged. Passing ``self`` raises RuntimeError."""
         ...
     def reserve(self, additional: int) -> None:
         """Reserve capacity for ``additional`` more bytes."""

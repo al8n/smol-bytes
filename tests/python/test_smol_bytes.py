@@ -1382,6 +1382,51 @@ class TestSplitOperations:
         with pytest.raises(IndexError):
             buf.split_to(10)
 
+    @pytest.mark.parametrize(
+        "initial, suffix, heap",
+        [(b"hi", b"!", False), (b"a" * 80, b"b" * 80, True)],
+        ids=["inline", "heap"],
+    )
+    def test_bytes_mut_unsplit_snapshots_other_and_returns_none(self, initial, suffix, heap):
+        value = BytesMut.from_bytes(initial)
+        other = BytesMut.from_bytes(suffix)
+        assert value.is_heap() is heap
+        assert other.is_heap() is heap
+        before = bytes(other)
+
+        assert value.unsplit(other) is None
+        assert bytes(value) == initial + suffix
+        assert bytes(other) == before
+
+    @pytest.mark.parametrize(
+        "initial, suffix, heap",
+        [("hi", "!", False), ("a" * 80, "🦀" * 20, True)],
+        ids=["inline", "heap"],
+    )
+    def test_utf8_bytes_mut_unsplit_snapshots_other_and_returns_none(
+        self, initial, suffix, heap
+    ):
+        value = Utf8BytesMut.from_str(initial)
+        other = Utf8BytesMut.from_str(suffix)
+        assert value.is_heap() is heap
+        assert other.is_heap() is heap
+        before = str(other)
+
+        assert value.unsplit(other) is None
+        assert str(value) == initial + suffix
+        assert str(other) == before
+
+    def test_mutable_unsplit_self_alias_is_rejected_without_mutation(self):
+        raw = BytesMut.from_bytes(b"self")
+        with pytest.raises(RuntimeError):
+            raw.unsplit(raw)
+        assert bytes(raw) == b"self"
+
+        text = Utf8BytesMut.from_str("self")
+        with pytest.raises(RuntimeError):
+            text.unsplit(text)
+        assert str(text) == "self"
+
 
 # ---------------------------------------------------------------------------
 # 9. Rich comparison
@@ -1907,6 +1952,16 @@ class TestClearTruncate:
         buf = BytesMut.from_bytes(b"hello world")
         buf.truncate(5)
         assert bytes(buf) == b"hello"
+
+    def test_buffer_resize_uses_the_explicit_fill_byte_and_is_atomic(self):
+        buf = Buffer.from_bytes(b"hi")
+        buf.resize(4, ord("x"))
+        assert bytes(buf) == b"hixx"
+
+        before = bytes(buf)
+        with pytest.raises(BufferError):
+            buf.resize(63, 0)
+        assert bytes(buf) == before
 
 
 # ---------------------------------------------------------------------------

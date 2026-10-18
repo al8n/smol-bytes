@@ -131,7 +131,6 @@ impl BytesMut {
   pub fn split_to_wasm(&mut self, at: usize) -> Result<BytesMut, JsError> {
     self
       .try_split_to(at)
-      .map(|r| r.unwrap_or_else(BytesMut::from))
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
@@ -143,21 +142,21 @@ impl BytesMut {
   pub fn split_off_wasm(&mut self, at: usize) -> Result<BytesMut, JsError> {
     self
       .try_split_off(at)
-      .map(|r| r.unwrap_or_else(BytesMut::from))
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Split all data out of this buffer, returning it. Self becomes empty.
   #[wasm_bindgen(js_name = "split")]
   pub fn split_wasm(&mut self) -> BytesMut {
-    self.split().unwrap_or_else(BytesMut::from)
+    self.split()
   }
 
-  /// Attempt to re-merge a previously split buffer back into this one.
+  /// Merge another buffer back into this one.
   ///
-  /// Returns `other` unchanged if the two buffers are not contiguous.
+  /// Contiguous heap halves reuse their allocation; inline and mixed storage
+  /// append and promote when necessary.
   #[wasm_bindgen(js_name = "unsplit")]
-  pub fn unsplit_wasm(&mut self, other: BytesMut) -> Option<BytesMut> {
+  pub fn unsplit_wasm(&mut self, other: BytesMut) {
     self.unsplit(other)
   }
 

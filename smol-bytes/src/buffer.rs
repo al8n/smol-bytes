@@ -18,7 +18,7 @@ mod iter;
 mod ops;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub(crate) use io::{assert_uint_width, sign_extend};
+pub(crate) use io::sign_extend;
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -34,9 +34,6 @@ mod python;
 
 #[cfg(feature = "wasm")]
 mod wasm;
-
-#[cfg(any(feature = "alloc", feature = "std"))]
-pub use bytes::TryGetError;
 
 /// Number of bytes that can be stored inline.
 pub const INLINE_CAP: usize = InlineSize::MAX as usize;
@@ -712,7 +709,7 @@ impl Buffer {
     Ok(unsafe { Self::copy_from_slice(&self.as_slice()[begin..end]) })
   }
 
-  /// Resizes the buffer to the specified length, filling with zeros if expanding.
+  /// Resizes the buffer to the specified length, filling with `value` if expanding.
   ///
   /// ## Example
   ///
@@ -720,17 +717,17 @@ impl Buffer {
   /// use smol_bytes::Buffer;
   ///
   /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
-  /// buf.resize(8);
-  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  /// buf.resize(8, b'x');
+  /// assert_eq!(buf.as_slice(), b"helloxxx");
   ///
-  /// buf.resize(3);
+  /// buf.resize(3, 0);
   /// assert_eq!(buf.as_slice(), b"hel");
   /// ```
   ///
   /// ## Panics
   ///
   /// Panics if the new length exceeds capacity.
-  pub fn resize(&mut self, new_len: usize) {
+  pub fn resize(&mut self, new_len: usize, value: u8) {
     let current_len = self.remaining();
 
     if new_len == current_len {
@@ -752,10 +749,11 @@ impl Buffer {
       self.capacity()
     );
 
-    self.put_bytes(0, additional);
+    self.put_bytes(value, additional);
   }
 
-  /// Tries to resize the buffer to the specified length, filling with zeros if expanding.
+  /// Tries to resize the buffer to the specified length, filling with `value`
+  /// if expanding.
   ///
   /// Returns `Err(OutOfBounds)` if the new length exceeds capacity.
   ///
@@ -765,13 +763,13 @@ impl Buffer {
   /// use smol_bytes::Buffer;
   ///
   /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
-  /// assert!(buf.try_resize(8).is_ok());
-  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  /// assert!(buf.try_resize(8, b'x').is_ok());
+  /// assert_eq!(buf.as_slice(), b"helloxxx");
   ///
-  /// assert!(buf.try_resize(3).is_ok());
+  /// assert!(buf.try_resize(3, 0).is_ok());
   /// assert_eq!(buf.as_slice(), b"hel");
   /// ```
-  pub const fn try_resize(&mut self, new_len: usize) -> Result<(), OutOfBounds> {
+  pub const fn try_resize(&mut self, new_len: usize, value: u8) -> Result<(), OutOfBounds> {
     let current_len = self.remaining();
 
     if new_len == current_len {
@@ -789,7 +787,7 @@ impl Buffer {
       return Err(OutOfBounds::new(new_len, self.capacity()));
     }
 
-    match self.try_put_bytes(0, additional) {
+    match self.try_put_bytes(value, additional) {
       Ok(()) => Ok(()),
       Err(_) => {
         // The identical capacity check above makes this branch unreachable;
@@ -1099,7 +1097,7 @@ impl Buffer {
 const _: () = {
   use bytes::{Buf, BufMut, buf::UninitSlice};
 
-  use crate::macros::{forward_buf, forward_buf_mut};
+  use crate::macros::forward_buf_mut;
 
   impl Buf for Buffer {
     #[cfg_attr(not(coverage), inline(always))]
@@ -1117,17 +1115,28 @@ const _: () = {
       Self::advance(self, cnt);
     }
 
-    forward_buf! {
-      i16,
-      i32,
-      i64,
-      i128,
-      u16,
-      u32,
-      u64,
-      u128,
-      f32,
-      f64,
+    fn get_int(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint(self, nbytes), nbytes)
+    }
+
+    fn get_int_le(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint_le(self, nbytes), nbytes)
+    }
+
+    fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint_ne(self, nbytes), nbytes)
+    }
+
+    fn try_get_int(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint(self, nbytes).map(|value| sign_extend(value, nbytes))
+    }
+
+    fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint_le(self, nbytes).map(|value| sign_extend(value, nbytes))
+    }
+
+    fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint_ne(self, nbytes).map(|value| sign_extend(value, nbytes))
     }
   }
 

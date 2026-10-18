@@ -40,11 +40,10 @@ impl<S> TryFrom<RawBytes<S>> for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
 {
-  type Error = core::str::Utf8Error;
+  type Error = FromUtf8Error<RawBytes<S>>;
 
   fn try_from(bytes: RawBytes<S>) -> Result<Self, Self::Error> {
-    core::str::from_utf8(bytes.as_ref())?;
-    Ok(Self { inner: bytes })
+    Self::from_utf8(bytes)
   }
 }
 

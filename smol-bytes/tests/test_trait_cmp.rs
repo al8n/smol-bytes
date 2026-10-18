@@ -331,9 +331,9 @@ fn compact_bytes_self_and_targets() {
 
 #[test]
 fn utf8_buffer_cmp_and_cross() {
-  let buf = Utf8Buffer::from("hello");
-  let same = Utf8Buffer::from("hello");
-  let bigger = Utf8Buffer::from("hellp");
+  let buf = Utf8Buffer::try_from("hello").unwrap();
+  let same = Utf8Buffer::try_from("hello").unwrap();
+  let bigger = Utf8Buffer::try_from("hellp").unwrap();
 
   assert_eq!(buf, same);
   assert!(buf < bigger);
@@ -387,7 +387,11 @@ fn utf8_bytes_cmp_and_cross_inline_heap() {
     Utf8BytesMut::from("hello"),
     Utf8BytesMut::from("world")
   );
-  eq_pair!(buf, Utf8Buffer::from("hello"), Utf8Buffer::from("world"));
+  eq_pair!(
+    buf,
+    Utf8Buffer::try_from("hello").unwrap(),
+    Utf8Buffer::try_from("world").unwrap()
+  );
 
   // inline vs heap of equal content hash equal (shared keeps heap on slice).
   let long = "hello".to_string() + &"z".repeat(80);
@@ -418,5 +422,9 @@ fn utf8_bytes_mut_cmp_and_cross() {
   cmp_pair!(buf, String::from("hello"), String::from("hellp"));
 
   eq_pair!(buf, Utf8Bytes::from("hello"), Utf8Bytes::from("world"));
-  eq_pair!(buf, Utf8Buffer::from("hello"), Utf8Buffer::from("world"));
+  eq_pair!(
+    buf,
+    Utf8Buffer::try_from("hello").unwrap(),
+    Utf8Buffer::try_from("world").unwrap()
+  );
 }

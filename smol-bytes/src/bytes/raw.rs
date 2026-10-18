@@ -519,10 +519,13 @@ impl<S> RawBytes<S> {
   /// let bytes = Bytes::from("a".repeat(100).as_bytes());
   /// assert_eq!(bytes.try_into_mut(), Ok(BytesMut::from("a".repeat(100).as_bytes())));
   /// ```
-  pub fn try_into_mut(self) -> Result<BytesMut, Bytes> {
+  pub fn try_into_mut(self) -> Result<BytesMut, Self> {
     match self.repr {
       Repr::Inline(storage) => Ok(BytesMut::from_inline(storage)),
-      Repr::Heap(bytes) => bytes.try_into_mut().map(BytesMut::from_bytes_mut),
+      Repr::Heap(bytes) => match bytes.try_into_mut() {
+        Ok(bytes) => Ok(BytesMut::from_bytes_mut(bytes)),
+        Err(bytes) => Err(Self::heap(bytes)),
+      },
     }
   }
 
@@ -588,18 +591,31 @@ where
     ImmutableStorage::copy_to_bytes(self, len)
   }
 
-  crate::macros::forward_buf! { repr {
-    i16,
-    i32,
-    i64,
-    i128,
-    u16,
-    u32,
-    u64,
-    u128,
-    f32,
-    f64,
-  }}
+  fn get_int(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint(self, nbytes), nbytes)
+  }
+
+  fn get_int_le(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_le(self, nbytes), nbytes)
+  }
+
+  fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_ne(self, nbytes), nbytes)
+  }
+
+  fn try_get_int(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint(self, nbytes).map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_le(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_ne(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
 }
 
 #[derive(Clone, Debug)]

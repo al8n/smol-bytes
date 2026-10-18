@@ -3,7 +3,7 @@ use core::{borrow::Borrow, ops::RangeBounds, str};
 use super::{
   bytes::{RawBytes, strategy::ImmutableStorage},
   error::*,
-  utf8_buf::Utf8Buf,
+  utf8_buf::{Utf8Buf, range_bounds_to_start_end, sealed, validate_char_boundary},
 };
 
 mod cmp;
@@ -58,6 +58,8 @@ impl<S> Clone for Utf8Bytes<S> {
   }
 }
 
+impl<S> sealed::Sealed for Utf8Bytes<S> {}
+
 impl<S> Default for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
@@ -104,6 +106,15 @@ where
   pub const fn from_static(s: &'static str) -> Self {
     Self {
       inner: RawBytes::from_static(s.as_bytes()),
+    }
+  }
+
+  /// Validates owned raw bytes as UTF-8 without losing their storage strategy
+  /// or current view on failure.
+  pub fn from_utf8(bytes: RawBytes<S>) -> Result<Self, FromUtf8Error<RawBytes<S>>> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self { inner: bytes }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
     }
   }
 
@@ -179,7 +190,7 @@ where
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_to(self, at)
   }
 
@@ -209,7 +220,7 @@ where
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_off(self, at)
   }
 
@@ -238,7 +249,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the range is out of bounds or not on character boundaries.
-  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
   }
 }
@@ -289,15 +300,15 @@ impl<S> Utf8Buf for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
 {
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
     Ok(Self {
       inner: self.inner.try_split_to(at).expect("already checked bounds"),
     })
   }
 
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
     Ok(Self {
       inner: self
         .inner
@@ -306,8 +317,8 @@ where
     })
   }
 
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
     Ok(Self {
       inner: self
         .inner
