@@ -5,7 +5,7 @@ use super::{
   error::*,
   utf8_buf::{Utf8Buf, Utf8BufMut, range_bounds_to_start_end, sealed, validate_char_boundary},
   utf8_drain::Utf8Drain,
-  utf8_edit::{RawUtf8Storage, RetainGuard, replace_range as raw_replace_range},
+  utf8_edit::{RawUtf8Storage, RetainGuard, replace_bytes as raw_replace_bytes},
 };
 use bytes::BufMut;
 
@@ -427,6 +427,23 @@ impl Utf8BytesMut {
     Ok(())
   }
 
+  /// Inserts a Unicode scalar value at a UTF-8 character boundary.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is invalid or growth overflows the address space.
+  pub fn insert(&mut self, idx: usize, ch: char) {
+    self
+      .try_insert(idx, ch)
+      .unwrap_or_else(|error| panic!("insert failed: {error}"));
+  }
+
+  /// Tries to insert a Unicode scalar value at a UTF-8 character boundary.
+  pub fn try_insert(&mut self, idx: usize, ch: char) -> Result<(), Utf8IndexError> {
+    let mut encoded = [0_u8; 4];
+    self.try_insert_str(idx, ch.encode_utf8(&mut encoded))
+  }
+
   /// Replaces a UTF-8 character-boundary range with `replacement`.
   ///
   /// # Panics
@@ -452,9 +469,69 @@ impl Utf8BytesMut {
     Ok(())
   }
 
+  /// Appends a copy of the specified UTF-8 character-boundary range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or growing the buffer overflows the
+  /// address space.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified UTF-8 character-boundary range.
+  ///
+  /// The range is normalized and both boundaries are validated before this
+  /// growable buffer reserves storage.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), Utf8IndexError> {
+    let old_len = self.len();
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.inner.resize(new_len, 0);
+    self.inner.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
+  }
+
   fn replace_range_validated(&mut self, start: usize, end: usize, replacement: &str) {
     let mut storage = RawUtf8Storage::growable(&mut self.inner);
-    raw_replace_range(&mut storage, start, end, replacement);
+    raw_replace_bytes(&mut storage, start, end, replacement.as_bytes());
+  }
+
+  /// Removes and returns the Unicode scalar value at `idx`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is outside the visible string or is not a UTF-8
+  /// character boundary.
+  pub fn remove(&mut self, idx: usize) -> char {
+    self
+      .try_remove(idx)
+      .unwrap_or_else(|error| panic!("remove failed: {error}"))
+  }
+
+  /// Tries to remove and return the Unicode scalar value at `idx`.
+  pub fn try_remove(&mut self, idx: usize) -> Result<char, Utf8IndexError> {
+    let len = self.len();
+    if idx >= len {
+      return Err(OutOfBounds::new(idx, len).into());
+    }
+    validate_char_boundary(self.as_str(), idx)?;
+    let ch = self.as_str()[idx..]
+      .chars()
+      .next()
+      .expect("index below string length has a scalar");
+    self.replace_range_validated(idx, idx + ch.len_utf8(), "");
+    Ok(ch)
   }
 
   /// Retains only the characters for which `predicate` returns `true`.

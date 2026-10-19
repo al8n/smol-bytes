@@ -616,6 +616,25 @@ impl<S> RawBytes<S> {
     }
   }
 
+  /// Tries to move this visible byte view into a fixed inline [`Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into a new inline buffer with cursor zero.
+  /// Longer values are returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Buffer, Self> {
+    if self.len() > INLINE_CAP {
+      return Err(self);
+    }
+
+    match self.repr {
+      Repr::Inline(storage) => Ok(storage),
+      Repr::Heap(bytes) => {
+        let visible: &[u8] = bytes.as_ref();
+        Ok(Buffer::try_from(visible).expect("length checked before conversion"))
+      }
+    }
+  }
+
   /// Converts `self` into a [`Vec<u8>`], reusing the allocation if possible.
   #[inline]
   pub fn into_vec(self) -> Vec<u8> {

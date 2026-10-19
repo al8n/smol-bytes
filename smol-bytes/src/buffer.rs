@@ -9,6 +9,7 @@ use core::{
 };
 
 use super::error::*;
+use crate::utf8_edit::{RawUtf8Storage, replace_bytes};
 
 mod cmp;
 mod fmt;
@@ -19,6 +20,8 @@ mod ops;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) use io::sign_extend;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub(crate) use io::{checked_signed_range, checked_unsigned_range};
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -724,6 +727,91 @@ impl Buffer {
     // SAFETY: `normalize_range` proves `begin <= end <= self.len()`, so the
     // subslice is initialized and its length is at most `INLINE_CAP`.
     Ok(unsafe { Self::copy_from_slice(&self.as_slice()[begin..end]) })
+  }
+
+  /// Replaces a range of visible bytes with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or the replacement cannot fit in the
+  /// remaining tail capacity.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &[u8]) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a range of visible bytes with `replacement`.
+  ///
+  /// The range is normalized before capacity is checked. On error this buffer
+  /// is unchanged; consumed prefix storage is not reclaimed implicitly.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &[u8],
+  ) -> Result<(), ByteEditError> {
+    let old_len = self.len();
+    let (start, end) = normalize_range(range, old_len)?;
+    let removed = end - start;
+    let growth = replacement.len().saturating_sub(removed);
+    let available = self.remaining_mut();
+    if growth > available {
+      return Err(
+        TryPutError {
+          requested: growth,
+          available,
+        }
+        .into(),
+      );
+    }
+
+    let mut storage = RawUtf8Storage::fixed(self);
+    replace_bytes(&mut storage, start, end, replacement);
+    Ok(())
+  }
+
+  /// Appends a copy of the specified visible byte range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or its bytes do not fit in the remaining
+  /// tail capacity.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified visible byte range.
+  ///
+  /// The range is normalized before capacity is checked. On error this buffer
+  /// is unchanged; consumed prefix storage is not reclaimed implicitly.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), ByteEditError> {
+    let old_len = self.len();
+    let (start, end) = normalize_range(range, old_len)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    let available = self.remaining_mut();
+    if count > available {
+      return Err(
+        TryPutError {
+          requested: count,
+          available,
+        }
+        .into(),
+      );
+    }
+
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.resize(new_len, 0);
+    self.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
   }
 
   /// Resizes the buffer to the specified length, filling with `value` if expanding.

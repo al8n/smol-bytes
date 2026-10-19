@@ -125,6 +125,70 @@ impl From<InvalidIntegerLength> for TryPutIntegerError {
   }
 }
 
+/// Error returned by checked variable-width integer writers.
+///
+/// Unlike [`TryPutIntegerError`], this error distinguishes values that cannot
+/// be represented in the requested width from values that merely need more
+/// writable capacity.
+#[derive(Debug, PartialEq, Eq)]
+pub enum TryPutIntegerCheckedError {
+  /// The requested integer width was outside the supported `0..=8` range.
+  InvalidLength(InvalidIntegerLength),
+  /// The value cannot be represented in the requested width.
+  OutOfRange {
+    /// The value supplied by the caller.
+    value: i128,
+    /// The smallest value representable by the requested width.
+    min: i128,
+    /// The largest value representable by the requested width.
+    max: i128,
+    /// The requested width in bytes.
+    nbytes: usize,
+  },
+  /// There was not enough writable capacity for the checked value.
+  NotEnoughSpace(TryPutError),
+}
+
+impl core::fmt::Display for TryPutIntegerCheckedError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::InvalidLength(error) => error.fmt(f),
+      Self::OutOfRange {
+        value,
+        min,
+        max,
+        nbytes,
+      } => write!(
+        f,
+        "value {value} is out of range for a {nbytes}-byte integer ({min}..={max})"
+      ),
+      Self::NotEnoughSpace(error) => error.fmt(f),
+    }
+  }
+}
+
+impl core::error::Error for TryPutIntegerCheckedError {
+  fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+    match self {
+      Self::InvalidLength(error) => Some(error),
+      Self::OutOfRange { .. } => None,
+      Self::NotEnoughSpace(error) => Some(error),
+    }
+  }
+}
+
+impl From<InvalidIntegerLength> for TryPutIntegerCheckedError {
+  fn from(value: InvalidIntegerLength) -> Self {
+    Self::InvalidLength(value)
+  }
+}
+
+impl From<TryPutError> for TryPutIntegerCheckedError {
+  fn from(value: TryPutError) -> Self {
+    Self::NotEnoughSpace(value)
+  }
+}
+
 /// Error returned by variable-width integer readers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TryGetIntegerError {
@@ -275,6 +339,45 @@ impl core::fmt::Display for RangeOutOfBounds {
 
 impl core::error::Error for RangeOutOfBounds {}
 
+/// Error returned by raw byte editing operations.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ByteEditError {
+  /// The requested byte range was invalid for the visible buffer contents.
+  Range(RangeOutOfBounds),
+  /// The replacement cannot fit in a fixed-capacity buffer.
+  Capacity(TryPutError),
+}
+
+impl core::fmt::Display for ByteEditError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::Range(error) => error.fmt(f),
+      Self::Capacity(error) => error.fmt(f),
+    }
+  }
+}
+
+impl core::error::Error for ByteEditError {
+  fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+    match self {
+      Self::Range(error) => Some(error),
+      Self::Capacity(error) => Some(error),
+    }
+  }
+}
+
+impl From<RangeOutOfBounds> for ByteEditError {
+  fn from(value: RangeOutOfBounds) -> Self {
+    Self::Range(value)
+  }
+}
+
+impl From<TryPutError> for ByteEditError {
+  fn from(value: TryPutError) -> Self {
+    Self::Capacity(value)
+  }
+}
+
 /// Normalizes a range against `len` without panicking on reversed or
 /// overflowing bounds.
 pub(crate) fn normalize_range(
@@ -399,6 +502,45 @@ impl From<Utf8IndexError> for Utf8EditError {
 impl From<TryPutError> for Utf8EditError {
   fn from(value: TryPutError) -> Self {
     Self::Capacity(value)
+  }
+}
+
+/// Error returned by fallible formatting into a fixed UTF-8 buffer.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Utf8FormatError {
+  /// Formatting exceeded the fixed buffer's remaining capacity.
+  Capacity(TryPutError),
+  /// The formatter returned an error unrelated to capacity.
+  Formatter(core::fmt::Error),
+}
+
+impl core::fmt::Display for Utf8FormatError {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+    match self {
+      Self::Capacity(error) => error.fmt(f),
+      Self::Formatter(error) => error.fmt(f),
+    }
+  }
+}
+
+impl core::error::Error for Utf8FormatError {
+  fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+    match self {
+      Self::Capacity(error) => Some(error),
+      Self::Formatter(error) => Some(error),
+    }
+  }
+}
+
+impl From<TryPutError> for Utf8FormatError {
+  fn from(value: TryPutError) -> Self {
+    Self::Capacity(value)
+  }
+}
+
+impl From<core::fmt::Error> for Utf8FormatError {
+  fn from(value: core::fmt::Error) -> Self {
+    Self::Formatter(value)
   }
 }
 

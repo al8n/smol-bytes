@@ -1,9 +1,14 @@
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, ops::RangeBounds};
 
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{INLINE_CAP, InvalidIntegerLength, OutOfBounds, buffer::Buffer, bytes::RawBytes};
+use crate::{
+  INLINE_CAP, InvalidIntegerLength, OutOfBounds, RangeOutOfBounds, TryPutIntegerCheckedError,
+  buffer::{Buffer, checked_signed_range, checked_unsigned_range},
+  bytes::RawBytes,
+  utf8_edit::{RawUtf8Storage, replace_bytes},
+};
 
 mod cmp;
 mod fmt;
@@ -222,6 +227,65 @@ impl BytesMut {
     }
   }
 
+  /// Replaces a range of visible bytes with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &[u8]) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a range of visible bytes with `replacement`.
+  ///
+  /// The range is normalized before this growable buffer reserves storage, so
+  /// an invalid range leaves it unchanged.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &[u8],
+  ) -> Result<(), RangeOutOfBounds> {
+    let (start, end) = crate::normalize_range(range, self.len())?;
+    let mut storage = RawUtf8Storage::growable(self);
+    replace_bytes(&mut storage, start, end, replacement);
+    Ok(())
+  }
+
+  /// Appends a copy of the specified visible byte range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or growing the buffer overflows the
+  /// address space.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified visible byte range.
+  ///
+  /// The range is normalized before this growable buffer reserves storage, so
+  /// an invalid range leaves it unchanged.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), RangeOutOfBounds> {
+    let old_len = self.len();
+    let (start, end) = crate::normalize_range(range, old_len)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.resize(new_len, 0);
+    self.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
+  }
+
   /// Clears the buffer, removing all data. Existing capacity is preserved.
   ///
   /// ## Example
@@ -407,6 +471,25 @@ impl BytesMut {
     match self.0 {
       Repr::Inline(b) => Err(b),
       Repr::Heap(b) => Ok(b),
+    }
+  }
+
+  /// Tries to move this visible byte view into a fixed inline [`Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into a new inline buffer with cursor zero.
+  /// Longer values are returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Buffer, Self> {
+    if self.len() > INLINE_CAP {
+      return Err(self);
+    }
+
+    match self.0 {
+      Repr::Inline(storage) => Ok(storage),
+      Repr::Heap(bytes) => {
+        let visible: &[u8] = bytes.as_ref();
+        Ok(Buffer::try_from(visible).expect("length checked before conversion"))
+      }
     }
   }
 
@@ -698,6 +781,94 @@ impl BytesMut {
     }
     self.put_int_ne(n, nbytes);
     Ok(())
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_uint_checked(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    self.put_uint(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_uint_checked_le(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    self.put_uint_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_uint_checked_ne(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_uint_checked(n, nbytes)
+    } else {
+      self.try_put_uint_checked_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_int_checked(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    self.put_int(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_int_checked_le(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    self.put_int_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_int_checked_ne(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_int_checked(n, nbytes)
+    } else {
+      self.try_put_int_checked_le(n, nbytes)
+    }
   }
 
   /// Absorbs a `BytesMut` that was previously split off.

@@ -20,6 +20,37 @@ impl Utf8Buffer {
   }
 }
 
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl<S> crate::utf8_bytes::Utf8Bytes<S> {
+  /// Tries to move this validated UTF-8 view into a fixed [`Utf8Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into inline storage, while longer values are
+  /// returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Utf8Buffer, Self> {
+    match self.inner.try_into_buffer() {
+      Ok(inner) => Ok(Utf8Buffer { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
+  }
+}
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl crate::Utf8BytesMut {
+  /// Tries to move this validated mutable UTF-8 view into a fixed
+  /// [`Utf8Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into inline storage, while longer values are
+  /// returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Utf8Buffer, Self> {
+    match self.inner.try_into_buffer() {
+      Ok(inner) => Ok(Utf8Buffer { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
+  }
+}
+
 impl TryFrom<&str> for Utf8Buffer {
   type Error = TryPutError;
 

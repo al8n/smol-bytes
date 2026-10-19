@@ -3,7 +3,9 @@
 //! These methods allow Buffer to be used in no_std/no_alloc environments while providing
 //! the same API as the bytes crate.
 
-use crate::{InvalidIntegerLength, TryGetIntegerError, TryPutIntegerError};
+use crate::{
+  InvalidIntegerLength, TryGetIntegerError, TryPutIntegerCheckedError, TryPutIntegerError,
+};
 
 use super::{Buffer, InlineSize, TryGetError, TryPutError, panic_advance, panic_does_not_fit};
 
@@ -23,6 +25,57 @@ fn panic_try_get_integer<T>(error: TryGetIntegerError) -> T {
     TryGetIntegerError::NotEnoughBytes(error) => panic_advance(error.available, error.requested),
     TryGetIntegerError::InvalidLength(error) => panic_does_not_fit(8, error.0),
   }
+}
+
+pub(crate) fn checked_unsigned_range(
+  n: u64,
+  nbytes: usize,
+) -> Result<(), TryPutIntegerCheckedError> {
+  if nbytes > 8 {
+    return Err(InvalidIntegerLength(nbytes).into());
+  }
+
+  let max = if nbytes == 8 {
+    u64::MAX as i128
+  } else {
+    (1_i128 << (nbytes * 8)) - 1
+  };
+  let value = n as i128;
+  if value > max {
+    return Err(TryPutIntegerCheckedError::OutOfRange {
+      value,
+      min: 0,
+      max,
+      nbytes,
+    });
+  }
+
+  Ok(())
+}
+
+pub(crate) fn checked_signed_range(n: i64, nbytes: usize) -> Result<(), TryPutIntegerCheckedError> {
+  if nbytes > 8 {
+    return Err(InvalidIntegerLength(nbytes).into());
+  }
+
+  let (min, max) = if nbytes == 0 {
+    (0, 0)
+  } else {
+    let shift = nbytes * 8 - 1;
+    let limit = 1_i128 << shift;
+    (-limit, limit - 1)
+  };
+  let value = n as i128;
+  if value < min || value > max {
+    return Err(TryPutIntegerCheckedError::OutOfRange {
+      value,
+      min,
+      max,
+      nbytes,
+    });
+  }
+
+  Ok(())
 }
 
 macro_rules! impl_try_get {
@@ -1002,6 +1055,106 @@ impl Buffer {
       self.try_put_int(n, nbytes)
     } else {
       self.try_put_int_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_uint_checked(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    match self.try_put_uint(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_uint_checked_le(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    match self.try_put_uint_le(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_uint_checked_ne(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_uint_checked(n, nbytes)
+    } else {
+      self.try_put_uint_checked_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_int_checked(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    match self.try_put_int(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_int_checked_le(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    match self.try_put_int_le(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_int_checked_ne(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_int_checked(n, nbytes)
+    } else {
+      self.try_put_int_checked_le(n, nbytes)
     }
   }
 

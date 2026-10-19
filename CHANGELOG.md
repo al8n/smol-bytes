@@ -71,6 +71,13 @@ The complete Rust, Python, and JavaScript migration guide is included below.
   `try_insert_str`, `replace_range`/`try_replace_range`, and `retain`; fixed
   edit failures use `Utf8EditError`. Their `drain`/`try_drain` methods return
   `Utf8Drain`, whose drop removes its full selected range.
+- **Rust:** raw `Buffer` and `BytesMut` support fallible byte-range
+  replacement and self-extension; all four mutable buffer types support
+  `extend_from_within`. UTF-8 mutable buffers add scalar `insert`/`remove`,
+  fixed `Utf8Buffer::try_write_fmt`, and recoverable `try_into_buffer`
+  conversions from raw and validated UTF-8 heap views. Checked variable-width
+  integer writers reject invalid widths and unrepresentable values without
+  truncating, using `TryPutIntegerCheckedError`.
 - **Python:** canonical root shared `Bytes` and `Utf8Bytes`, with exact shared
   aliases that preserve historic shared-module pickle loading; `py.typed` and
   complete stubs; bytes-like input support; independent mutable slices;
@@ -85,6 +92,11 @@ The complete Rust, Python, and JavaScript migration guide is included below.
 - **JavaScript/Wasm:** strict number/BigInt and malformed UTF-16 validation,
   iterable and disposable values/iterators, TypeScript 5.2 declarations, and
   packed-package verification across all entry points.
+- **Python/JavaScript/Wasm:** UTF-8 wrappers add `pop`, scalar/string
+  insertion, range replacement, lossy constructors, and explicit mutable
+  inline compaction. Python indices are Unicode-scalar indices; JavaScript/
+  Wasm mutation indices are UTF-8 byte offsets and must be character
+  boundaries.
 
 ### Changed
 
@@ -120,6 +132,10 @@ the migration is primarily an API migration.
 | reuse a consumed fixed-buffer prefix | `try_reclaim(additional)` | Available on `Buffer` without `alloc`, and forwarded by `Utf8Buffer` and `Utf8BytesMut`; it never allocates. |
 | remove the final UTF-8 scalar manually | `pop()` | Available on `Utf8Buffer`, `Utf8BytesMut`, and both `Utf8Bytes` strategies; it removes one Unicode scalar, not a grapheme. |
 | turn a fixed UTF-8 buffer immutable or growable | `Utf8BytesMut::from(buffer)`, `Utf8Bytes::from(buffer)`, or `compact::Utf8Bytes::from(buffer)` | These move the validated inline storage without UTF-8 revalidation or heap allocation. |
+| manually shift bytes to replace or append a visible range | `try_replace_range` or `try_extend_from_within` | Raw methods use byte offsets; fixed buffers validate capacity before mutation. |
+| manually encode or decode one UTF-8 scalar at an offset | `try_insert(index, ch)` or `try_remove(index)` | UTF-8 indices are byte offsets and must be character boundaries. |
+| rely on variable-width integer truncation | `try_put_{u,int}_checked{,_le,_ne}` | Checked writers reject values outside the exact signed or unsigned width. |
+| copy a short heap view into a fixed buffer manually | `try_into_buffer()` | A value over 62 visible bytes is returned unchanged; inline source storage moves with its cursor preserved. |
 
 ```rust
 use smol_bytes::{BytesMut, Utf8Buffer};
@@ -154,6 +170,25 @@ assert_eq!(mutable.pop(), Some('é'));
 let shared: Utf8Bytes = Utf8Buffer::try_from("café").unwrap().into();
 let compact: compact::Utf8Bytes = Utf8Buffer::try_from("café").unwrap().into();
 assert_eq!(shared.as_str(), compact.as_str());
+```
+
+##### In-place edits, strict fields, and formatting
+
+```rust
+use smol_bytes::{Buffer, Utf8Buffer};
+
+let mut bytes = Buffer::from(*b"abcd");
+bytes.try_replace_range(1..3, b"XY").unwrap();
+bytes.try_extend_from_within(1..3).unwrap();
+assert_eq!(bytes.as_slice(), b"aXYdXY");
+
+let mut field = Buffer::new();
+field.try_put_uint_checked(0xff, 1).unwrap();
+assert!(field.try_put_uint_checked(0x100, 1).is_err());
+
+let mut text = Utf8Buffer::try_from("aé").unwrap();
+text.try_insert(1, '€').unwrap();
+assert_eq!(text.try_remove(1).unwrap(), '€');
 ```
 
 ##### Strategies, UTF-8 views, and features

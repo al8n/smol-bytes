@@ -67,25 +67,25 @@ impl<'a> RawUtf8Storage<'a> {
   }
 }
 
-pub(crate) fn replace_range(
+pub(crate) fn replace_bytes(
   storage: &mut RawUtf8Storage<'_>,
   start: usize,
   end: usize,
-  replacement: &str,
+  replacement: &[u8],
 ) {
   let old_len = storage.len();
   let removed = end - start;
   let new_len = old_len
     .checked_sub(removed)
     .and_then(|len| len.checked_add(replacement.len()))
-    .expect("UTF-8 buffer length overflow");
+    .expect("buffer length overflow");
 
   if new_len > old_len {
     storage.resize(new_len);
   }
 
   storage.copy_within(end..old_len, start + replacement.len());
-  storage.as_mut_slice()[start..start + replacement.len()].copy_from_slice(replacement.as_bytes());
+  storage.as_mut_slice()[start..start + replacement.len()].copy_from_slice(replacement);
 
   if new_len < old_len {
     storage.truncate(new_len);
