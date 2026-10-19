@@ -120,6 +120,40 @@ impl Utf8Buffer {
     self.try_push_str(s).map_err(Into::into)
   }
 
+  /// Insert one Unicode scalar value at a character offset.
+  #[pyo3(name = "insert_chars")]
+  fn __python_insert_chars(&mut self, index: &Bound<'_, PyAny>, ch: char) -> PyResult<()> {
+    let index = py_char_offset(self.as_str(), index, "index")?;
+    self.try_insert(index, ch).map_err(Into::into)
+  }
+
+  /// Insert a string at a character offset.
+  #[pyo3(name = "insert_str_chars")]
+  fn __python_insert_str_chars(&mut self, index: &Bound<'_, PyAny>, s: &str) -> PyResult<()> {
+    let index = py_char_offset(self.as_str(), index, "index")?;
+    self.try_insert_str(index, s).map_err(Into::into)
+  }
+
+  /// Replace the character range `[start, end)` with a string.
+  #[pyo3(name = "replace_range_chars")]
+  fn __python_replace_range_chars(
+    &mut self,
+    start: &Bound<'_, PyAny>,
+    end: &Bound<'_, PyAny>,
+    replacement: &str,
+  ) -> PyResult<()> {
+    let (start, end) = py_char_range(self.as_str(), start, end)?;
+    self
+      .try_replace_range(start..end, replacement)
+      .map_err(Into::into)
+  }
+
+  /// Remove and return the final Unicode scalar value, or `None` when empty.
+  #[pyo3(name = "pop")]
+  fn __python_pop(&mut self) -> Option<String> {
+    self.pop().map(|ch| ch.to_string())
+  }
+
   /// Clear the buffer.
   #[pyo3(name = "clear")]
   fn __python_clear(&mut self) {

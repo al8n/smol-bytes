@@ -23,7 +23,7 @@ class Bytes:
     def __bytes__(self, /) -> bytes: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool: ...
     @overload
     def __getitem__(self, index: SupportsIndex) -> int: ...
@@ -119,7 +119,7 @@ class Buffer:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -387,7 +387,7 @@ class BytesMut:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -654,6 +654,9 @@ class BytesMut:
     def make_heap(self) -> None:
         """Force promotion from inline to heap storage."""
         ...
+    def try_make_inline(self) -> bool:
+        """Copy a small heap value back into inline storage when possible."""
+        ...
 
 class Utf8Buffer:
     """Fixed-size inline UTF-8 string buffer (max 62 bytes).
@@ -683,7 +686,7 @@ class Utf8Buffer:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -714,6 +717,18 @@ class Utf8Buffer:
         ...
     def push_str(self, s: str) -> None:
         """Append a string."""
+        ...
+    def insert_chars(self, index: SupportsIndex, ch: str) -> None:
+        """Insert one Unicode scalar value at a character offset."""
+        ...
+    def insert_str_chars(self, index: SupportsIndex, s: str) -> None:
+        """Insert a string at a character offset."""
+        ...
+    def replace_range_chars(self, start: SupportsIndex, end: SupportsIndex, replacement: str) -> None:
+        """Replace the character range ``[start, end)``."""
+        ...
+    def pop(self) -> str | None:
+        """Remove and return the final Unicode scalar value, if present."""
         ...
     def clear(self) -> None:
         """Remove all contents."""
@@ -844,6 +859,10 @@ class Utf8Bytes:
             MemoryError: If the requested allocation cannot be satisfied.
         """
         ...
+    @staticmethod
+    def from_bytes_lossy(data: ReadableBuffer) -> Utf8Bytes:
+        """Decode bytes as UTF-8, replacing malformed sequences with ``U+FFFD``."""
+        ...
     def __len__(self) -> int:
         """Return the number of Unicode scalar values."""
         ...
@@ -859,7 +878,7 @@ class Utf8Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -884,6 +903,9 @@ class Utf8Bytes:
         ...
     def __reduce__(self) -> tuple[object, tuple[str]]:
         """Support pickling."""
+        ...
+    def pop(self) -> str | None:
+        """Remove and return the final Unicode scalar value, if present."""
         ...
     def split_to_chars(self, at: int) -> Utf8Bytes:
         """Split at Unicode scalar value (character) offset ``at``, returning the head."""
@@ -1015,6 +1037,10 @@ class Utf8BytesMut:
             MemoryError: If the requested allocation cannot be satisfied.
         """
         ...
+    @staticmethod
+    def from_bytes_lossy(data: ReadableBuffer) -> Utf8BytesMut:
+        """Decode bytes as UTF-8, replacing malformed sequences with ``U+FFFD``."""
+        ...
     def __len__(self) -> int:
         """Return the number of Unicode scalar values."""
         ...
@@ -1030,7 +1056,7 @@ class Utf8BytesMut:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -1073,6 +1099,18 @@ class Utf8BytesMut:
         Raises:
             MemoryError: If the requested allocation cannot be satisfied.
         """
+        ...
+    def insert_chars(self, index: SupportsIndex, ch: str) -> None:
+        """Insert one Unicode scalar value at a character offset."""
+        ...
+    def insert_str_chars(self, index: SupportsIndex, s: str) -> None:
+        """Insert a string at a character offset."""
+        ...
+    def replace_range_chars(self, start: SupportsIndex, end: SupportsIndex, replacement: str) -> None:
+        """Replace the character range ``[start, end)``."""
+        ...
+    def pop(self) -> str | None:
+        """Remove and return the final Unicode scalar value, if present."""
         ...
     def clear(self) -> None:
         """Remove all contents."""
@@ -1118,6 +1156,9 @@ class Utf8BytesMut:
         ...
     def is_heap(self) -> bool:
         """Return True if stored on the heap."""
+        ...
+    def try_make_inline(self) -> bool:
+        """Copy a small heap value back into inline storage when possible."""
         ...
     def remaining_bytes(self) -> int:
         """Return the number of bytes available for reading."""

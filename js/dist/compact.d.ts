@@ -60,6 +60,7 @@ export interface Utf8Bytes extends Iterable<string> {
   byteLength(): number;
   charLength(): number;
   isEmpty(): boolean;
+  pop(): string | null;
   isInline(): boolean;
   isHeap(): boolean;
   remainingBytes(): number;
@@ -78,4 +79,5 @@ export interface Utf8Bytes extends Iterable<string> {
 export declare const Utf8Bytes: {
   new (): Utf8Bytes;
   fromString(s: string): Utf8Bytes;
+  fromBytesLossy(data: Uint8Array): Utf8Bytes;
 };

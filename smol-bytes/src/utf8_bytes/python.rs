@@ -4,11 +4,13 @@ use pyo3::{
   types::PyBytes,
 };
 
-use crate::bytes::strategy::compact::Compact;
-use crate::bytes::strategy::shared::Shared;
+use crate::bytes::strategy::{
+  compact::{Bytes as CompactRawBytes, Compact},
+  shared::{Bytes as SharedRawBytes, Shared},
+};
 use crate::python::{
-  py_char_offset, py_char_range, py_check_alloc, py_offset, py_str_contains, py_str_getitem,
-  py_str_richcmp,
+  py_char_offset, py_char_range, py_check_alloc, py_offset, py_readable_buffer_snapshot,
+  py_str_contains, py_str_getitem, py_str_richcmp,
 };
 
 /// Concrete shared Utf8Bytes type for Python bindings.
@@ -95,6 +97,16 @@ impl PySharedUtf8Bytes {
     })
   }
 
+  /// Decode bytes as UTF-8, replacing malformed sequences with `U+FFFD`.
+  #[staticmethod]
+  #[pyo3(name = "from_bytes_lossy")]
+  fn __python_from_bytes_lossy(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
+    Ok(Self {
+      inner: SharedUtf8Bytes::from_utf8_lossy(SharedRawBytes::from(data)),
+    })
+  }
+
   /// Return the contents as a Python string.
   fn __str__(&self) -> &str {
     self.inner.as_str()
@@ -121,6 +133,12 @@ impl PySharedUtf8Bytes {
   /// Return whether the bytes are non-empty.
   fn __bool__(&self) -> bool {
     !self.inner.is_empty()
+  }
+
+  /// Remove and return the final Unicode scalar value, or `None` when empty.
+  #[pyo3(name = "pop")]
+  fn __python_pop(&mut self) -> Option<String> {
+    self.inner.pop().map(|ch| ch.to_string())
   }
 
   #[allow(non_upper_case_globals)]
@@ -800,6 +818,16 @@ impl PyCompactUtf8Bytes {
     })
   }
 
+  /// Decode bytes as UTF-8, replacing malformed sequences with `U+FFFD`.
+  #[staticmethod]
+  #[pyo3(name = "from_bytes_lossy")]
+  fn __python_from_bytes_lossy(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
+    Ok(Self {
+      inner: CompactUtf8Bytes::from_utf8_lossy(CompactRawBytes::from(data)),
+    })
+  }
+
   /// Return the contents as a Python string.
   fn __str__(&self) -> &str {
     self.inner.as_str()
@@ -826,6 +854,12 @@ impl PyCompactUtf8Bytes {
   /// Return whether the bytes are non-empty.
   fn __bool__(&self) -> bool {
     !self.inner.is_empty()
+  }
+
+  /// Remove and return the final Unicode scalar value, or `None` when empty.
+  #[pyo3(name = "pop")]
+  fn __python_pop(&mut self) -> Option<String> {
+    self.inner.pop().map(|ch| ch.to_string())
   }
 
   #[allow(non_upper_case_globals)]

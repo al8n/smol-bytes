@@ -139,6 +139,12 @@ impl BytesMut {
     self.make_heap();
   }
 
+  /// Copy a small heap value back into inline storage when possible.
+  #[wasm_bindgen(js_name = "tryMakeInline")]
+  pub fn try_make_inline_wasm(&mut self) -> bool {
+    self.try_make_inline()
+  }
+
   /// Resize the buffer to `new_len`, filling new bytes with `value` if growing.
   #[wasm_bindgen(js_name = "resize")]
   pub fn resize_wasm(&mut self, new_len: usize, value: u8) {

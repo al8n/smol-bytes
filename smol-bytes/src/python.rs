@@ -13,8 +13,8 @@ use pyo3::{
 };
 
 use crate::{
-  Buf, BufTryGetError, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetIntegerError, Utf8IndexError,
-  utf8_buf::char_offset_to_byte,
+  Buf, BufTryGetError, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetIntegerError, Utf8EditError,
+  Utf8IndexError, utf8_buf::char_offset_to_byte,
 };
 
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -182,6 +182,15 @@ impl From<Utf8IndexError> for PyErr {
         PyValueError::new_err("start must not exceed end")
       }
       Utf8IndexError::RangeOutOfBounds(err) => err.into(),
+    }
+  }
+}
+
+impl From<Utf8EditError> for PyErr {
+  fn from(err: Utf8EditError) -> PyErr {
+    match err {
+      Utf8EditError::Index(error) => error.into(),
+      Utf8EditError::Capacity(error) => error.into(),
     }
   }
 }

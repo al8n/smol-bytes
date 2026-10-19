@@ -47,9 +47,24 @@ def check_surface() -> None:
     text_alias: SharedUtf8Bytes = text
     mutable_text: Utf8BytesMut = text_alias.to_mutable()
     mutable_text.truncate_chars(1)
+    mutable_text.insert_chars(scalar, "x")
+    mutable_text.insert_str_chars(scalar, "é")
+    mutable_text.replace_range_chars(scalar, scalar, "!")
+    popped: str | None = mutable_text.pop()
+    lossy_text: Utf8BytesMut = Utf8BytesMut.from_bytes_lossy(bytearray(b"\xff"))
+    text_is_inline: bool = lossy_text.try_make_inline()
     compact_text: CompactUtf8Bytes = mutable_text.freeze_compact()
     selected: CompactUtf8Bytes = compact_text.slice_chars(0, 1)
     selected.advance_bytes(2)
+    compact_lossy: CompactUtf8Bytes = CompactUtf8Bytes.from_bytes_lossy(memoryview(b"\xff"))
+    immutable_pop: str | None = compact_lossy.pop()
 
     fixed_text: Utf8Buffer = Utf8Buffer.from_str("abc")
     fixed_text.split_to_chars(1)
+    fixed_text.insert_chars(scalar, "x")
+    fixed_text.insert_str_chars(scalar, "!")
+    fixed_text.replace_range_chars(scalar, scalar, "?")
+    fixed_pop: str | None = fixed_text.pop()
+    raw_is_inline: bool = mutable.try_make_inline()
+
+    del popped, text_is_inline, immutable_pop, fixed_pop, raw_is_inline

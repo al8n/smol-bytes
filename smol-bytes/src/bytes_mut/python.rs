@@ -292,6 +292,12 @@ impl BytesMut {
     self.is_heap()
   }
 
+  /// Copy a small heap value back into inline storage when possible.
+  #[pyo3(name = "try_make_inline")]
+  fn __python_try_make_inline(&mut self) -> bool {
+    self.try_make_inline()
+  }
+
   /// Return the number of readable bytes.
   #[pyo3(name = "len")]
   fn __python_len(&self) -> usize {

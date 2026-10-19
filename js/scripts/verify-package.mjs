@@ -261,6 +261,57 @@ for (const Type of [root.Utf8Buffer, root.Utf8BytesMut, root.Utf8Bytes, compact.
   expectTypeError(() => Type.fromString('\\ud800'));
 }
 
+for (const Type of [root.Utf8Buffer, root.Utf8BytesMut, root.Utf8Bytes, compact.Utf8Bytes]) {
+  const value = Type.fromString('e\\u0301🦀');
+  if (value.pop() !== '🦀' || value.pop() !== '\\u0301' || value.pop() !== 'e') {
+    throw new Error('UTF-8 pop did not remove Unicode scalars');
+  }
+  if (value.pop() !== null || value.pop() === undefined) throw new Error('UTF-8 pop must normalize empty to null');
+}
+
+for (const Type of [root.Utf8Buffer, root.Utf8BytesMut]) {
+  const value = Type.fromString('éx');
+  value.insertBytes(2, '🦀');
+  value.insertStrBytes(7, '!');
+  value.replaceRangeBytes(2, 6, 'e\\u0301');
+  if (value.toString() !== 'ée\\u0301x!') throw new Error('UTF-8 byte edit result was wrong');
+  for (const index of [NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const before = value.toString();
+    expectRangeError(() => value.insertBytes(index, '!'));
+    if (value.toString() !== before) throw new Error('invalid UTF-8 byte index mutated value');
+  }
+  expectRangeError(() => value.insertBytes(1, '!'));
+  expectRangeError(() => value.insertBytes(2, 'xy'));
+  expectTypeError(() => value.insertBytes(2, '\\ud800'));
+  expectTypeError(() => value.insertStrBytes(2, '\\udc00'));
+  expectRangeError(() => value.replaceRangeBytes(4, 6, '!'));
+  expectRangeError(() => value.replaceRangeBytes(6, 2, '!'));
+  if (value.toString() !== 'ée\\u0301x!') throw new Error('invalid UTF-8 edit mutated value');
+}
+const fixedUtf8Edit = root.Utf8Buffer.fromString('x'.repeat(62));
+expectRangeError(() => fixedUtf8Edit.insertBytes(0, '!'));
+expectRangeError(() => fixedUtf8Edit.replaceRangeBytes(0, 0, '!'));
+if (fixedUtf8Edit.toString() !== 'x'.repeat(62)) throw new Error('fixed UTF-8 edit was not atomic');
+fixedUtf8Edit.replaceRangeBytes(0, 1, '');
+if (fixedUtf8Edit.toString() !== 'x'.repeat(61)) throw new Error('fixed UTF-8 shrinking replacement failed');
+
+for (const Type of [root.Utf8BytesMut, root.Utf8Bytes, compact.Utf8Bytes]) {
+  if (Type.fromBytesLossy(new Uint8Array([0x68, 0x69, 0xff])).toString() !== 'hi�') {
+    throw new Error('lossy UTF-8 construction did not replace malformed bytes');
+  }
+  expectTypeError(() => Type.fromBytesLossy([0x68]));
+}
+if ('fromBytesLossy' in root.Utf8Buffer) throw new Error('fixed UTF-8 type leaked lossy constructor');
+
+const rawInline = root.BytesMut.withCapacity(100);
+rawInline.putSlice(new Uint8Array([1]));
+if (!rawInline.tryMakeInline() || !rawInline.isInline()) throw new Error('raw inline compaction failed');
+const utf8Inline = root.Utf8BytesMut.withCapacity(100);
+utf8Inline.pushStr('small');
+if (!utf8Inline.tryMakeInline() || !utf8Inline.isInline()) throw new Error('UTF-8 inline compaction failed');
+const utf8Large = root.Utf8BytesMut.fromString('x'.repeat(63));
+if (utf8Large.tryMakeInline() || !utf8Large.isHeap()) throw new Error('large UTF-8 value incorrectly compacted');
+
 for (const [Type, names] of [[root.Buffer, ['putUint', 'putUintLe', 'putUintNe', 'putInt', 'putIntLe', 'putIntNe']], [root.BytesMut, ['putUint', 'putUintLe', 'putUintNe', 'putInt', 'putIntLe', 'putIntNe']]]) {
   for (const name of names) {
     const value = new Type();
@@ -321,7 +372,7 @@ function runTypeCheck(consumerRoot) {
   const typeCheck = join(consumerRoot, 'consumer.ts');
   writeFileSync(
     typeCheck,
-    `import { Buffer, ByteIterator, Bytes, BytesMut, CharIterator, Utf8Bytes } from 'smol-bytes';
+    `import { Buffer, ByteIterator, Bytes, BytesMut, CharIterator, Utf8Buffer, Utf8Bytes, Utf8BytesMut } from 'smol-bytes';
 import { Bytes as SharedBytes, Utf8Bytes as SharedUtf8Bytes } from 'smol-bytes/shared';
 import { Bytes as CompactBytes, Utf8Bytes as CompactUtf8Bytes } from 'smol-bytes/compact';
 
@@ -341,7 +392,22 @@ new ByteIterator();
 new CharIterator();
 using disposable = new Buffer();
 const mutable = BytesMut.fromUtf8('ok');
-const values = [Buffer, ByteIterator, Bytes, BytesMut, CharIterator, Utf8Bytes, SharedBytes, SharedUtf8Bytes, CompactBytes, CompactUtf8Bytes, raw, text, byteIteratorValue, charIteratorValue, byteIteratorInstance, charIteratorInstance, byteIteratorName, charIteratorName, byteIteratorCheck, charIteratorCheck, disposable, mutable];
+const fixedText = Utf8Buffer.fromString('é');
+fixedText.insertBytes(2, '!');
+fixedText.insertStrBytes(3, 'x');
+fixedText.replaceRangeBytes(2, 4, '!');
+const mutableText = Utf8BytesMut.fromBytesLossy(new Uint8Array([0xff]));
+mutableText.insertBytes(0, 'x');
+const nullablePop: string | null = mutableText.pop();
+const sharedLossy: Utf8Bytes = Utf8Bytes.fromBytesLossy(new Uint8Array([0xff]));
+const compactLossy: CompactUtf8Bytes = CompactUtf8Bytes.fromBytesLossy(new Uint8Array([0xff]));
+const inlineResult: boolean = mutable.tryMakeInline();
+const textInlineResult: boolean = mutableText.tryMakeInline();
+// @ts-expect-error lossy constructors accept Uint8Array, not ordinary arrays.
+Utf8Bytes.fromBytesLossy([0xff]);
+// @ts-expect-error immutable values do not expose mutable edit methods.
+sharedLossy.insertBytes(0, 'x');
+const values = [Buffer, ByteIterator, Bytes, BytesMut, CharIterator, Utf8Buffer, Utf8Bytes, Utf8BytesMut, SharedBytes, SharedUtf8Bytes, CompactBytes, CompactUtf8Bytes, raw, text, byteIteratorValue, charIteratorValue, byteIteratorInstance, charIteratorInstance, byteIteratorName, charIteratorName, byteIteratorCheck, charIteratorCheck, disposable, mutable, fixedText, mutableText, nullablePop, sharedLossy, compactLossy, inlineResult, textInlineResult];
 void values;
 `,
   );

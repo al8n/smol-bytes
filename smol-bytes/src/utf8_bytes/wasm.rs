@@ -45,6 +45,14 @@ impl WasmUtf8Bytes {
     })
   }
 
+  /// Decode bytes as UTF-8, replacing malformed sequences with `U+FFFD`.
+  #[wasm_bindgen(js_name = "fromBytesLossy")]
+  pub fn from_bytes_lossy_wasm(data: &[u8]) -> WasmUtf8Bytes {
+    WasmUtf8Bytes {
+      inner: SharedUtf8Bytes::from_utf8_lossy(crate::bytes::strategy::shared::Bytes::from(data)),
+    }
+  }
+
   /// Return contents as a UTF-8 string.
   #[wasm_bindgen(js_name = "toString")]
   pub fn to_string_wasm(&self) -> String {
@@ -73,6 +81,12 @@ impl WasmUtf8Bytes {
   #[wasm_bindgen(js_name = "isEmpty")]
   pub fn is_empty_wasm(&self) -> bool {
     self.inner.is_empty()
+  }
+
+  /// Remove and return the final Unicode scalar, if present.
+  #[wasm_bindgen(js_name = "pop")]
+  pub fn pop_wasm(&mut self) -> Option<String> {
+    self.inner.pop().map(|ch| ch.to_string())
   }
 
   /// Return `true` if data is stored inline (no heap allocation).
@@ -220,6 +234,16 @@ impl WasmCompactUtf8Bytes {
     })
   }
 
+  /// Decode bytes as UTF-8, replacing malformed sequences with `U+FFFD`.
+  #[wasm_bindgen(js_name = "fromBytesLossy")]
+  pub fn from_bytes_lossy_wasm(data: &[u8]) -> WasmCompactUtf8Bytes {
+    WasmCompactUtf8Bytes {
+      inner: CompactUtf8BytesInner::from_utf8_lossy(crate::bytes::strategy::compact::Bytes::from(
+        data,
+      )),
+    }
+  }
+
   /// Return contents as a UTF-8 string.
   #[wasm_bindgen(js_name = "toString")]
   pub fn to_string_wasm(&self) -> String {
@@ -248,6 +272,12 @@ impl WasmCompactUtf8Bytes {
   #[wasm_bindgen(js_name = "isEmpty")]
   pub fn is_empty_wasm(&self) -> bool {
     self.inner.is_empty()
+  }
+
+  /// Remove and return the final Unicode scalar, if present.
+  #[wasm_bindgen(js_name = "pop")]
+  pub fn pop_wasm(&mut self) -> Option<String> {
+    self.inner.pop().map(|ch| ch.to_string())
   }
 
   /// Return `true` if data is stored inline (no heap allocation).

@@ -120,6 +120,16 @@ function wrapInstance(cls, name, validate) {
         return original.apply(this, args);
     });
 }
+function normalizeUndefinedToNull(cls, name) {
+    const prototype = prototypeOf(cls);
+    const original = ownMethod(prototype, name);
+    if (!original)
+        return;
+    defineMethod(prototype, name, function normalized(...args) {
+        const result = original.apply(this, args);
+        return result === undefined ? null : result;
+    });
+}
 function wrapStatic(cls, name, validate) {
     const target = staticOf(cls);
     const original = ownMethod(target, name);
@@ -377,6 +387,9 @@ function wrapUtf8(cls, options) {
         if (options.fixed && utf8ByteLength(string) > 62)
             rangeError('s', 'exceeds fixed buffer capacity');
     });
+    wrapStatic(cls, 'fromBytesLossy', ([value]) => {
+        bytes(value, 'data');
+    });
     wrapInstance(cls, 'push', (self, [value]) => {
         const string = scalar(value, 'ch');
         if (options.fixed)
@@ -404,10 +417,33 @@ function wrapUtf8(cls, options) {
             rangeError('newLen', 'must be on a UTF-8 character boundary');
         }
     });
+    normalizeUndefinedToNull(cls, 'pop');
     if (options.immutable)
         return;
     wrapStatic(cls, 'withCapacity', ([capacity]) => natural(capacity, 'capacity'));
     wrapInstance(cls, 'reserve', (_self, [additional]) => natural(additional, 'additional'));
+    wrapInstance(cls, 'insertBytes', (self, [index, value]) => {
+        utf8Offset(self, index, 'index');
+        const string = scalar(value, 'ch');
+        if (options.fixed)
+            fixedUtf8Writable(self, utf8ByteLength(string), 'ch');
+    });
+    wrapInstance(cls, 'insertStrBytes', (self, [index, value]) => {
+        utf8Offset(self, index, 'index');
+        const string = assertWellFormedString(value, 's');
+        if (options.fixed)
+            fixedUtf8Writable(self, utf8ByteLength(string), 's');
+    });
+    wrapInstance(cls, 'replaceRangeBytes', (self, [startValue, endValue, value]) => {
+        const start = utf8Offset(self, startValue, 'start');
+        const end = utf8Offset(self, endValue, 'end');
+        if (start > end)
+            rangeError('range', 'must have start <= end');
+        const replacement = assertWellFormedString(value, 'replacement');
+        const growth = utf8ByteLength(replacement) - (end - start);
+        if (options.fixed && growth > 0)
+            fixedUtf8Writable(self, growth, 'replacement');
+    });
 }
 function installIterationAndDisposal(classes) {
     const raw = [classes.Buffer, classes.BytesMut, classes.SharedBytes, classes.CompactBytes];

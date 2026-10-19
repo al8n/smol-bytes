@@ -120,6 +120,7 @@ export interface BytesMut extends RawReadable<BytesMut>, RawWritable {
   reserve(additional: number): void;
   resize(newLen: number, value?: number): void;
   makeHeap(): void;
+  tryMakeInline(): boolean;
   split(): BytesMut;
   unsplit(other: BytesMut): void;
   freezeShared(): Bytes;
@@ -154,6 +155,7 @@ interface Utf8Common<TSelf> extends Disposable, Iterable<string> {
   byteLength(): number;
   charLength(): number;
   isEmpty(): boolean;
+  pop(): string | null;
   remainingBytes(): number;
   advanceBytes(count: number): void;
   clear(): void;
@@ -170,6 +172,9 @@ export interface Utf8Buffer extends Utf8Common<Utf8Buffer> {
   capacity(): number;
   push(ch: string): void;
   pushStr(s: string): void;
+  insertBytes(index: number, ch: string): void;
+  insertStrBytes(index: number, s: string): void;
+  replaceRangeBytes(start: number, end: number, replacement: string): void;
 }
 
 export declare const Utf8Buffer: {
@@ -183,7 +188,11 @@ export interface Utf8BytesMut extends Utf8Common<Utf8BytesMut> {
   isHeap(): boolean;
   push(ch: string): void;
   pushStr(s: string): void;
+  insertBytes(index: number, ch: string): void;
+  insertStrBytes(index: number, s: string): void;
+  replaceRangeBytes(start: number, end: number, replacement: string): void;
   reserve(additional: number): void;
+  tryMakeInline(): boolean;
   split(): Utf8BytesMut;
   unsplit(other: Utf8BytesMut): void;
   freezeShared(): Utf8Bytes;
@@ -194,6 +203,7 @@ export declare const Utf8BytesMut: {
   new (): Utf8BytesMut;
   withCapacity(capacity: number): Utf8BytesMut;
   fromString(s: string): Utf8BytesMut;
+  fromBytesLossy(data: Uint8Array): Utf8BytesMut;
 };
 
 interface ImmutableUtf8<TSelf> extends Utf8Common<TSelf> {
@@ -207,4 +217,5 @@ export interface Utf8Bytes extends ImmutableUtf8<Utf8Bytes> {}
 export declare const Utf8Bytes: {
   new (): Utf8Bytes;
   fromString(s: string): Utf8Bytes;
+  fromBytesLossy(data: Uint8Array): Utf8Bytes;
 };

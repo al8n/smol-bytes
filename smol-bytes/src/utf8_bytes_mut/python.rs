@@ -1,7 +1,7 @@
 use super::*;
 use crate::python::{
-  py_char_offset, py_char_range, py_check_alloc, py_offset, py_str_contains, py_str_getitem,
-  py_str_richcmp,
+  py_char_offset, py_char_range, py_check_alloc, py_offset, py_readable_buffer_snapshot,
+  py_str_contains, py_str_getitem, py_str_richcmp,
 };
 use crate::utf8_buf::char_offset_to_byte;
 use pyo3::{basic::CompareOp, exceptions::PyValueError, prelude::*, types::PyBytes};
@@ -69,6 +69,14 @@ impl Utf8BytesMut {
   fn __python_from_str(s: &str) -> PyResult<Self> {
     py_check_alloc(s.len())?;
     Ok(Self::from(s))
+  }
+
+  /// Decode bytes as UTF-8, replacing malformed sequences with `U+FFFD`.
+  #[staticmethod]
+  #[pyo3(name = "from_bytes_lossy")]
+  fn __python_from_bytes_lossy(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
+    Ok(Self::from_utf8_lossy(crate::BytesMut::from(data)))
   }
 
   /// Return the contents as a Python string.
@@ -144,6 +152,48 @@ impl Utf8BytesMut {
     py_check_alloc(s.len())?;
     self.push_str(s);
     Ok(())
+  }
+
+  /// Insert one Unicode scalar value at a character offset.
+  #[pyo3(name = "insert_chars")]
+  fn __python_insert_chars(&mut self, index: &Bound<'_, PyAny>, ch: char) -> PyResult<()> {
+    let index = py_char_offset(self.as_str(), index, "index")?;
+    py_check_alloc(ch.len_utf8())?;
+    self.try_insert(index, ch).map_err(Into::into)
+  }
+
+  /// Insert a string at a character offset.
+  #[pyo3(name = "insert_str_chars")]
+  fn __python_insert_str_chars(&mut self, index: &Bound<'_, PyAny>, s: &str) -> PyResult<()> {
+    let index = py_char_offset(self.as_str(), index, "index")?;
+    if !s.is_empty() {
+      py_check_alloc(s.len())?;
+    }
+    self.try_insert_str(index, s).map_err(Into::into)
+  }
+
+  /// Replace the character range `[start, end)` with a string.
+  #[pyo3(name = "replace_range_chars")]
+  fn __python_replace_range_chars(
+    &mut self,
+    start: &Bound<'_, PyAny>,
+    end: &Bound<'_, PyAny>,
+    replacement: &str,
+  ) -> PyResult<()> {
+    let (start, end) = py_char_range(self.as_str(), start, end)?;
+    let growth = replacement.len().saturating_sub(end - start);
+    if growth != 0 {
+      py_check_alloc(growth)?;
+    }
+    self
+      .try_replace_range(start..end, replacement)
+      .map_err(Into::into)
+  }
+
+  /// Remove and return the final Unicode scalar value, or `None` when empty.
+  #[pyo3(name = "pop")]
+  fn __python_pop(&mut self) -> Option<String> {
+    self.pop().map(|ch| ch.to_string())
   }
 
   /// Clear the buffer.
@@ -293,6 +343,12 @@ impl Utf8BytesMut {
   #[pyo3(name = "is_heap")]
   fn __python_is_heap(&self) -> bool {
     self.is_heap()
+  }
+
+  /// Copy a small heap value back into inline storage when possible.
+  #[pyo3(name = "try_make_inline")]
+  fn __python_try_make_inline(&mut self) -> bool {
+    self.try_make_inline()
   }
 
   /// Support copy.copy.

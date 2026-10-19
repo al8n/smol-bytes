@@ -48,7 +48,7 @@ class Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check membership of a byte value or subsequence."""
         ...
@@ -206,6 +206,10 @@ class Utf8Bytes:
             MemoryError: If the requested allocation cannot be satisfied.
         """
         ...
+    @staticmethod
+    def from_bytes_lossy(data: ReadableBuffer) -> Utf8Bytes:
+        """Decode bytes as UTF-8, replacing malformed sequences with ``U+FFFD``."""
+        ...
     def __len__(self) -> int:
         """Return the number of Unicode scalar values."""
         ...
@@ -221,7 +225,7 @@ class Utf8Bytes:
     def __repr__(self) -> str:
         """Return debug representation."""
         ...
-    __hash__: ClassVar[None]
+    __hash__: ClassVar[None]  # type: ignore[assignment]
     def __contains__(self, item: object) -> bool:
         """Check if a substring is contained."""
         ...
@@ -246,6 +250,9 @@ class Utf8Bytes:
         ...
     def __reduce__(self) -> tuple[object, tuple[str]]:
         """Support pickling."""
+        ...
+    def pop(self) -> str | None:
+        """Remove and return the final Unicode scalar value, if present."""
         ...
     def split_to_chars(self, at: int) -> Utf8Bytes:
         """Split at Unicode scalar value (character) offset ``at``, returning the head."""

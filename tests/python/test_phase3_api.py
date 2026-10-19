@@ -272,6 +272,101 @@ def test_utf8_mutable_unit_methods_and_capacity_errors(cls: type[object]) -> Non
         assert str(full) == "x" * 62
 
 
+@pytest.mark.parametrize("cls", UTF8_TYPES)
+def test_utf8_pop_returns_unicode_scalars_or_none(cls: type[object]) -> None:
+    value = cls.from_str("e\u0301🦀")
+    assert value.pop() == "🦀"
+    assert value.pop() == "\u0301"
+    assert value.pop() == "e"
+    assert value.pop() is None
+
+
+@pytest.mark.parametrize("cls", (Utf8Buffer, Utf8BytesMut))
+def test_utf8_character_edits_accept_index_protocol_and_clean_keywords(cls: type[object]) -> None:
+    class Index:
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+        def __index__(self) -> int:
+            return self.value
+
+    value = cls.from_str("éx")
+    assert value.insert_chars(index=Index(1), ch="🦀") is None
+    assert str(value) == "é🦀x"
+    assert value.insert_str_chars(index=Index(3), s="!") is None
+    assert str(value) == "é🦀x!"
+    assert value.replace_range_chars(start=Index(1), end=Index(2), replacement="e\u0301") is None
+    assert str(value) == "ée\u0301x!"
+
+    for callback, error in (
+        (lambda: value.insert_chars(index=-1, ch="!"), IndexError),
+        (lambda: value.insert_chars(index=10**100, ch="!"), OverflowError),
+        (lambda: value.insert_chars(index=99, ch="!"), IndexError),
+        (lambda: value.replace_range_chars(start=3, end=1, replacement="!"), ValueError),
+        (lambda: value.insert_chars(index=1, ch=1), TypeError),
+        (lambda: value.insert_chars(index=1, ch=""), ValueError),
+        (lambda: value.insert_chars(index=1, ch="xy"), ValueError),
+        (lambda: value.insert_chars(index=1, ch="\ud800"), UnicodeEncodeError),
+        (lambda: value.insert_str_chars(index=1, s="\ud800"), UnicodeEncodeError),
+    ):
+        before = str(value)
+        with pytest.raises(error):
+            callback()
+        assert str(value) == before
+
+
+def test_fixed_utf8_character_edit_capacity_failures_are_atomic() -> None:
+    value = Utf8Buffer.from_str("x" * 62)
+    with pytest.raises(BufferError):
+        value.insert_chars(index=0, ch="!")
+    assert str(value) == "x" * 62
+    with pytest.raises(BufferError):
+        value.replace_range_chars(start=0, end=0, replacement="!")
+    assert str(value) == "x" * 62
+    value.replace_range_chars(start=0, end=1, replacement="")
+    assert str(value) == "x" * 61
+
+
+@pytest.mark.parametrize("cls", (Utf8BytesMut, Utf8Bytes, CompactUtf8Bytes))
+@pytest.mark.parametrize(
+    "source",
+    (
+        b"hi\xff",
+        bytearray(b"hi\xff"),
+        memoryview(b"hi\xff"),
+        memoryview(array("b", [104, 105, -1])),
+    ),
+)
+def test_utf8_lossy_constructors_snapshot_supported_buffers(cls: type[object], source: object) -> None:
+    assert str(cls.from_bytes_lossy(source)) == "hi�"
+
+    for bad, error in (
+        (memoryview(b"abc")[::2], BufferError),
+        (memoryview(array("H", [1, 2])), BufferError),
+        (object(), TypeError),
+    ):
+        with pytest.raises(error):
+            cls.from_bytes_lossy(bad)
+
+
+def test_mutable_values_can_try_to_compact_back_inline() -> None:
+    raw = BytesMut.with_capacity(100)
+    raw.put_slice(b"small")
+    assert raw.is_heap()
+    assert raw.try_make_inline()
+    assert raw.is_inline()
+
+    text = Utf8BytesMut.with_capacity(100)
+    text.push_str("small")
+    assert text.is_heap()
+    assert text.try_make_inline()
+    assert text.is_inline()
+
+    large = Utf8BytesMut.from_str("x" * 63)
+    assert not large.try_make_inline()
+    assert large.is_heap()
+
+
 def test_exception_taxonomy_and_variable_width_failures_are_atomic() -> None:
     with pytest.raises(UnicodeEncodeError):
         Bytes.from_utf8("\ud800")

@@ -99,6 +99,44 @@ impl Utf8Buffer {
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
+  /// Insert one Unicode scalar at a UTF-8 byte boundary.
+  #[wasm_bindgen(js_name = "insertBytes")]
+  pub fn insert_wasm(&mut self, index: usize, ch: js_sys::JsString) -> Result<(), JsError> {
+    let ch = crate::wasm::js_string_to_char(&ch)?;
+    self
+      .try_insert(index, ch)
+      .map_err(|error| JsError::new(&error.to_string()))
+  }
+
+  /// Insert a string at a UTF-8 byte boundary.
+  #[wasm_bindgen(js_name = "insertStrBytes")]
+  pub fn insert_str_wasm(&mut self, index: usize, s: js_sys::JsString) -> Result<(), JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    self
+      .try_insert_str(index, &s)
+      .map_err(|error| JsError::new(&error.to_string()))
+  }
+
+  /// Replace the UTF-8 byte range `[start, end)` with a string.
+  #[wasm_bindgen(js_name = "replaceRangeBytes")]
+  pub fn replace_range_wasm(
+    &mut self,
+    start: usize,
+    end: usize,
+    replacement: js_sys::JsString,
+  ) -> Result<(), JsError> {
+    let replacement = crate::wasm::js_string_to_string(&replacement)?;
+    self
+      .try_replace_range(start..end, &replacement)
+      .map_err(|error| JsError::new(&error.to_string()))
+  }
+
+  /// Remove and return the final Unicode scalar, if present.
+  #[wasm_bindgen(js_name = "pop")]
+  pub fn pop_wasm(&mut self) -> Option<String> {
+    self.pop().map(|ch| ch.to_string())
+  }
+
   /// Clear the buffer, removing all data.
   #[wasm_bindgen(js_name = "clear")]
   pub fn clear_wasm(&mut self) {

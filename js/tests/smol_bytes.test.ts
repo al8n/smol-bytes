@@ -428,6 +428,83 @@ describe('UTF-8 byte-unit API', () => {
     expect(() => value.push('!')).toThrow(RangeError);
     expect(value.toString()).toBe('x'.repeat(61));
   });
+
+  test.each([
+    ['fixed', Utf8Buffer],
+    ['mutable', Utf8BytesMut],
+    ['shared', Utf8Bytes],
+    ['compact', CompactUtf8Bytes],
+  ])('%s pop removes one Unicode scalar and normalizes empty to null', (_name, Type) => {
+    const value = Type.fromString('e\u0301🦀');
+    expect(value.pop()).toBe('🦀');
+    expect(value.pop()).toBe('\u0301');
+    expect(value.pop()).toBe('e');
+    expect(value.pop()).toBeNull();
+    expect(value.pop()).not.toBeUndefined();
+  });
+
+  test.each([
+    ['fixed', Utf8Buffer],
+    ['mutable', Utf8BytesMut],
+  ])('%s edits use validated UTF-8 byte offsets', (_name, Type) => {
+    const value = Type.fromString('éx');
+    value.insertBytes(2, '🦀');
+    expect(value.toString()).toBe('é🦀x');
+    value.insertStrBytes(7, '!');
+    expect(value.toString()).toBe('é🦀x!');
+    value.replaceRangeBytes(2, 6, 'e\u0301');
+    expect(value.toString()).toBe('ée\u0301x!');
+
+    for (const index of [NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const before = value.toString();
+      expect(() => value.insertBytes(index, '!')).toThrow(RangeError);
+      expect(value.toString()).toBe(before);
+    }
+    expect(() => value.insertBytes(1, '!')).toThrow(RangeError);
+    expect(() => value.insertBytes(2, '')).toThrow(RangeError);
+    expect(() => value.insertBytes(2, 'xy')).toThrow(RangeError);
+    expect(() => value.insertBytes(2, '\ud800')).toThrow(TypeError);
+    expect(() => value.insertStrBytes(2, '\udc00')).toThrow(TypeError);
+    expect(() => value.replaceRangeBytes(4, 6, '!')).toThrow(RangeError);
+    expect(() => value.replaceRangeBytes(6, 2, '!')).toThrow(RangeError);
+    expect(value.toString()).toBe('ée\u0301x!');
+  });
+
+  test('fixed UTF-8 edits preflight capacity without mutation', () => {
+    const value = Utf8Buffer.fromString('x'.repeat(62));
+    expect(() => value.insertBytes(0, '!')).toThrow(RangeError);
+    expect(() => value.replaceRangeBytes(0, 0, '!')).toThrow(RangeError);
+    expect(value.toString()).toBe('x'.repeat(62));
+    value.replaceRangeBytes(0, 1, '');
+    expect(value.toString()).toBe('x'.repeat(61));
+  });
+
+  test.each([
+    ['mutable', Utf8BytesMut],
+    ['shared', Utf8Bytes],
+    ['compact', CompactUtf8Bytes],
+  ])('%s decodes lossy bytes from exact Uint8Array input', (_name, Type) => {
+    expect(Type.fromBytesLossy(new Uint8Array([0x68, 0x69, 0xff])).toString()).toBe('hi�');
+    expect(() => Type.fromBytesLossy([0x68] as unknown as Uint8Array)).toThrow(TypeError);
+  });
+
+  test('mutable values can explicitly compact back to inline storage', () => {
+    const raw = BytesMut.withCapacity(100);
+    raw.putSlice(encoder.encode('small'));
+    expect(raw.isHeap()).toBe(true);
+    expect(raw.tryMakeInline()).toBe(true);
+    expect(raw.isInline()).toBe(true);
+
+    const text = Utf8BytesMut.withCapacity(100);
+    text.pushStr('small');
+    expect(text.isHeap()).toBe(true);
+    expect(text.tryMakeInline()).toBe(true);
+    expect(text.isInline()).toBe(true);
+
+    const tooLarge = Utf8BytesMut.fromString('x'.repeat(63));
+    expect(tooLarge.tryMakeInline()).toBe(false);
+    expect(tooLarge.isHeap()).toBe(true);
+  });
 });
 
 describe('public numeric validation', () => {
