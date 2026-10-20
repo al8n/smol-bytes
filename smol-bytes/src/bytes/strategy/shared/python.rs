@@ -45,7 +45,7 @@ impl Iter {
 /// Instances behave like immutable Python `bytes` objects backed by the same zero-copy storage as
 /// the Rust type. All `get_*` accessors from the `Buf` trait are available, along with slicing,
 /// splitting, and comparison semantics that mirror `shared::Bytes`.
-#[pyclass(name = "Bytes", skip_from_py_object)]
+#[pyclass(name = "Bytes")]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PySharedBytes {

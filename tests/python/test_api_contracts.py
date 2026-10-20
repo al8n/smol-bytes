@@ -134,6 +134,44 @@ def test_raw_buffer_inputs_are_readable_snapshots(cls: type[object], factory) ->
         cls.from_bytes(released)
 
 
+@pytest.mark.parametrize("cls", RAW_TYPES)
+@pytest.mark.parametrize(
+    ("typecode", "values", "expected"),
+    [
+        ("b", [-128, -1, 0, 1, 127], b"\x80\xff\x00\x01\x7f"),
+        ("B", [0, 1, 127, 255], b"\x00\x01\x7f\xff"),
+    ],
+)
+def test_raw_signed_and_unsigned_buffers_preserve_byte_values(
+    cls: type[object], typecode: str, values: list[int], expected: bytes
+) -> None:
+    assert bytes(cls.from_bytes(array(typecode, values))) == expected
+
+
+@pytest.mark.parametrize("cls", RAW_TYPES)
+@pytest.mark.parametrize("typecode", ["b", "B"])
+def test_raw_empty_signed_and_unsigned_buffers_are_supported(cls: type[object], typecode: str) -> None:
+    assert bytes(cls.from_bytes(array(typecode))) == b""
+
+
+@pytest.mark.parametrize("cls", RAW_TYPES)
+@pytest.mark.parametrize("typecode", ["b", "B"])
+def test_raw_contiguous_memoryview_subviews_are_snapshots(cls: type[object], typecode: str) -> None:
+    source = array(typecode, [-3, -2, -1, 0, 1, 2] if typecode == "b" else [253, 254, 255, 0, 1, 2])
+    assert bytes(cls.from_bytes(memoryview(source)[1:5])) == b"\xfe\xff\x00\x01"
+
+
+@pytest.mark.parametrize("cls", RAW_TYPES)
+@pytest.mark.parametrize("typecode", ["b", "B"])
+def test_raw_signed_and_unsigned_owner_mutation_does_not_change_snapshot(
+    cls: type[object], typecode: str
+) -> None:
+    source = array(typecode, [1, 2, 3])
+    value = cls.from_bytes(source)
+    source[0] = -7 if typecode == "b" else 247
+    assert bytes(value) == b"\x01\x02\x03"
+
+
 @pytest.mark.parametrize("cls", (Buffer, BytesMut))
 def test_put_slice_buffer_matrix_and_fixed_failure_are_atomic(cls: type[object]) -> None:
     value = cls.from_bytes(b"ab")

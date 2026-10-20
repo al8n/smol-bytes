@@ -103,6 +103,8 @@ The complete Rust, Python, and JavaScript migration guide is included below.
 - **Python:** raw constructors and mutable writes accept bytes, bytearray, and
   readable contiguous byte buffers; UTF-8 classes retain string-oriented APIs
   while indexing and iteration consistently use Unicode scalar values.
+- **Python:** PyO3 integration targets 0.30; the packaged extension retains
+  Python >= 3.11 and abi3-py311.
 - **JavaScript/Wasm:** root, shared, and compact entry points independently
   install validation, iteration, and disposal behavior. Numeric and boundary
   failures are checked before Wasm coercion where deterministic.

@@ -44,7 +44,7 @@ impl Utf8CharIter {
 }
 
 /// Python bindings for the [`Utf8Bytes`](crate::Utf8Bytes) type (shared variant).
-#[pyclass(name = "Utf8Bytes", skip_from_py_object)]
+#[pyclass(name = "Utf8Bytes")]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PySharedUtf8Bytes {
@@ -765,7 +765,7 @@ impl PySharedUtf8Bytes {
 }
 
 /// Python bindings for the [`Utf8Bytes`](crate::Utf8Bytes) type (compact variant).
-#[pyclass(name = "Utf8Bytes", skip_from_py_object)]
+#[pyclass(name = "Utf8Bytes")]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PyCompactUtf8Bytes {

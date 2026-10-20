@@ -59,7 +59,7 @@ mod wasm;
 )]
 #[cfg_attr(feature = "wasm", doc = "```")]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass(skip_from_py_object))]
+#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
 #[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Utf8Buffer {
   inner: Buffer,

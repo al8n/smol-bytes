@@ -8,7 +8,7 @@ use pyo3::{
   prelude::*,
   types::{
     PyAny, PyByteArray, PyByteArrayMethods, PyBytes, PyInt, PyMemoryView, PyModule, PyRange,
-    PySlice, PySliceIndices, PyString, PyStringMethods,
+    PySlice, PyString, PyStringMethods, slice::PySliceIndices,
   },
 };
 
@@ -74,15 +74,14 @@ pub(crate) fn py_readable_buffer_snapshot(value: &Bound<'_, PyAny>) -> PyResult<
         "expected a readable 1D C-contiguous byte buffer",
       ));
     }
-    let bytes = buffer
-      .as_slice(py)
-      .ok_or_else(|| PyBufferError::new_err("expected a readable 1D C-contiguous byte buffer"))?;
-    py_check_alloc(bytes.len())?;
+    let item_count = buffer.item_count();
+    py_check_alloc(item_count)?;
     let mut snapshot = Vec::new();
     snapshot
-      .try_reserve_exact(bytes.len())
+      .try_reserve_exact(item_count)
       .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
-    snapshot.extend(bytes.iter().map(|byte| byte.get()));
+    snapshot.resize(item_count, 0);
+    buffer.copy_to_slice(py, &mut snapshot)?;
     return Ok(snapshot);
   }
 
@@ -93,15 +92,23 @@ pub(crate) fn py_readable_buffer_snapshot(value: &Bound<'_, PyAny>) -> PyResult<
           "expected a readable 1D C-contiguous byte buffer",
         ));
       }
-      let bytes = buffer
-        .as_slice(py)
-        .ok_or_else(|| PyBufferError::new_err("expected a readable 1D C-contiguous byte buffer"))?;
-      py_check_alloc(bytes.len())?;
+      let item_count = buffer.item_count();
+      py_check_alloc(item_count)?;
+      let mut signed = Vec::new();
+      signed
+        .try_reserve_exact(item_count)
+        .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
+      signed.resize(item_count, 0);
+      buffer.copy_to_slice(py, &mut signed)?;
+
+      py_check_alloc(item_count)?;
       let mut snapshot = Vec::new();
       snapshot
-        .try_reserve_exact(bytes.len())
+        .try_reserve_exact(item_count)
         .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
-      snapshot.extend(bytes.iter().map(|byte| byte.get() as u8));
+      for byte in signed {
+        snapshot.push(byte as u8);
+      }
       Ok(snapshot)
     }
     Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(error),
