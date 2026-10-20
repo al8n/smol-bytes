@@ -1,4 +1,4 @@
-"""Focused 0.2 final Python-surface regression tests."""
+"""Focused tests for the public Python API contract."""
 
 from __future__ import annotations
 

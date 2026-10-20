@@ -233,7 +233,7 @@ from smol_bytes.compact import Bytes as CompactBytes
 `smol_bytes.shared.Bytes` and `smol_bytes.shared.Utf8Bytes` are exact aliases
 of root classes. Historic shared-module pickle references continue to load.
 Compact classes remain distinct. The distribution includes `py.typed` and
-final-surface stubs.
+public API type stubs.
 
 ##### Raw bytes and ownership
 

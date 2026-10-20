@@ -1,4 +1,4 @@
-"""Static typing contract for the final Python binding surface."""
+"""Static typing contract for the public Python API."""
 
 from typing import SupportsIndex
 

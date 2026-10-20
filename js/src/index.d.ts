@@ -1,4 +1,4 @@
-/** Final 0.2 JavaScript API for the shared immutable strategy. */
+/** JavaScript API for the default shared immutable strategy. */
 
 export type ByteInput = Uint8Array;
 

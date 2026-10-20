@@ -54,7 +54,7 @@ source .venv/bin/activate
 python -m pip install maturin pytest mypy
 maturin build --release --features pyo3 --manifest-path smol-bytes-py/Cargo.toml
 python -m pytest tests/python -v
-python -m mypy --strict tests/python/typecheck_phase3.py
+python -m mypy --strict tests/python/typecheck_api.py
 ```
 
 Build and validate the JavaScript package, including its generated Wasm output
