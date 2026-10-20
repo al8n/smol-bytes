@@ -12,6 +12,12 @@ pub struct WasmSharedBytes {
   inner: super::Bytes,
 }
 
+impl WasmSharedBytes {
+  pub(crate) fn from_inner(inner: super::Bytes) -> Self {
+    Self { inner }
+  }
+}
+
 #[allow(missing_docs)]
 #[wasm_bindgen(js_class = "SharedBytes")]
 impl WasmSharedBytes {
@@ -36,22 +42,12 @@ impl WasmSharedBytes {
   /// Create a `SharedBytes` from a UTF-8 string.
   ///
   /// @param s - The source string whose bytes are copied.
-  #[wasm_bindgen(js_name = "fromString")]
-  pub fn from_string(s: &str) -> Self {
-    Self {
+  #[wasm_bindgen(js_name = "fromUtf8")]
+  pub fn from_utf8(s: js_sys::JsString) -> Result<Self, JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    Ok(Self {
       inner: super::Bytes::from(s),
-    }
-  }
-
-  /// Create a `SharedBytes` from a static string.
-  ///
-  /// Note: In WASM, this copies the data (true static references cannot cross the JS boundary).
-  #[wasm_bindgen(js_name = "fromStatic")]
-  pub fn from_static_wasm(s: &str) -> Self {
-    // NOTE: we cannot truly take a &'static str from JS, so we copy.
-    Self {
-      inner: super::Bytes::copy_from_slice(s.as_bytes()),
-    }
+    })
   }
 
   /// Return contents as a `Uint8Array` (copy).
@@ -63,8 +59,8 @@ impl WasmSharedBytes {
   /// Return contents as a UTF-8 string.
   ///
   /// @throws {Error} If the buffer contains invalid UTF-8.
-  #[wasm_bindgen(js_name = "toString")]
-  pub fn to_string_wasm(&self) -> Result<String, JsError> {
+  #[wasm_bindgen(js_name = "decodeUtf8")]
+  pub fn decode_utf8_wasm(&self) -> Result<String, JsError> {
     core::str::from_utf8(self.inner.as_slice())
       .map(|s| s.to_string())
       .map_err(|e| JsError::new(&e.to_string()))
@@ -159,6 +155,20 @@ impl WasmSharedBytes {
       .try_slice(start..end)
       .map(|b| WasmSharedBytes { inner: b })
       .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Return a cheap strategy-preserving immutable clone.
+  #[wasm_bindgen(js_name = "clone")]
+  pub fn clone_wasm(&self) -> WasmSharedBytes {
+    WasmSharedBytes {
+      inner: self.inner.clone(),
+    }
+  }
+
+  /// Return an independent mutable copy of these bytes.
+  #[wasm_bindgen(js_name = "toMutable")]
+  pub fn to_mutable_wasm(&self) -> crate::BytesMut {
+    crate::BytesMut::from(self.inner.as_slice())
   }
 
   // -- Buf getters --
@@ -359,6 +369,42 @@ impl WasmSharedBytes {
       return Err(JsError::new("not enough data"));
     }
     Ok(bytes::Buf::get_f64_le(&mut self.inner))
+  }
+
+  /// Read an unsigned integer encoded in `width` bytes, big-endian.
+  #[wasm_bindgen(js_name = "getUint")]
+  pub fn get_uint(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read an unsigned integer encoded in `width` bytes, little-endian.
+  #[wasm_bindgen(js_name = "getUintLe")]
+  pub fn get_uint_le(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint_le(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read an unsigned integer encoded in `width` bytes, native-endian.
+  #[wasm_bindgen(js_name = "getUintNe")]
+  pub fn get_uint_ne(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint_ne(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, big-endian.
+  #[wasm_bindgen(js_name = "getInt")]
+  pub fn get_int(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, little-endian.
+  #[wasm_bindgen(js_name = "getIntLe")]
+  pub fn get_int_le(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int_le(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, native-endian.
+  #[wasm_bindgen(js_name = "getIntNe")]
+  pub fn get_int_ne(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int_ne(&mut self.inner, width).map_err(|e| JsError::new(&e.to_string()))
   }
 
   // -- Iterator --

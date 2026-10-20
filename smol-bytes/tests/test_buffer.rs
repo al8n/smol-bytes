@@ -54,22 +54,22 @@ fn advanced_resize_is_relative_to_the_visible_view() {
   let mut buffer = Buffer::from(*b"abcdef");
   buffer.advance(2);
 
-  buffer.resize(6);
-  assert_eq!(buffer.as_slice(), b"cdef\0\0");
+  buffer.resize(6, b'x');
+  assert_eq!(buffer.as_slice(), b"cdefxx");
   assert_eq!(buffer.len(), 6);
 
-  buffer.resize(1);
+  buffer.resize(1, 0);
   assert_eq!(buffer.as_slice(), b"c");
   assert_eq!(buffer.len(), 1);
 
   let mut fallible = Buffer::from(*b"abcdef");
   fallible.advance(2);
-  fallible.try_resize(6).unwrap();
-  assert_eq!(fallible.as_slice(), b"cdef\0\0");
+  fallible.try_resize(6, b'y').unwrap();
+  assert_eq!(fallible.as_slice(), b"cdefyy");
   assert_eq!(fallible.len(), 6);
 
   assert_eq!(
-    buffer.try_resize(buffer.capacity() + 1),
+    buffer.try_resize(buffer.capacity() + 1, b'z'),
     Err(OutOfBounds::new(buffer.capacity() + 1, buffer.capacity()))
   );
   assert_eq!(buffer.as_slice(), b"c");
@@ -101,6 +101,26 @@ fn advanced_splits_are_bounded_by_visible_length() {
   assert_eq!(buffer.as_slice(), b"ef");
 
   assert_eq!(buffer.try_split_off(3), Err(OutOfBounds::new(3, 2)));
+}
+
+#[test]
+fn try_reclaim_is_public_and_preserves_the_visible_view() {
+  let mut buffer = Buffer::from(*b"abcd");
+  assert!(buffer.try_reclaim(0));
+
+  buffer.advance(2);
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 58);
+
+  let pointer = buffer.as_ptr();
+  assert!(!buffer.try_reclaim(usize::MAX));
+  assert_eq!(buffer.as_ptr(), pointer);
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 58);
+
+  assert!(buffer.try_reclaim(60));
+  assert_eq!(buffer.as_slice(), b"cd");
+  assert_eq!(buffer.remaining_mut(), 60);
 }
 
 #[test]

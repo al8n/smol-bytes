@@ -3,20 +3,11 @@
 //! These methods allow Buffer to be used in no_std/no_alloc environments while providing
 //! the same API as the bytes crate.
 
-use crate::{InvalidIntegerLength, TryPutIntegerError};
+use crate::{
+  InvalidIntegerLength, TryGetIntegerError, TryPutIntegerCheckedError, TryPutIntegerError,
+};
 
 use super::{Buffer, InlineSize, TryGetError, TryPutError, panic_advance, panic_does_not_fit};
-
-/// Validates the byte width accepted by the variable-width integer readers.
-///
-/// This is deliberately performed before checking available input so an invalid
-/// width cannot be masked by a short buffer (or reach the copy below).
-#[inline]
-pub(crate) fn assert_uint_width(nbytes: usize) {
-  if nbytes > 8 {
-    panic_does_not_fit(8, nbytes);
-  }
-}
 
 // https://en.wikipedia.org/wiki/Sign_extension
 pub(crate) const fn sign_extend(val: u64, nbytes: usize) -> i64 {
@@ -26,6 +17,65 @@ pub(crate) const fn sign_extend(val: u64, nbytes: usize) -> i64 {
 
   let shift = (8 - nbytes) * 8;
   (val << shift) as i64 >> shift
+}
+
+#[cold]
+fn panic_try_get_integer<T>(error: TryGetIntegerError) -> T {
+  match error {
+    TryGetIntegerError::NotEnoughBytes(error) => panic_advance(error.available, error.requested),
+    TryGetIntegerError::InvalidLength(error) => panic_does_not_fit(8, error.0),
+  }
+}
+
+pub(crate) fn checked_unsigned_range(
+  n: u64,
+  nbytes: usize,
+) -> Result<(), TryPutIntegerCheckedError> {
+  if nbytes > 8 {
+    return Err(InvalidIntegerLength(nbytes).into());
+  }
+
+  let max = if nbytes == 8 {
+    u64::MAX as i128
+  } else {
+    (1_i128 << (nbytes * 8)) - 1
+  };
+  let value = n as i128;
+  if value > max {
+    return Err(TryPutIntegerCheckedError::OutOfRange {
+      value,
+      min: 0,
+      max,
+      nbytes,
+    });
+  }
+
+  Ok(())
+}
+
+pub(crate) fn checked_signed_range(n: i64, nbytes: usize) -> Result<(), TryPutIntegerCheckedError> {
+  if nbytes > 8 {
+    return Err(InvalidIntegerLength(nbytes).into());
+  }
+
+  let (min, max) = if nbytes == 0 {
+    (0, 0)
+  } else {
+    let shift = nbytes * 8 - 1;
+    let limit = 1_i128 << shift;
+    (-limit, limit - 1)
+  };
+  let value = n as i128;
+  if value < min || value > max {
+    return Err(TryPutIntegerCheckedError::OutOfRange {
+      value,
+      min,
+      max,
+      nbytes,
+    });
+  }
+
+  Ok(())
 }
 
 macro_rules! impl_try_get {
@@ -52,14 +102,18 @@ macro_rules! impl_try_get {
   (le($this:ident, $typ:tt, $len_to_read:expr)) => {{
     const SIZE: usize = core::mem::size_of::<$typ>();
 
-    assert_uint_width($len_to_read);
+    if $len_to_read > 8 {
+      return Err(TryGetIntegerError::InvalidLength(InvalidIntegerLength(
+        $len_to_read,
+      )));
+    }
 
     let remaining = $this.remaining();
     if remaining < $len_to_read {
-      return Err(TryGetError {
+      return Err(TryGetIntegerError::NotEnoughBytes(TryGetError {
         requested: $len_to_read,
         available: remaining,
-      });
+      }));
     }
 
     let mut buf = [0u8; SIZE];
@@ -81,14 +135,18 @@ macro_rules! impl_try_get {
   (be($this:ident, $typ:tt, $len_to_read:expr)) => {{
     const SIZE: usize = core::mem::size_of::<$typ>();
 
-    assert_uint_width($len_to_read);
+    if $len_to_read > 8 {
+      return Err(TryGetIntegerError::InvalidLength(InvalidIntegerLength(
+        $len_to_read,
+      )));
+    }
 
     let remaining = $this.remaining();
     if remaining < $len_to_read {
-      return Err(TryGetError {
+      return Err(TryGetIntegerError::NotEnoughBytes(TryGetError {
         requested: $len_to_read,
         available: remaining,
-      });
+      }));
     }
 
     let slice_at = SIZE - $len_to_read;
@@ -503,7 +561,7 @@ impl Buffer {
   pub fn get_uint(&mut self, nbytes: usize) -> u64 {
     self
       .try_get_uint(nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+      .unwrap_or_else(panic_try_get_integer)
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in big-endian byte order.
@@ -512,13 +570,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_uint(&mut self, nbytes: usize) -> Result<u64, TryGetError> {
+  pub fn try_get_uint(&mut self, nbytes: usize) -> Result<u64, TryGetIntegerError> {
     impl_try_get!(be(self, u64, nbytes))
   }
 
@@ -534,7 +590,7 @@ impl Buffer {
   pub fn get_uint_le(&mut self, nbytes: usize) -> u64 {
     self
       .try_get_uint_le(nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+      .unwrap_or_else(panic_try_get_integer)
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in little-endian byte order.
@@ -543,13 +599,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_uint_le(&mut self, nbytes: usize) -> Result<u64, TryGetError> {
+  pub fn try_get_uint_le(&mut self, nbytes: usize) -> Result<u64, TryGetIntegerError> {
     impl_try_get!(le(self, u64, nbytes))
   }
 
@@ -565,7 +619,7 @@ impl Buffer {
   pub fn get_uint_ne(&mut self, nbytes: usize) -> u64 {
     self
       .try_get_uint_ne(nbytes)
-      .unwrap_or_else(|e| panic_advance(e.available, e.requested))
+      .unwrap_or_else(panic_try_get_integer)
   }
 
   /// Tries to get an unsigned n-byte integer from `self` in native-endian byte order.
@@ -574,13 +628,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_uint_ne(&mut self, nbytes: usize) -> Result<u64, TryGetError> {
+  pub fn try_get_uint_ne(&mut self, nbytes: usize) -> Result<u64, TryGetIntegerError> {
     if cfg!(target_endian = "big") {
       self.try_get_uint(nbytes)
     } else {
@@ -607,13 +659,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_int(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
+  pub fn try_get_int(&mut self, nbytes: usize) -> Result<i64, TryGetIntegerError> {
     self
       .try_get_uint(nbytes)
       .map(|value| sign_extend(value, nbytes))
@@ -638,13 +688,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
+  pub fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, TryGetIntegerError> {
     self
       .try_get_uint_le(nbytes)
       .map(|value| sign_extend(value, nbytes))
@@ -673,13 +721,11 @@ impl Buffer {
   ///
   /// ## Errors
   ///
-  /// Returns `Err(TryGetError)` if there is not enough remaining data in `self`.
-  ///
-  /// ## Panics
-  ///
-  /// This function panics if `nbytes` is greater than 8.
+  /// Returns [`TryGetIntegerError::NotEnoughBytes`] when data is short and
+  /// [`TryGetIntegerError::InvalidLength`] when `nbytes > 8`. Neither error
+  /// advances the cursor.
   #[inline]
-  pub fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
+  pub fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, TryGetIntegerError> {
     if cfg!(target_endian = "big") {
       self.try_get_int(nbytes)
     } else {
@@ -1009,6 +1055,106 @@ impl Buffer {
       self.try_put_int(n, nbytes)
     } else {
       self.try_put_int_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_uint_checked(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    match self.try_put_uint(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_uint_checked_le(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    match self.try_put_uint_le(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_uint_checked_ne(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_uint_checked(n, nbytes)
+    } else {
+      self.try_put_uint_checked_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_int_checked(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    match self.try_put_int(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// A width outside `0..=8`, an unrepresentable value, or insufficient
+  /// writable capacity leaves this buffer unchanged.
+  pub fn try_put_int_checked_le(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    match self.try_put_int_le(n, nbytes) {
+      Ok(()) => Ok(()),
+      Err(TryPutIntegerError::InvalidLength(error)) => Err(error.into()),
+      Err(TryPutIntegerError::NotEnoughSpace(error)) => Err(error.into()),
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_int_checked_ne(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_int_checked(n, nbytes)
+    } else {
+      self.try_put_int_checked_le(n, nbytes)
     }
   }
 

@@ -48,6 +48,7 @@ pub use buffer::{Buffer, INLINE_CAP};
 pub use error::*;
 pub use utf8_buf::{Utf8Buf, Utf8BufMut};
 pub use utf8_buffer::Utf8Buffer;
+pub use utf8_drain::Utf8Drain;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod bytes;
@@ -77,12 +78,14 @@ mod wasm_iter;
 
 #[cfg(feature = "pyo3")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pyo3")))]
-pub use python::{register_classes, register_compact, register_shared};
+pub use python::{register_classes, register_compact, register_shared, register_shared_aliases};
 
 mod buffer;
 
 mod utf8_buf;
 mod utf8_buffer;
+mod utf8_drain;
+mod utf8_edit;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 mod utf8_bytes;

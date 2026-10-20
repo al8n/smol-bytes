@@ -1,6 +1,6 @@
 use crate::strategy::ImmutableStorage;
 
-use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
+use std::{borrow::Cow, boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 
 use super::*;
 
@@ -46,6 +46,15 @@ impl From<&str> for BytesMut {
   #[cfg_attr(not(coverage), inline(always))]
   fn from(s: &str) -> Self {
     Self::from(s.as_bytes())
+  }
+}
+
+impl<'a> From<Cow<'a, [u8]>> for BytesMut {
+  fn from(value: Cow<'a, [u8]>) -> Self {
+    match value {
+      Cow::Borrowed(bytes) => Self::from(bytes),
+      Cow::Owned(bytes) => Self::from(bytes),
+    }
   }
 }
 

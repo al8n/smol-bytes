@@ -1,6 +1,6 @@
 {
   "name": "smol-bytes",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "type": "module",
   "description": "High-performance, clone-efficient byte buffers for JavaScript/TypeScript",
   "license": "MIT OR Apache-2.0",
@@ -33,13 +33,13 @@
   ],
   "scripts": {
     "build:wasm": "cd .. && wasm-pack build smol-bytes-wasm --target bundler --out-dir ../js/pkg --out-name smol_bytes -- --features wasm",
-    "build:js": "tsc",
+    "build:js": "tsc && node scripts/copy-declarations.mjs",
     "build": "npm run build:wasm && npm run build:js",
     "test": "vitest run && npm run test:package",
     "test:package": "node scripts/verify-package.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.0",
+    "typescript": ">=5.2",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^3.0"

@@ -1,9 +1,11 @@
 use super::*;
-use crate::python::{PyBufCmp, PyBufExt, PyBufMutExt, py_check_alloc};
+use crate::python::{
+  PyBufCmp, PyBufExt, PyBufMutExt, py_byte_range, py_check_alloc, py_offset, py_raw_str,
+  py_readable_buffer_snapshot,
+};
 use bytes::BufMut;
 use pyo3::{
   basic::CompareOp,
-  exceptions::PyUnicodeDecodeError,
   prelude::{Bound, *},
   types::{PyAny, PyBytes, PyString},
 };
@@ -120,9 +122,9 @@ impl BytesMut {
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
-    py_check_alloc(py_bytes.len())?;
-    Ok(Self::from(py_bytes))
+  fn __python_from_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
+    Ok(Self::from(data))
   }
 
   /// Create a new buffer from a UTF-8 string.
@@ -139,14 +141,14 @@ impl BytesMut {
   ///     MemoryError: If the requested allocation cannot be satisfied.
   ///
   /// Example:
-  ///     >>> buf = BytesMut.from_str("Hello")
+  ///     >>> buf = BytesMut.from_utf8("Hello")
   ///     >>> bytes(buf)
   ///     b'Hello'
   #[staticmethod]
-  #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> PyResult<Self> {
-    py_check_alloc(py_str.len())?;
-    Ok(Self::from(py_str))
+  #[pyo3(name = "from_utf8")]
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    py_check_alloc(s.len())?;
+    Ok(Self::from(s))
   }
 
   /// Return the mutable bytes as a Python `bytes` object.
@@ -211,10 +213,9 @@ impl BytesMut {
     self.py_richcmp(other, op)
   }
 
-  /// Interpret the buffer as UTF-8, raising `UnicodeDecodeError` if invalid.
-  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
-    core::str::from_utf8(self.as_slice())
-      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.as_slice(), err))
+  /// Return the same total representation as `str(bytes(self))`.
+  fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+    py_raw_str(self.as_slice(), py)
   }
 
   fn __repr__(&self) -> PyResult<String> {
@@ -249,7 +250,7 @@ impl BytesMut {
   }
 
   /// Interpret the bytes as UTF-8, returning a Python `str`.
-  #[pyo3(name = "to_string")]
+  #[pyo3(name = "decode_utf8")]
   fn __python_to_string<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
     self.py_to_string(py)
   }
@@ -291,6 +292,12 @@ impl BytesMut {
     self.is_heap()
   }
 
+  /// Copy a small heap value back into inline storage when possible.
+  #[pyo3(name = "try_make_inline")]
+  fn __python_try_make_inline(&mut self) -> bool {
+    self.try_make_inline()
+  }
+
   /// Return the number of readable bytes.
   #[pyo3(name = "len")]
   fn __python_len(&self) -> usize {
@@ -326,8 +333,8 @@ impl BytesMut {
   /// Raises:
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
-  fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
-    self.try_advance(cnt).map_err(Into::into)
+  fn __python_advance(&mut self, cnt: &Bound<'_, PyAny>) -> PyResult<()> {
+    self.py_advance(py_offset(cnt, "cnt")?)
   }
 
   // ==================== Get methods ====================
@@ -501,8 +508,9 @@ impl BytesMut {
   /// Args:
   ///     new_len: The new length of the buffer.
   #[pyo3(name = "truncate")]
-  fn __python_truncate(&mut self, len: usize) {
-    self.truncate(len);
+  fn __python_truncate(&mut self, new_len: &Bound<'_, PyAny>) -> PyResult<()> {
+    self.truncate(py_offset(new_len, "new_len")?);
+    Ok(())
   }
 
   /// Reserve capacity for at least `additional` more bytes.
@@ -540,18 +548,18 @@ impl BytesMut {
   /// Raises:
   ///    MemoryError: If the requested allocation cannot be satisfied.
   #[pyo3(name = "put_slice")]
-  fn __python_put_slice(&mut self, data: &Bound<'_, PyBytes>) -> PyResult<()> {
-    let data: &[u8] = data.as_ref();
+  fn __python_put_slice(&mut self, data: &Bound<'_, PyAny>) -> PyResult<()> {
+    let data = py_readable_buffer_snapshot(data)?;
     py_check_alloc(data.len())?;
-    self.put_slice(data);
+    self.put_slice(&data);
     Ok(())
   }
 
   /// Write a byte value to the buffer multiple times.
   ///
   /// Args:
-  ///    val: The byte value to write.
-  ///    cnt: Number of times to write the byte.
+  ///    value: The byte value to write.
+  ///    count: Number of times to write the byte.
   ///
   /// Raises:
   ///    MemoryError: If the requested allocation cannot be satisfied.
@@ -565,7 +573,7 @@ impl BytesMut {
   /// Write a signed 8-bit integer to the buffer.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i8")]
   fn __python_put_i8(&mut self, value: i8) {
     self.put_i8(value);
@@ -574,7 +582,7 @@ impl BytesMut {
   /// Write an unsigned 8-bit integer to the buffer.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u8")]
   fn __python_put_u8(&mut self, value: u8) {
     self.put_u8(value);
@@ -583,7 +591,7 @@ impl BytesMut {
   /// Write an unsigned 16-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u16")]
   fn __python_put_u16(&mut self, value: u16) {
     self.put_u16(value);
@@ -592,7 +600,7 @@ impl BytesMut {
   /// Write an unsigned 16-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u16_le")]
   fn __python_put_u16_le(&mut self, value: u16) {
     self.put_u16_le(value);
@@ -601,7 +609,7 @@ impl BytesMut {
   /// Write a signed 16-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i16")]
   fn __python_put_i16(&mut self, value: i16) {
     self.put_i16(value);
@@ -610,7 +618,7 @@ impl BytesMut {
   /// Write a signed 16-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i16_le")]
   fn __python_put_i16_le(&mut self, value: i16) {
     self.put_i16_le(value);
@@ -619,7 +627,7 @@ impl BytesMut {
   /// Write an unsigned 32-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u32")]
   fn __python_put_u32(&mut self, value: u32) {
     self.put_u32(value);
@@ -628,7 +636,7 @@ impl BytesMut {
   /// Write an unsigned 32-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u32_le")]
   fn __python_put_u32_le(&mut self, value: u32) {
     self.put_u32_le(value);
@@ -637,7 +645,7 @@ impl BytesMut {
   /// Write a signed 32-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i32")]
   fn __python_put_i32(&mut self, value: i32) {
     self.put_i32(value);
@@ -646,7 +654,7 @@ impl BytesMut {
   /// Write a signed 32-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i32_le")]
   fn __python_put_i32_le(&mut self, value: i32) {
     self.put_i32_le(value);
@@ -655,7 +663,7 @@ impl BytesMut {
   /// Write a 32-bit floating point number in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_f32")]
   fn __python_put_f32(&mut self, value: f32) {
     self.put_f32(value);
@@ -664,7 +672,7 @@ impl BytesMut {
   /// Write a 32-bit floating point number in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_f32_le")]
   fn __python_put_f32_le(&mut self, value: f32) {
     self.put_f32_le(value);
@@ -673,7 +681,7 @@ impl BytesMut {
   /// Write a 64-bit floating point number in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u64")]
   fn __python_put_u64(&mut self, value: u64) {
     self.put_u64(value);
@@ -682,7 +690,7 @@ impl BytesMut {
   /// Write a 64-bit floating point number in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u64_le")]
   fn __python_put_u64_le(&mut self, value: u64) {
     self.put_u64_le(value);
@@ -691,7 +699,7 @@ impl BytesMut {
   /// Write a signed 64-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i64")]
   fn __python_put_i64(&mut self, value: i64) {
     self.put_i64(value);
@@ -700,7 +708,7 @@ impl BytesMut {
   /// Write a signed 64-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i64_le")]
   fn __python_put_i64_le(&mut self, value: i64) {
     self.put_i64_le(value);
@@ -709,7 +717,7 @@ impl BytesMut {
   /// Write a 64-bit float in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_f64")]
   fn __python_put_f64(&mut self, value: f64) {
     self.put_f64(value);
@@ -718,7 +726,7 @@ impl BytesMut {
   /// Write a 64-bit float in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_f64_le")]
   fn __python_put_f64_le(&mut self, value: f64) {
     self.put_f64_le(value);
@@ -727,7 +735,7 @@ impl BytesMut {
   /// Write an unsigned 128-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u128")]
   fn __python_put_u128(&mut self, value: u128) {
     self.put_u128(value);
@@ -736,7 +744,7 @@ impl BytesMut {
   /// Write an unsigned 128-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_u128_le")]
   fn __python_put_u128_le(&mut self, value: u128) {
     self.put_u128_le(value);
@@ -745,7 +753,7 @@ impl BytesMut {
   /// Write a signed 128-bit integer in big-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i128")]
   fn __python_put_i128(&mut self, value: i128) {
     self.put_i128(value);
@@ -754,7 +762,7 @@ impl BytesMut {
   /// Write a signed 128-bit integer in little-endian order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   #[pyo3(name = "put_i128_le")]
   fn __python_put_i128_le(&mut self, value: i128) {
     self.put_i128_le(value);
@@ -763,7 +771,7 @@ impl BytesMut {
   /// Write an unsigned n-byte integer in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_uint")]
   fn __python_put_uint(&mut self, value: u64, nbytes: usize) -> PyResult<()> {
@@ -773,7 +781,7 @@ impl BytesMut {
   /// Write an unsigned n-byte integer in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_uint_le")]
   fn __python_put_uint_le(&mut self, value: u64, nbytes: usize) -> PyResult<()> {
@@ -783,7 +791,7 @@ impl BytesMut {
   /// Write a signed n-byte integer in big-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_int")]
   fn __python_put_int(&mut self, value: i64, nbytes: usize) -> PyResult<()> {
@@ -793,7 +801,7 @@ impl BytesMut {
   /// Write a signed n-byte integer in little-endian byte order.
   ///
   /// Args:
-  ///     val: The value to write.
+  ///     value: The value to write.
   ///     nbytes: Number of bytes to write (<= 8).
   #[pyo3(name = "put_int_le")]
   fn __python_put_int_le(&mut self, value: i64, nbytes: usize) -> PyResult<()> {
@@ -829,7 +837,7 @@ impl BytesMut {
   ///     BytesMut: A new buffer containing the first `at` bytes.
   ///
   /// Raises:
-  ///     ValueError: If `at` is greater than the buffer length.
+  ///     IndexError: If `at` is greater than the buffer length.
   ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
@@ -839,14 +847,8 @@ impl BytesMut {
   ///     >>> bytes(buf)
   ///     b'World!'
   #[pyo3(name = "split_to")]
-  fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self
-      .try_split_to(at)
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+  fn __python_split_to(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    self.try_split_to(py_offset(at, "at")?).map_err(Into::into)
   }
 
   /// Split off and return bytes from index `at` onwards as a new buffer.
@@ -858,13 +860,13 @@ impl BytesMut {
   /// For large buffers, this can be a zero-copy operation.
   ///
   /// Args:
-  ///     at: The split index. Must be <= len(self).
+  ///     at: The split index. Must be <= capacity(self).
   ///
   /// Returns:
   ///     BytesMut: A new buffer containing bytes from index `at` onwards.
   ///
   /// Raises:
-  ///     ValueError: If `at` is greater than the buffer length.
+  ///     IndexError: If `at` is greater than the buffer capacity.
   ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
@@ -874,14 +876,15 @@ impl BytesMut {
   ///     >>> bytes(tail)
   ///     b'World!'
   #[pyo3(name = "split_off")]
-  fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self
-      .try_split_off(at)
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+  fn __python_split_off(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    self.try_split_off(py_offset(at, "at")?).map_err(Into::into)
+  }
+
+  /// Return an independent mutable copy of the byte range `[start, end)`.
+  #[pyo3(name = "slice")]
+  fn __python_slice(&self, start: &Bound<'_, PyAny>, end: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let (start, end) = py_byte_range(self.len(), start, end)?;
+    self.py_slice(start, end)
   }
 
   /// Take all bytes from the buffer, leaving it empty.
@@ -907,34 +910,24 @@ impl BytesMut {
   ///     >>> buf.capacity() >= cap  # Capacity is retained
   ///     True
   #[pyo3(name = "split")]
-  fn __python_split(&mut self) -> PyResult<Self> {
-    self
-      .try_split()
-      .map(|s| match s {
-        Ok(b) => b,
-        Err(buf) => BytesMut::from(buf),
-      })
-      .map_err(Into::into)
+  fn __python_split(&mut self) -> Self {
+    self.split()
   }
 
   /// Merge another buffer back into this one.
   ///
-  /// Attempts to recombine a buffer that was previously split off. This is particularly
-  /// efficient when merging buffers that were recently split and haven't been modified
-  /// in ways that would cause reallocation.
-  ///
-  /// If the two buffers were originally contiguous (e.g., `other` was created via
-  /// `split_to()` or `split_off()` on this buffer), this can be a very efficient
-  /// zero-copy operation. Otherwise, this method will copy the data from `other`
-  /// and append it to `self`.
+  /// Python uses non-consuming snapshot semantics: the call-entry contents of
+  /// `other` are appended, while `other` remains valid and unchanged. The
+  /// binding snapshots `other` before delegating to the consuming Rust API, so
+  /// this operation does not retain Rust's zero-copy contiguous-heap fast path.
+  /// Passing this same Python object as `other` is rejected with `RuntimeError`
+  /// by Python's mutable-borrow rules.
   ///
   /// Args:
   ///     other: The buffer to merge into this one.
   ///
   /// Returns:
-  ///     None: If the merge was successful.
-  ///     BytesMut: Returns `other` unchanged if the buffers cannot be efficiently merged
-  ///         (e.g., when using inline storage). In this case, `self` remains unchanged.
+  ///     None: `other` remains valid and unchanged.
   ///
   /// Example:
   ///     >>> buf = BytesMut.from_bytes(b"Hello, World!")
@@ -944,13 +937,31 @@ impl BytesMut {
   ///     >>> bytes(tail)
   ///     b'World!'
   ///     >>> result = buf.unsplit(tail)
-  ///     >>> result is None  # Merge succeeded
+  ///     >>> result is None
   ///     True
   ///     >>> bytes(buf)
   ///     b'Hello, World!'
+  ///     >>> bytes(tail)
+  ///     b'World!'
   #[pyo3(name = "unsplit")]
-  fn __python_unsplit(&mut self, other: Self) -> Option<Self> {
-    self.unsplit(other)
+  fn __python_unsplit(&mut self, other: PyRef<'_, Self>) -> PyResult<()> {
+    py_check_alloc(other.len())?;
+    self.unsplit((*other).clone());
+    Ok(())
+  }
+
+  /// Freeze the current contents with the shared strategy, leaving this
+  /// mutable buffer empty and reusable.
+  #[pyo3(name = "freeze_shared")]
+  fn __python_freeze_shared(&mut self) -> crate::bytes::strategy::shared::PySharedBytes {
+    crate::bytes::strategy::shared::PySharedBytes::from(core::mem::take(self).freeze_shared())
+  }
+
+  /// Freeze the current contents with the compact strategy, leaving this
+  /// mutable buffer empty and reusable.
+  #[pyo3(name = "freeze_compact")]
+  fn __python_freeze_compact(&mut self) -> crate::bytes::strategy::compact::PyCompactBytes {
+    crate::bytes::strategy::compact::PyCompactBytes::from(core::mem::take(self).freeze_compact())
   }
 
   /// Converts the `BytesMut` into a heap allocated buffer if it is currently inline.

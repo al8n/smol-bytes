@@ -1,9 +1,11 @@
-use core::{borrow::Borrow, ops::RangeBounds, str};
+use core::{borrow::Borrow, convert::Infallible, ops::RangeBounds, str};
 
 use super::{
   BytesMut,
   error::*,
-  utf8_buf::{Utf8Buf, Utf8BufMut},
+  utf8_buf::{Utf8Buf, Utf8BufMut, range_bounds_to_start_end, sealed, validate_char_boundary},
+  utf8_drain::Utf8Drain,
+  utf8_edit::{RawUtf8Storage, RetainGuard, replace_bytes as raw_replace_bytes},
 };
 use bytes::BufMut;
 
@@ -70,6 +72,8 @@ impl Default for Utf8BytesMut {
   }
 }
 
+impl sealed::Sealed for Utf8BytesMut {}
+
 impl core::fmt::Write for Utf8BytesMut {
   #[inline(always)]
   fn write_str(&mut self, s: &str) -> core::fmt::Result {
@@ -93,6 +97,34 @@ impl Utf8BytesMut {
   pub const fn new() -> Self {
     Self {
       inner: BytesMut::new(),
+    }
+  }
+
+  /// Validates owned mutable bytes as UTF-8 without discarding them on
+  /// failure.
+  pub fn from_utf8(bytes: BytesMut) -> Result<Self, FromUtf8Error<BytesMut>> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self { inner: bytes }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+
+  /// Decodes owned bytes as UTF-8, replacing malformed sequences with
+  /// `U+FFFD`.
+  ///
+  /// Valid input keeps its original storage and current view. Invalid input is
+  /// converted through an owned [`String`](std::string::String).
+  ///
+  /// ```
+  /// use smol_bytes::{BytesMut, Utf8BytesMut};
+  ///
+  /// let text = Utf8BytesMut::from_utf8_lossy(BytesMut::from(&b"hi\xff"[..]));
+  /// assert_eq!(text.as_str(), "hi\u{FFFD}");
+  /// ```
+  pub fn from_utf8_lossy(bytes: BytesMut) -> Self {
+    match Self::from_utf8(bytes) {
+      Ok(value) => value,
+      Err(error) => Self::from(std::string::String::from_utf8_lossy(error.as_bytes()).into_owned()),
     }
   }
 
@@ -141,6 +173,14 @@ impl Utf8BytesMut {
   pub fn as_str(&self) -> &str {
     // SAFETY: Utf8BytesMut guarantees valid UTF-8
     unsafe { str::from_utf8_unchecked(self.inner.as_ref()) }
+  }
+
+  /// Returns the contents as a mutable string slice.
+  ///
+  /// Mutations must preserve UTF-8 validity and the byte length of edited
+  /// ranges, as required by [`prim@str`].
+  pub fn as_mut_str(&mut self) -> &mut str {
+    str::from_utf8_mut(self.inner.as_mut_slice()).expect("UTF-8 invariant")
   }
 
   /// Returns the length in bytes.
@@ -216,6 +256,11 @@ impl Utf8BytesMut {
     <Self as Utf8BufMut>::push(self, ch)
   }
 
+  /// Appends a character without allocation failure.
+  pub fn try_push(&mut self, ch: char) -> Result<(), Infallible> {
+    <Self as Utf8BufMut>::try_push(self, ch)
+  }
+
   /// Appends a string slice to the buffer.
   ///
   /// # Examples
@@ -229,6 +274,11 @@ impl Utf8BytesMut {
   /// ```
   pub fn push_str(&mut self, s: &str) {
     <Self as Utf8BufMut>::push_str(self, s)
+  }
+
+  /// Appends a string slice without allocation failure.
+  pub fn try_push_str(&mut self, s: &str) -> Result<(), Infallible> {
+    <Self as Utf8BufMut>::try_push_str(self, s)
   }
 
   /// Clears the buffer, removing all contents.
@@ -248,21 +298,61 @@ impl Utf8BytesMut {
   }
 
   /// Truncates the buffer at a UTF-8 character boundary.
-  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     <Self as Utf8BufMut>::try_truncate(self, new_len)
+  }
+
+  /// Removes and returns the last Unicode scalar value.
+  ///
+  /// This operates on Unicode scalar values, not grapheme clusters, and never
+  /// allocates.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let mut text = Utf8BytesMut::from("aé");
+  /// assert_eq!(text.pop(), Some('é'));
+  /// assert_eq!(text.as_str(), "a");
+  /// ```
+  pub fn pop(&mut self) -> Option<char> {
+    let ch = self.as_str().chars().next_back()?;
+    self.truncate(self.len() - ch.len_utf8());
+    Some(ch)
+  }
+
+  /// Freezes this mutable value using the default shared immutable strategy.
+  ///
+  /// Heap-backed values retain their allocation. [`freeze_compact`](Self::freeze_compact)
+  /// also transfers existing heap storage without copying, including a short current view;
+  /// its compact strategy applies to later shortening or view operations.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let text = Utf8BytesMut::from("hello").freeze();
+  /// assert_eq!(text.as_str(), "hello");
+  /// ```
+  pub fn freeze(self) -> crate::Utf8Bytes {
+    crate::utf8_bytes::Utf8Bytes {
+      inner: self.inner.freeze(),
+    }
   }
 
   /// Freezes this mutable value using the shared immutable strategy.
   pub fn freeze_shared(self) -> crate::shared::Utf8Bytes {
     crate::utf8_bytes::Utf8Bytes {
-      inner: self.inner.freeze_shared(),
+      inner: self.inner.freeze_with(),
     }
   }
 
   /// Freezes this mutable value using the compact immutable strategy.
+  ///
+  /// Existing heap storage is transferred without copying. In particular, a
+  /// short heap view is not immediately canonicalized; the compact strategy
+  /// applies to subsequent shortening or view operations.
   pub fn freeze_compact(self) -> crate::compact::Utf8Bytes {
     crate::utf8_bytes::Utf8Bytes {
-      inner: self.inner.freeze_compact(),
+      inner: self.inner.freeze_with(),
     }
   }
 
@@ -279,6 +369,207 @@ impl Utf8BytesMut {
   /// ```
   pub fn reserve(&mut self, additional: usize) {
     self.inner.reserve(additional);
+  }
+
+  /// Attempts to reclaim consumed storage for `additional` more bytes without
+  /// allocating.
+  ///
+  /// Returns `true` when the inner [`BytesMut`](crate::BytesMut) can provide
+  /// that writable space, and leaves this value unchanged on `false`.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8BytesMut;
+  ///
+  /// let mut text = Utf8BytesMut::with_capacity(64);
+  /// text.push_str("abc");
+  /// assert!(text.try_reclaim(61));
+  /// assert_eq!(text.as_str(), "abc");
+  /// ```
+  pub fn try_reclaim(&mut self, additional: usize) -> bool {
+    self.inner.try_reclaim(additional)
+  }
+
+  /// Copies the current heap view into inline storage when it fits.
+  ///
+  /// This forwards to [`BytesMut::try_make_inline`](crate::BytesMut::try_make_inline)
+  /// and preserves UTF-8 validity.
+  ///
+  /// ```
+  /// use smol_bytes::{Utf8BytesMut, INLINE_CAP};
+  ///
+  /// let mut text = Utf8BytesMut::with_capacity(128);
+  /// text.push_str("café");
+  /// assert!(text.try_make_inline());
+  /// assert_eq!(text.capacity(), INLINE_CAP);
+  /// ```
+  pub fn try_make_inline(&mut self) -> bool {
+    self.inner.try_make_inline()
+  }
+
+  /// Inserts `s` at a UTF-8 character boundary.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is invalid or growth overflows the address space.
+  pub fn insert_str(&mut self, idx: usize, s: &str) {
+    self
+      .try_insert_str(idx, s)
+      .unwrap_or_else(|error| panic!("insert_str failed: {error}"));
+  }
+
+  /// Tries to insert `s` at a UTF-8 character boundary.
+  ///
+  /// Invalid indices leave the buffer unchanged. Growth follows
+  /// [`BytesMut::reserve`](crate::BytesMut::reserve) behavior.
+  pub fn try_insert_str(&mut self, idx: usize, s: &str) -> Result<(), Utf8IndexError> {
+    validate_char_boundary(self.as_str(), idx)?;
+    self.replace_range_validated(idx, idx, s);
+    Ok(())
+  }
+
+  /// Inserts a Unicode scalar value at a UTF-8 character boundary.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is invalid or growth overflows the address space.
+  pub fn insert(&mut self, idx: usize, ch: char) {
+    self
+      .try_insert(idx, ch)
+      .unwrap_or_else(|error| panic!("insert failed: {error}"));
+  }
+
+  /// Tries to insert a Unicode scalar value at a UTF-8 character boundary.
+  pub fn try_insert(&mut self, idx: usize, ch: char) -> Result<(), Utf8IndexError> {
+    let mut encoded = [0_u8; 4];
+    self.try_insert_str(idx, ch.encode_utf8(&mut encoded))
+  }
+
+  /// Replaces a UTF-8 character-boundary range with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or growth overflows the address space.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &str) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a UTF-8 character-boundary range with `replacement`.
+  ///
+  /// Invalid ranges leave the buffer unchanged. Growth follows
+  /// [`BytesMut::reserve`](crate::BytesMut::reserve) behavior.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &str,
+  ) -> Result<(), Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
+    self.replace_range_validated(start, end, replacement);
+    Ok(())
+  }
+
+  /// Appends a copy of the specified UTF-8 character-boundary range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or growing the buffer overflows the
+  /// address space.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified UTF-8 character-boundary range.
+  ///
+  /// The range is normalized and both boundaries are validated before this
+  /// growable buffer reserves storage.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), Utf8IndexError> {
+    let old_len = self.len();
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.inner.resize(new_len, 0);
+    self.inner.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
+  }
+
+  fn replace_range_validated(&mut self, start: usize, end: usize, replacement: &str) {
+    let mut storage = RawUtf8Storage::growable(&mut self.inner);
+    raw_replace_bytes(&mut storage, start, end, replacement.as_bytes());
+  }
+
+  /// Removes and returns the Unicode scalar value at `idx`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `idx` is outside the visible string or is not a UTF-8
+  /// character boundary.
+  pub fn remove(&mut self, idx: usize) -> char {
+    self
+      .try_remove(idx)
+      .unwrap_or_else(|error| panic!("remove failed: {error}"))
+  }
+
+  /// Tries to remove and return the Unicode scalar value at `idx`.
+  pub fn try_remove(&mut self, idx: usize) -> Result<char, Utf8IndexError> {
+    let len = self.len();
+    if idx >= len {
+      return Err(OutOfBounds::new(idx, len).into());
+    }
+    validate_char_boundary(self.as_str(), idx)?;
+    let ch = self.as_str()[idx..]
+      .chars()
+      .next()
+      .expect("index below string length has a scalar");
+    self.replace_range_validated(idx, idx + ch.len_utf8(), "");
+    Ok(ch)
+  }
+
+  /// Retains only the characters for which `predicate` returns `true`.
+  ///
+  /// The predicate runs once per character in original order without
+  /// allocating. If it panics, decisions already returned from the predicate
+  /// are kept, while the current character and unvisited suffix remain.
+  pub fn retain<F>(&mut self, mut predicate: F)
+  where
+    F: FnMut(char) -> bool,
+  {
+    let mut guard = RetainGuard::new(RawUtf8Storage::growable(&mut self.inner));
+    guard.retain(&mut predicate);
+  }
+
+  /// Returns an iterator over a range that is removed when the iterator drops.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is out of bounds or not on UTF-8 character boundaries.
+  pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Utf8Drain<'_> {
+    self.try_drain(range).expect("drain range failed")
+  }
+
+  /// Tries to return an iterator over a range removed when it drops.
+  ///
+  /// The selected range is not removed eagerly. Dropping this iterator removes
+  /// the entire original range, even if it was only partly consumed.
+  pub fn try_drain(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<Utf8Drain<'_>, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
+    Ok(Utf8Drain::new(
+      RawUtf8Storage::growable(&mut self.inner),
+      start,
+      end,
+    ))
   }
 
   /// Splits the buffer at the given index.
@@ -307,7 +598,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_to(self, at)
   }
 
@@ -337,7 +628,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_off(self, at)
   }
 
@@ -359,24 +650,16 @@ impl Utf8BytesMut {
   /// assert_eq!(buf.len(), 0);
   /// ```
   pub fn split(&mut self) -> Self {
-    let inner = self
-      .inner
-      .try_split()
-      .expect("split always succeeds")
-      .unwrap_or_else(BytesMut::from);
+    let inner = self.inner.split();
     Self { inner }
   }
 
-  /// Attempts to merge another buffer back into this one.
+  /// Merges another buffer back into this one.
   ///
-  /// Returns `None` on success. Returns `Some(other)` when the buffers
-  /// cannot be efficiently merged — in particular, **both buffers must be
-  /// heap-allocated** (see [`BytesMut::unsplit`]). If either side is
-  /// inline, `unsplit` leaves `self` unchanged and hands `other` back.
+  /// Heap-backed contiguous halves merge without copying. Inline and mixed
+  /// pairs append their contents, promoting storage when necessary.
   ///
   /// # Examples
-  ///
-  /// Heap buffers merge successfully:
   ///
   /// ```
   /// use smol_bytes::Utf8BytesMut;
@@ -384,21 +667,22 @@ impl Utf8BytesMut {
   /// let mut buf = Utf8BytesMut::with_capacity(128);
   /// buf.push_str("hello world");
   /// let tail = buf.split_off(5);
-  /// assert!(buf.unsplit(tail).is_none());
+  /// buf.unsplit(tail);
   /// assert_eq!(buf.as_str(), "hello world");
   /// ```
   ///
-  /// Inline buffers fail to merge:
+  /// Inline buffers append too:
   ///
   /// ```
   /// use smol_bytes::Utf8BytesMut;
   ///
   /// let mut buf = Utf8BytesMut::from("hi"); // inline
   /// let tail = Utf8BytesMut::from("!");
-  /// assert!(buf.unsplit(tail).is_some()); // returned unchanged
+  /// buf.unsplit(tail);
+  /// assert_eq!(buf.as_str(), "hi!");
   /// ```
-  pub fn unsplit(&mut self, other: Self) -> Option<Self> {
-    self.inner.unsplit(other.inner).map(|inner| Self { inner })
+  pub fn unsplit(&mut self, other: Self) {
+    self.inner.unsplit(other.inner)
   }
 
   /// Returns a slice of this buffer.
@@ -426,7 +710,7 @@ impl Utf8BytesMut {
   /// # Errors
   ///
   /// Returns an error if the range is out of bounds or not on character boundaries.
-  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
   }
 }
@@ -457,33 +741,39 @@ impl core::ops::Deref for Utf8BytesMut {
   }
 }
 
+#[cfg(feature = "std")]
+impl AsRef<std::ffi::OsStr> for Utf8BytesMut {
+  fn as_ref(&self) -> &std::ffi::OsStr {
+    std::ffi::OsStr::new(self.as_str())
+  }
+}
+
+#[cfg(feature = "std")]
+impl AsRef<std::path::Path> for Utf8BytesMut {
+  fn as_ref(&self) -> &std::path::Path {
+    std::path::Path::new(self.as_str())
+  }
+}
+
 // The trait impls hold the real bodies. Inherent methods (above) forward
 // here via explicit `<Self as Utf8Buf>::method` / `<Self as Utf8BufMut>::method`
 // UFCS so there is no ambiguity about which impl is called and no fragile
 // reliance on the inherent-over-trait method resolution rule.
 impl Utf8Buf for Utf8BytesMut {
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-    let inner = self
-      .inner
-      .try_split_to(at)
-      .expect("already checked bounds")
-      .unwrap_or_else(BytesMut::from);
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
+    let inner = self.inner.split_to(at);
     Ok(Self { inner })
   }
 
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
-    let inner = self
-      .inner
-      .try_split_off(at)
-      .expect("already checked bounds")
-      .unwrap_or_else(BytesMut::from);
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
+    let inner = self.inner.split_off(at);
     Ok(Self { inner })
   }
 
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
     Ok(Self {
       inner: BytesMut::from(&self.inner.as_slice()[start..end]),
     })
@@ -491,25 +781,29 @@ impl Utf8Buf for Utf8BytesMut {
 }
 
 impl Utf8BufMut for Utf8BytesMut {
-  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error> {
+  type CapacityError = Infallible;
+
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
     if new_len >= self.len() {
       return Ok(());
     }
     if !self.as_str().is_char_boundary(new_len) {
-      return Err(Utf8Error::InvalidCharBoundary { at: new_len });
+      return Err(Utf8IndexError::InvalidCharBoundary { index: new_len });
     }
     self.inner.truncate(new_len);
     Ok(())
   }
 
-  fn push(&mut self, ch: char) {
+  fn try_push(&mut self, ch: char) -> Result<(), Self::CapacityError> {
     let mut buf = [0u8; 4];
     let s = ch.encode_utf8(&mut buf);
     self.inner.put_slice(s.as_bytes());
+    Ok(())
   }
 
-  fn push_str(&mut self, s: &str) {
+  fn try_push_str(&mut self, s: &str) -> Result<(), Self::CapacityError> {
     self.inner.put_slice(s.as_bytes());
+    Ok(())
   }
 
   fn clear(&mut self) {

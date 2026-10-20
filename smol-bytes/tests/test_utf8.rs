@@ -8,8 +8,8 @@
 use core::convert::Infallible;
 
 use smol_bytes::{
-  Buf, Buffer, Bytes, BytesMut, INLINE_CAP, TryPutError, Utf8Buffer, Utf8Bytes, Utf8BytesMut,
-  Utf8Error, compact,
+  Buf, Buffer, Bytes, BytesMut, INLINE_CAP, TryPutError, Utf8BufMut, Utf8Buffer, Utf8Bytes,
+  Utf8BytesMut, Utf8IndexError, compact,
 };
 
 /// A 2-byte char (Latin-1 supplement).
@@ -27,17 +27,17 @@ const MIXED: &str = "a é € 🦀";
 
 #[test]
 fn utf8_buffer_from_multibyte_str() {
-  let b = Utf8Buffer::from(LATIN_1);
+  let b = Utf8Buffer::try_from(LATIN_1).unwrap();
   assert_eq!(b.as_str(), LATIN_1);
   assert_eq!(b.len(), LATIN_1.len());
 
-  let b = Utf8Buffer::from(BMP);
+  let b = Utf8Buffer::try_from(BMP).unwrap();
   assert_eq!(b.as_str(), BMP);
 
-  let b = Utf8Buffer::from(EMOJI);
+  let b = Utf8Buffer::try_from(EMOJI).unwrap();
   assert_eq!(b.as_str(), EMOJI);
 
-  let b = Utf8Buffer::from(MIXED);
+  let b = Utf8Buffer::try_from(MIXED).unwrap();
   assert_eq!(b.as_str(), MIXED);
 }
 
@@ -49,10 +49,21 @@ fn utf8_buffer_from_str_respects_inline_capacity() {
   let maximum = "x".repeat(INLINE_CAP);
   let parsed: Utf8Buffer = maximum.parse().expect("inline string parses");
   assert_eq!(parsed.as_str(), maximum);
+  assert_eq!(
+    Utf8Buffer::try_from(maximum.as_str()).unwrap().as_str(),
+    maximum
+  );
 
   let oversized = "x".repeat(INLINE_CAP + 1);
   assert_eq!(
     oversized.parse::<Utf8Buffer>(),
+    Err(TryPutError {
+      requested: INLINE_CAP + 1,
+      available: INLINE_CAP,
+    })
+  );
+  assert_eq!(
+    Utf8Buffer::try_from(oversized.as_str()),
     Err(TryPutError {
       requested: INLINE_CAP + 1,
       available: INLINE_CAP,
@@ -73,7 +84,7 @@ fn utf8_buffer_push_multibyte_chars() {
 
 #[test]
 fn utf8_buffer_split_to_on_char_boundary() {
-  let mut b = Utf8Buffer::from("café");
+  let mut b = Utf8Buffer::try_from("café").unwrap();
   // "café" = [0x63, 0x61, 0x66, 0xc3, 0xa9]; split at 3 (before 'é') is valid
   let head = b.split_to(3);
   assert_eq!(head.as_str(), "caf");
@@ -83,30 +94,36 @@ fn utf8_buffer_split_to_on_char_boundary() {
 #[test]
 #[should_panic]
 fn utf8_buffer_split_to_in_middle_of_multibyte_char_panics() {
-  let mut b = Utf8Buffer::from("café");
+  let mut b = Utf8Buffer::try_from("café").unwrap();
   // "é" is at bytes [3, 4]; splitting at 4 lands in the middle of 'é'
   let _ = b.split_to(4);
 }
 
 #[test]
 fn utf8_buffer_try_split_to_mid_char_returns_err() {
-  let mut b = Utf8Buffer::from("café");
+  let mut b = Utf8Buffer::try_from("café").unwrap();
   let r = b.try_split_to(4);
-  assert_eq!(r, Err(Utf8Error::InvalidCharBoundary { at: 4 }));
+  assert_eq!(r, Err(Utf8IndexError::InvalidCharBoundary { index: 4 }));
   // Original buffer is untouched on error.
   assert_eq!(b.as_str(), "café");
 }
 
 #[test]
 fn utf8_buffer_try_split_off_out_of_bounds() {
-  let mut b = Utf8Buffer::from("hi");
+  let mut b = Utf8Buffer::try_from("hi").unwrap();
   let r = b.try_split_off(99);
-  assert!(matches!(r, Err(Utf8Error::OutOfBounds { at: 99, len: 2 })));
+  assert!(matches!(
+    r,
+    Err(Utf8IndexError::IndexOutOfBounds(smol_bytes::OutOfBounds {
+      requested: 99,
+      available: 2,
+    }))
+  ));
 }
 
 #[test]
 fn utf8_buffer_slice_respects_char_boundaries() {
-  let b = Utf8Buffer::from("café euro");
+  let b = Utf8Buffer::try_from("café euro").unwrap();
   let s = b.slice(3..5); // "é"
   assert_eq!(s.as_str(), "é");
 }
@@ -114,20 +131,20 @@ fn utf8_buffer_slice_respects_char_boundaries() {
 #[test]
 #[should_panic]
 fn utf8_buffer_slice_mid_char_panics() {
-  let b = Utf8Buffer::from("café");
+  let b = Utf8Buffer::try_from("café").unwrap();
   let _ = b.slice(3..4); // mid-é
 }
 
 #[test]
 fn utf8_buffer_try_slice_mid_char_returns_err() {
-  let b = Utf8Buffer::from("café");
+  let b = Utf8Buffer::try_from("café").unwrap();
   assert!(b.try_slice(3..4).is_err());
 }
 
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
 fn utf8_fallible_slices_reject_reversed_and_overflowing_ranges() {
-  let inline = Utf8Buffer::from("hello");
+  let inline = Utf8Buffer::try_from("hello").unwrap();
   assert!(inline.try_slice(4..2).is_err());
   assert!(inline.try_slice(..=usize::MAX).is_err());
 
@@ -148,7 +165,9 @@ fn utf8_wrappers_forward_visible_lengths_and_split_bounds() {
   assert_eq!(inline.len(), 4);
   assert_eq!(
     inline.try_split_to(5),
-    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+    Err(Utf8IndexError::IndexOutOfBounds(
+      smol_bytes::OutOfBounds::new(5, 4)
+    ))
   );
   assert_eq!(inline.split_to(4).as_str(), "ello");
   assert!(inline.is_empty());
@@ -159,7 +178,9 @@ fn utf8_wrappers_forward_visible_lengths_and_split_bounds() {
   assert_eq!(immutable.len(), 4);
   assert_eq!(
     immutable.try_split_to(5),
-    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+    Err(Utf8IndexError::IndexOutOfBounds(
+      smol_bytes::OutOfBounds::new(5, 4)
+    ))
   );
   assert_eq!(immutable.split_to(4).as_str(), "ello");
   assert!(immutable.is_empty());
@@ -170,7 +191,9 @@ fn utf8_wrappers_forward_visible_lengths_and_split_bounds() {
   assert_eq!(inline_mut.len(), 4);
   assert_eq!(
     inline_mut.try_split_to(5),
-    Err(Utf8Error::OutOfBounds { at: 5, len: 4 })
+    Err(Utf8IndexError::IndexOutOfBounds(
+      smol_bytes::OutOfBounds::new(5, 4)
+    ))
   );
   assert_eq!(inline_mut.split_to(4).as_str(), "ello");
   assert!(inline_mut.is_empty());
@@ -185,7 +208,7 @@ fn utf8_wrappers_forward_visible_lengths_and_split_bounds() {
 
 #[test]
 fn utf8_buffer_try_push_overflow() {
-  let mut b = Utf8Buffer::from("a".repeat(60).as_str());
+  let mut b = Utf8Buffer::try_from("a".repeat(60).as_str()).unwrap();
   // 60 'a's; capacity is 62. Pushing a 4-byte '🦀' (needs 4 bytes) overflows.
   assert!(b.try_push('🦀').is_err());
   // Content unchanged.
@@ -193,9 +216,36 @@ fn utf8_buffer_try_push_overflow() {
 }
 
 #[test]
+fn utf8_buffer_fmt_write_is_atomic_on_capacity_failure() {
+  use core::fmt::Write;
+
+  let mut buffer = Utf8Buffer::try_from("a".repeat(60).as_str()).unwrap();
+  assert!(write!(&mut buffer, "🦀").is_err());
+  assert_eq!(buffer.as_str(), "a".repeat(60));
+
+  let mut writable = Utf8Buffer::new();
+  write!(&mut writable, "hello").unwrap();
+  assert_eq!(writable.as_str(), "hello");
+}
+
+#[test]
+fn utf8_buf_mut_capacity_errors_distinguish_fixed_and_growable_types() {
+  let mut fixed = Utf8Buffer::new();
+  let fixed_result: Result<(), TryPutError> =
+    <Utf8Buffer as Utf8BufMut>::try_push_str(&mut fixed, "fixed");
+  assert!(fixed_result.is_ok());
+
+  let mut growable = Utf8BytesMut::new();
+  let growable_result: Result<(), Infallible> =
+    <Utf8BytesMut as Utf8BufMut>::try_push_str(&mut growable, "growable");
+  assert_eq!(growable_result, Ok(()));
+  assert_eq!(growable.as_str(), "growable");
+}
+
+#[test]
 #[should_panic]
 fn utf8_buffer_push_overflow_panics() {
-  let mut b = Utf8Buffer::from("a".repeat(60).as_str());
+  let mut b = Utf8Buffer::try_from("a".repeat(60).as_str()).unwrap();
   b.push('🦀');
 }
 
@@ -215,7 +265,7 @@ fn utf8_buffer_try_from_bytes() {
 
 #[test]
 fn utf8_buffer_roundtrip_via_string() {
-  let original = Utf8Buffer::from(MIXED);
+  let original = Utf8Buffer::try_from(MIXED).unwrap();
   let s: String = String::from(original);
   assert_eq!(s, MIXED);
   let back = Utf8Buffer::try_from_str(&s).unwrap();
@@ -224,10 +274,10 @@ fn utf8_buffer_roundtrip_via_string() {
 
 #[test]
 fn utf8_buffer_try_truncate_checks_boundaries_and_preserves_errors() {
-  let mut value = Utf8Buffer::from("éx");
+  let mut value = Utf8Buffer::try_from("éx").unwrap();
   assert_eq!(
     value.try_truncate(1),
-    Err(Utf8Error::InvalidCharBoundary { at: 1 })
+    Err(Utf8IndexError::InvalidCharBoundary { index: 1 })
   );
   assert_eq!(value.as_str(), "éx");
   value.try_truncate(2).unwrap();
@@ -388,7 +438,7 @@ fn utf8_bytes_mut_try_truncate_and_freeze_preserve_representation() {
   let mut inline = Utf8BytesMut::from("éx");
   assert_eq!(
     inline.try_truncate(1),
-    Err(Utf8Error::InvalidCharBoundary { at: 1 })
+    Err(Utf8IndexError::InvalidCharBoundary { index: 1 })
   );
   assert_eq!(inline.as_str(), "éx");
   inline.try_truncate(2).unwrap();
@@ -439,7 +489,7 @@ fn utf8_bytes_mut_split_and_unsplit_heap() {
   let tail = b.split_off(6); // " café"? no — 6 bytes = "hello "
   assert_eq!(b.as_str(), "hello ");
   assert_eq!(tail.as_str(), "café");
-  assert!(b.unsplit(tail).is_none());
+  b.unsplit(tail);
   assert_eq!(b.as_str(), "hello café");
 }
 
@@ -477,7 +527,7 @@ fn utf8_bytes_mut_inline_heap_boundary_with_multibyte() {
 
 #[test]
 fn cross_type_utf8_buffer_to_utf8_bytes_via_string() {
-  let a = Utf8Buffer::from("café");
+  let a = Utf8Buffer::try_from("café").unwrap();
   let s: String = a.into();
   let b = Utf8Bytes::from(s.as_str());
   assert_eq!(b.as_str(), "café");
@@ -512,7 +562,7 @@ fn try_from_buffer_with_invalid_utf8() {
 
 #[test]
 fn cross_type_eq_all_pairs() {
-  let a = Utf8Buffer::from("café");
+  let a = Utf8Buffer::try_from("café").unwrap();
   let b = Utf8Bytes::from("café");
   let c = Utf8BytesMut::from("café");
 
@@ -524,7 +574,7 @@ fn cross_type_eq_all_pairs() {
   assert_eq!(b, c);
   assert_eq!(c, b);
 
-  let d = Utf8Buffer::from("different");
+  let d = Utf8Buffer::try_from("different").unwrap();
   assert_ne!(d, b);
   assert_ne!(d, c);
 }

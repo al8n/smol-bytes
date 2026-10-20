@@ -55,7 +55,7 @@
 //! ```
 mod raw;
 
-pub(crate) use raw::{RawBytes, Repr};
+pub(crate) use raw::{RawBytes, Repr, visible_subslice_range};
 
 /// ImmutableStorage implementations and type aliases.
 pub mod strategy;

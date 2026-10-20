@@ -11,7 +11,7 @@ where
     let mut bytes = Utf8BytesMut::new();
     bytes.extend(iter);
     Self {
-      inner: bytes.inner.freeze::<S>(),
+      inner: bytes.inner.freeze_with::<S>(),
     }
   }
 }

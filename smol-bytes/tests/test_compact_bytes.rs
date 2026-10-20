@@ -172,17 +172,13 @@ fn split_off() {
   assert_eq!(world, &b"world"[..]);
 
   let mut hello = BytesMut::from(&b"helloworld"[..]);
-  match hello.split_off(5) {
-    Ok(_) => panic!("Expected Err for inline buffer"),
-    Err(world) => {
-      assert_eq!(hello, &b"hello"[..]);
-      assert_eq!(world, &b"world"[..]);
-    }
-  }
+  let world = hello.split_off(5);
+  assert_eq!(hello, &b"hello"[..]);
+  assert_eq!(world, &b"world"[..]);
 
   let mut hello = BytesMut::from(&b"helloworld"[..]);
   hello.make_heap();
-  let world = hello.split_off(5).unwrap();
+  let world = hello.split_off(5);
   assert_eq!(hello, &b"hello"[..]);
   assert_eq!(world, &b"world"[..]);
 }
@@ -204,7 +200,7 @@ fn bytes_mut_split_off_oob() {
 #[test]
 fn split_off_uninitialized() {
   let mut bytes = BytesMut::with_capacity(1024);
-  let other = bytes.split_off(128).unwrap();
+  let other = bytes.split_off(128);
 
   assert_eq!(bytes.len(), 0);
   assert_eq!(bytes.capacity(), 128);
@@ -229,24 +225,12 @@ fn split_off_to_loop() {
     }
     {
       let mut bytes = BytesMut::from(&s[..]);
-      match bytes.split_off(i) {
-        Ok(off) => {
-          // Heap buffer - got BytesMut (can grow)
-          assert_eq!(i, bytes.len());
-          let mut sum: Vec<u8> = Vec::new();
-          sum.extend(&bytes);
-          sum.extend(&off);
-          assert_eq!(&s[..], &sum[..]);
-        }
-        Err(off) => {
-          // Inline buffer - got Buffer (max 62 bytes), bytes was truncated
-          assert_eq!(i, bytes.len());
-          let mut sum: Vec<u8> = Vec::new();
-          sum.extend(&bytes);
-          sum.extend(&off);
-          assert_eq!(&s[..], &sum[..]);
-        }
-      }
+      let off = bytes.split_off(i);
+      assert_eq!(i, bytes.len());
+      let mut sum: Vec<u8> = Vec::new();
+      sum.extend(&bytes);
+      sum.extend(&off);
+      assert_eq!(&s[..], &sum[..]);
     }
     {
       let mut bytes = Bytes::from(&s[..]);
@@ -259,24 +243,12 @@ fn split_off_to_loop() {
     }
     {
       let mut bytes = BytesMut::from(&s[..]);
-      match bytes.split_to(i) {
-        Ok(off) => {
-          // Heap buffer - got BytesMut (can grow)
-          assert_eq!(i, off.len());
-          let mut sum: Vec<u8> = Vec::new();
-          sum.extend(&off);
-          sum.extend(&bytes);
-          assert_eq!(&s[..], &sum[..]);
-        }
-        Err(off) => {
-          // Inline buffer - got Buffer (max 62 bytes), bytes was advanced
-          assert_eq!(i, off.len());
-          let mut sum: Vec<u8> = Vec::new();
-          sum.extend(&off);
-          sum.extend(&bytes);
-          assert_eq!(&s[..], &sum[..]);
-        }
-      }
+      let off = bytes.split_to(i);
+      assert_eq!(i, off.len());
+      let mut sum: Vec<u8> = Vec::new();
+      sum.extend(&off);
+      sum.extend(&bytes);
+      assert_eq!(&s[..], &sum[..]);
     }
   }
 }
@@ -437,7 +409,7 @@ fn freeze_clone_shared() {
   let s = &b"abcdefgh"[..];
   let mut b = BytesMut::from(s);
   b.make_heap();
-  let b = b.split().unwrap().freeze_compact();
+  let b = b.split().freeze_compact();
   assert_eq!(b, s);
   let c = b.clone();
   assert_eq!(c, s);
@@ -894,7 +866,7 @@ fn bytes_mut_unsplit_basic() {
   buf.extend_from_slice(b"aaabbbcccddd");
 
   buf.make_heap();
-  let splitted = buf.split_off(6).unwrap();
+  let splitted = buf.split_off(6);
   assert_eq!(b"aaabbb", &buf[..]);
   assert_eq!(b"cccddd", &splitted[..]);
 
@@ -935,7 +907,7 @@ fn bytes_mut_unsplit_other_keeps_capacity() {
 
   // non empty other created "from" buf
   buf.make_heap();
-  let mut other = buf.split_off(buf.len()).unwrap();
+  let mut other = buf.split_off(buf.len());
   other.extend_from_slice(b"ccddee");
   buf.unsplit(other);
 
@@ -949,7 +921,7 @@ fn bytes_mut_unsplit_empty_other_keeps_capacity() {
 
   // empty other created "from" buf
   buf.make_heap();
-  let other = buf.split_off(buf.len()).unwrap();
+  let other = buf.split_off(buf.len());
   buf.unsplit(other);
 
   assert_eq!(buf.capacity(), 64);
@@ -977,9 +949,9 @@ fn bytes_mut_unsplit_arc_non_contiguous() {
   buf.extend_from_slice(b"aaaabbbbeeeeccccdddd");
 
   buf.make_heap();
-  let mut buf2 = buf.split_off(8).unwrap(); //arc
+  let mut buf2 = buf.split_off(8); //arc
 
-  let buf3 = buf2.split_off(4).unwrap(); //arc
+  let buf3 = buf2.split_off(4); //arc
 
   buf.unsplit(buf3);
   assert_eq!(b"aaaabbbbccccdddd", &buf[..]);
@@ -991,8 +963,8 @@ fn bytes_mut_unsplit_two_split_offs() {
   buf.extend_from_slice(b"aaaabbbbccccdddd");
 
   buf.make_heap();
-  let mut buf2 = buf.split_off(8).unwrap(); //arc
-  let buf3 = buf2.split_off(4).unwrap(); //arc
+  let mut buf2 = buf.split_off(8); //arc
+  let buf3 = buf2.split_off(4); //arc
 
   buf2.unsplit(buf3);
   buf.unsplit(buf2);
@@ -1109,7 +1081,7 @@ fn bytes_into_vec() {
 
   // Overwrite the bytes to make sure only one reference to the underlying
   // Vec exists.
-  bytes = bytes.split_off(9).unwrap();
+  bytes = bytes.split_off(9);
 
   let vec: Vec<u8> = bytes.into();
   assert_eq!(&vec, content);
@@ -1123,7 +1095,7 @@ fn bytes_into_vec() {
 
   bytes.make_heap();
 
-  let vec: Vec<u8> = bytes.split_off(prefix.len()).unwrap().into();
+  let vec: Vec<u8> = bytes.split_off(prefix.len()).into();
   assert_eq!(&vec, content);
 
   let vec: Vec<u8> = bytes.into();
@@ -1163,7 +1135,7 @@ fn test_bytes_into_vec() {
   // Test bytes_mut.SHARED_VTABLE.to_vec impl where offset != 0
   let mut bytes_mut1: BytesMut = bs[..].into();
   bytes_mut1.make_heap();
-  let bytes_mut2 = bytes_mut1.split_off(9).unwrap();
+  let bytes_mut2 = bytes_mut1.split_off(9);
 
   let b1 = bytes_mut1.freeze_compact();
   let b2 = bytes_mut2.freeze_compact();
@@ -1283,7 +1255,7 @@ fn shared_is_unique() {
 fn mut_shared_is_unique() {
   let mut b = BytesMut::from(LONG);
   b.make_heap();
-  let c = b.split().unwrap().freeze_compact();
+  let c = b.split().freeze_compact();
   assert!(!c.is_unique());
   drop(b);
   assert!(c.is_unique());
@@ -1340,7 +1312,7 @@ fn test_bytesmut_from_bytes_bytes_mut_offset() {
   // Test bytes_mut.SHARED_VTABLE.to_mut impl where offset != 0
   let mut bytes_mut1: BytesMut = bs[..].into();
   bytes_mut1.make_heap();
-  let bytes_mut2 = bytes_mut1.split_off(9).unwrap();
+  let bytes_mut2 = bytes_mut1.split_off(9);
 
   let b1 = bytes_mut1.freeze_compact();
   let b2 = bytes_mut2.freeze_compact();
@@ -1417,7 +1389,7 @@ fn try_reclaim_empty() {
   let cap = buf.capacity();
   assert!(cap >= 64);
   buf.make_heap();
-  let mut split = buf.split().unwrap();
+  let mut split = buf.split();
   drop(buf);
   assert_eq!(0, split.capacity());
   assert!(split.try_reclaim(64));
@@ -1448,12 +1420,12 @@ fn try_reclaim_arc() {
   let mut buf = BytesMut::with_capacity(64);
   buf.put_slice(b"abc");
   buf.make_heap();
-  let x = buf.split().unwrap().freeze_compact();
+  let x = buf.split().freeze_compact();
   buf.put_slice(b"def");
   // Reclaiming a ludicrous amount of space should calmly return false
   assert!(!buf.try_reclaim(usize::MAX));
 
-  let y = buf.split().unwrap().freeze_shared();
+  let y = buf.split().freeze_shared();
   let z = y.clone();
   assert!(!buf.try_reclaim(64));
   drop(x);
@@ -1481,7 +1453,7 @@ fn split_off_empty_addr_mut() {
   let ptr_start = buf.as_ptr();
   let ptr_end = ptr_start.wrapping_add(1024);
 
-  let empty_end = buf.split_off(1024).unwrap();
+  let empty_end = buf.split_off(1024);
   assert_eq!(empty_end.len(), 0);
   assert_eq!(empty_end.as_ptr(), ptr_end);
 
@@ -1501,7 +1473,7 @@ fn split_to_empty_addr_mut() {
   let ptr_start = buf.as_ptr();
   let ptr_end = ptr_start.wrapping_add(1024);
 
-  let empty_start = buf.split_to(0).unwrap();
+  let empty_start = buf.split_to(0);
   assert_eq!(empty_start.len(), 0);
   assert_eq!(empty_start.as_ptr(), ptr_start);
 
@@ -1514,68 +1486,66 @@ fn split_to_empty_addr_mut() {
   let _ = &buf[..];
 }
 
-// Uncomment these tests when `slice_ref` is implemented.
+fn test_slice_ref(bytes: &Bytes, start: usize, end: usize, expected: &[u8]) {
+  let slice = &bytes.as_ref()[start..end];
+  let sub = bytes.slice_ref(slice);
+  assert_eq!(&sub[..], expected);
+}
 
-// fn test_slice_ref(bytes: &Bytes, start: usize, end: usize, expected: &[u8]) {
-//   let slice = &(bytes.as_ref()[start..end]);
-//   let sub = bytes.slice_ref(slice);
-//   assert_eq!(&sub[..], expected);
-// }
+#[test]
+fn slice_ref_works_for_visible_inline_subsets() {
+  let bytes = Bytes::from(&b"012345678"[..]);
 
-// #[test]
-// fn slice_ref_works() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
+  test_slice_ref(&bytes, 0, 0, b"");
+  test_slice_ref(&bytes, 0, 3, b"012");
+  test_slice_ref(&bytes, 2, 6, b"2345");
+  test_slice_ref(&bytes, 7, 9, b"78");
+  test_slice_ref(&bytes, 9, 9, b"");
+}
 
-//   test_slice_ref(&bytes, 0, 0, b"");
-//   test_slice_ref(&bytes, 0, 3, b"012");
-//   test_slice_ref(&bytes, 2, 6, b"2345");
-//   test_slice_ref(&bytes, 7, 9, b"78");
-//   test_slice_ref(&bytes, 9, 9, b"");
-// }
+#[test]
+fn slice_ref_empty_is_canonical_even_when_unrelated() {
+  let bytes = Bytes::from(&b"abcde"[..]);
+  let external = &b"unrelated"[0..0];
 
-// #[test]
-// fn slice_ref_empty() {
-//   let bytes = Bytes::from(&b""[..]);
-//   let slice = &(bytes.as_ref()[0..0]);
+  assert_eq!(Bytes::new(), bytes.slice_ref(external));
+  assert_eq!(Some(Bytes::new()), bytes.try_slice_ref(external));
+}
 
-//   let sub = bytes.slice_ref(slice);
-//   assert_eq!(&sub[..], b"");
-// }
+#[test]
+fn slice_ref_rejects_equal_bytes_from_another_allocation() {
+  let bytes = Bytes::from(&b"012345678"[..]);
+  let unrelated = Vec::from(&b"2345"[..]);
 
-// #[test]
-// fn slice_ref_empty_subslice() {
-//   let bytes = Bytes::from(&b"abcde"[..]);
-//   let subbytes = bytes.slice(0..0);
-//   let slice = &subbytes[..];
-//   // The `slice` object is derived from the original `bytes` object
-//   // so `slice_ref` should work.
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+  assert!(bytes.try_slice_ref(&unrelated).is_none());
+}
 
-// #[test]
-// #[should_panic]
-// fn slice_ref_catches_not_a_subset() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
-//   let slice = &b"012345"[0..4];
+#[test]
+fn slice_ref_compactly_inlines_short_heap_subsets() {
+  let bytes = Bytes::from(vec![b'x'; 128]);
+  let large = bytes.slice_ref(&bytes.as_ref()[16..112]);
+  let short = bytes.slice_ref(&bytes.as_ref()[16..32]);
 
-//   bytes.slice_ref(slice);
-// }
+  assert!(large.is_heap());
+  assert_eq!(large.as_ptr(), bytes.as_ptr().wrapping_add(16));
+  assert!(short.is_inline());
+  assert_eq!(short.as_ref(), &bytes.as_ref()[16..32]);
 
-// #[test]
-// fn slice_ref_not_an_empty_subset() {
-//   let bytes = Bytes::from(&b"012345678"[..]);
-//   let slice = &b""[0..0];
+  let mut view = bytes.clone();
+  view.advance(16);
+  view.truncate(64);
+  assert!(view.try_slice_ref(&bytes.as_ref()[..16]).is_none());
+  assert!(view.try_slice_ref(&bytes.as_ref()[80..]).is_none());
+}
 
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+#[test]
+#[should_panic(expected = "slice_ref subset must be contained")]
+fn slice_ref_panics_for_nonempty_unrelated_subset() {
+  let bytes = Bytes::from(&b"012345678"[..]);
+  let unrelated = Vec::from(&b"2345"[..]);
 
-// #[test]
-// fn empty_slice_ref_not_an_empty_subset() {
-//   let bytes = Bytes::new();
-//   let slice = &b"some other slice"[0..0];
-
-//   assert_eq!(Bytes::new(), bytes.slice_ref(slice));
-// }
+  let _ = bytes.slice_ref(&unrelated);
+}
 
 #[test]
 fn from_bytes_crate_small_is_inlined() {

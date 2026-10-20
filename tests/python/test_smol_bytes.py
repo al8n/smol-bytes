@@ -61,8 +61,8 @@ class TestConstruction:
         buf = Buffer.from_bytes(b"hello")
         assert bytes(buf) == b"hello"
 
-    def test_buffer_from_str(self):
-        buf = Buffer.from_str("hello")
+    def test_buffer_from_utf8(self):
+        buf = Buffer.from_utf8("hello")
         assert bytes(buf) == b"hello"
 
     def test_buffer_from_bytes_overflow(self):
@@ -77,8 +77,8 @@ class TestConstruction:
         buf = BytesMut.from_bytes(b"hello")
         assert bytes(buf) == b"hello"
 
-    def test_bytes_mut_from_str(self):
-        buf = BytesMut.from_str("hello")
+    def test_bytes_mut_from_utf8(self):
+        buf = BytesMut.from_utf8("hello")
         assert bytes(buf) == b"hello"
 
     def test_bytes_mut_with_capacity(self):
@@ -99,8 +99,8 @@ class TestConstruction:
         b = SharedBytes.from_bytes(b"hello")
         assert bytes(b) == b"hello"
 
-    def test_shared_bytes_from_str(self):
-        b = SharedBytes.from_str("hello")
+    def test_shared_bytes_from_utf8(self):
+        b = SharedBytes.from_utf8("hello")
         assert bytes(b) == b"hello"
 
     def test_compact_bytes_empty(self):
@@ -111,8 +111,8 @@ class TestConstruction:
         b = CompactBytes.from_bytes(b"hello")
         assert bytes(b) == b"hello"
 
-    def test_compact_bytes_from_str(self):
-        b = CompactBytes.from_str("hello")
+    def test_compact_bytes_from_utf8(self):
+        b = CompactBytes.from_utf8("hello")
         assert bytes(b) == b"hello"
 
     def test_utf8_buffer_empty(self):
@@ -125,7 +125,7 @@ class TestConstruction:
         assert str(buf) == "hello"
 
     def test_utf8_buffer_from_str_overflow(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(BufferError):
             Utf8Buffer.from_str("x" * 63)
 
     def test_utf8_bytes_empty(self):
@@ -181,12 +181,12 @@ class TestBasicOperations:
         ],
         ids=["Buffer", "BytesMut", "SharedBytes", "CompactBytes"],
     )
-    @pytest.mark.parametrize("to_string", [False, True], ids=["str", "to_string"])
-    def test_invalid_utf8_decode_error(self, make_buf, to_string):
+    def test_invalid_utf8_decode_error(self, make_buf):
         value = make_buf()
 
+        assert str(value) == str(bytes(value))
         with pytest.raises(UnicodeDecodeError) as exc_info:
-            value.to_string() if to_string else str(value)
+            value.decode_utf8()
 
         error = exc_info.value
         assert error.encoding == "utf-8"
@@ -790,8 +790,8 @@ class TestNativeProtocolDifferential:
             (InvalidIndex(), TypeError, None),
             (-1, ValueError, None),
             (9, ValueError, None),
-            (10**100, ValueError, None),
-            (Index(10**100), ValueError, None),
+            (10**100, OverflowError, None),
+            (Index(10**100), OverflowError, None),
             (RaisingIndex(RuntimeError, "runtime-width"), RuntimeError, "runtime-width"),
             (RaisingIndex(TypeError, "type-width"), TypeError, "type-width"),
             (RaisingIndex(OverflowError, "overflow-width"), OverflowError, "overflow-width"),
@@ -882,24 +882,21 @@ class TestNativeProtocolDifferential:
             assert bytes(value) == bytes(native)
 
         for replacement, error_type, message in [
-            (-1, ValueError, None),
-            (256, ValueError, None),
-            (10**100, ValueError, None),
-            (Index(10**100), ValueError, None),
+            (-1, OverflowError, None),
+            (256, OverflowError, None),
+            (10**100, OverflowError, None),
+            (Index(10**100), OverflowError, None),
             (object(), TypeError, None),
             (InvalidIndex(), TypeError, None),
             (RaisingIndex(RuntimeError, "runtime-scalar"), RuntimeError, "runtime-scalar"),
             (RaisingIndex(TypeError, "type-scalar"), TypeError, "type-scalar"),
             (RaisingIndex(OverflowError, "overflow-scalar"), OverflowError, "overflow-scalar"),
         ]:
-            native = bytearray(b"abc")
-            with pytest.raises(error_type) as native_error:
-                native[1] = replacement
             value = make(b"abc")
             with pytest.raises(error_type) as wrapper_error:
                 value[1] = replacement
             if message is not None:
-                assert str(wrapper_error.value) == str(native_error.value) == message
+                assert str(wrapper_error.value) == message
             assert bytes(value) == b"abc"
 
     @pytest.mark.parametrize("make", RAW[:2])
@@ -970,7 +967,7 @@ class TestNativeProtocolDifferential:
         assert [value[index] for index in range(-len(native), len(native))] == [
             native[index] for index in range(-len(native), len(native))
         ]
-        assert value.remaining() == len(native.encode("utf-8"))
+        assert value.remaining_bytes() == len(native.encode("utf-8"))
 
     @pytest.mark.parametrize("make", RAW)
     def test_raw_contains_matches_native_bytes(self, make):
@@ -1163,7 +1160,7 @@ class TestNativeProtocolDifferential:
     def test_variable_width_validates_before_reading(self, make, method):
         value = make(b"\x01" if make in self.RAW else "a")
         before = bytes(value) if hasattr(value, "__bytes__") else str(value)
-        for width, error in [(-1, ValueError), (9, ValueError), (10**100, ValueError), ("1", TypeError)]:
+        for width, error in [(-1, ValueError), (9, ValueError), (10**100, OverflowError), ("1", TypeError)]:
             with pytest.raises(error):
                 getattr(value, method)(width)
             after = bytes(value) if hasattr(value, "__bytes__") else str(value)
@@ -1196,12 +1193,12 @@ class TestNativeProtocolDifferential:
     @pytest.mark.parametrize("make", [lambda: Utf8Buffer.from_str("éx"), lambda: Utf8BytesMut.from_str("éx")])
     def test_utf8_truncate_uses_char_offsets(self, make):
         value = make()
-        value.truncate(1)  # keep one Unicode scalar value
+        value.truncate_chars(1)  # keep one Unicode scalar value
         assert str(value) == "é"
         value = make()
-        value.truncate(2)  # length in characters: no-op
+        value.truncate_chars(2)  # length in characters: no-op
         assert str(value) == "éx"
-        value.truncate(99)  # beyond the character count: no-op
+        value.truncate_chars(99)  # beyond the character count: no-op
         assert str(value) == "éx"
 
     def test_utf8_index_out_of_range(self):
@@ -1327,7 +1324,7 @@ class TestSplitOperations:
     )
     def test_utf8_split_to(self, make_buf):
         buf = make_buf()
-        head = buf.split_to(5)
+        head = buf.split_to_chars(5)
         assert str(head) == "hello"
         assert str(buf) == " world"
 
@@ -1342,7 +1339,7 @@ class TestSplitOperations:
     )
     def test_utf8_split_off(self, make_buf):
         buf = make_buf()
-        tail = buf.split_off(6)
+        tail = buf.split_off_chars(6)
         assert str(buf) == "hello "
         assert str(tail) == "world"
 
@@ -1358,7 +1355,7 @@ class TestSplitOperations:
     def test_utf8_split_on_char_boundary(self, make_buf):
         # "cafe" is 5 bytes: c(1) a(1) f(1) e-acute(2)
         buf = make_buf()
-        head = buf.split_to(3)
+        head = buf.split_to_chars(3)
         assert str(head) == "caf"
         assert str(buf) == "\u00e9"
 
@@ -1374,13 +1371,58 @@ class TestSplitOperations:
     def test_utf8_split_out_of_range_raises(self, make_buf):
         # "café" has four characters; a char offset beyond that is out of range
         buf = make_buf()
-        with pytest.raises(ValueError):
-            buf.split_to(5)
+        with pytest.raises(IndexError):
+            buf.split_to_chars(5)
 
     def test_split_out_of_bounds(self):
         buf = Buffer.from_bytes(b"hi")
         with pytest.raises(IndexError):
             buf.split_to(10)
+
+    @pytest.mark.parametrize(
+        "initial, suffix, heap",
+        [(b"hi", b"!", False), (b"a" * 80, b"b" * 80, True)],
+        ids=["inline", "heap"],
+    )
+    def test_bytes_mut_unsplit_snapshots_other_and_returns_none(self, initial, suffix, heap):
+        value = BytesMut.from_bytes(initial)
+        other = BytesMut.from_bytes(suffix)
+        assert value.is_heap() is heap
+        assert other.is_heap() is heap
+        before = bytes(other)
+
+        assert value.unsplit(other) is None
+        assert bytes(value) == initial + suffix
+        assert bytes(other) == before
+
+    @pytest.mark.parametrize(
+        "initial, suffix, heap",
+        [("hi", "!", False), ("a" * 80, "🦀" * 20, True)],
+        ids=["inline", "heap"],
+    )
+    def test_utf8_bytes_mut_unsplit_snapshots_other_and_returns_none(
+        self, initial, suffix, heap
+    ):
+        value = Utf8BytesMut.from_str(initial)
+        other = Utf8BytesMut.from_str(suffix)
+        assert value.is_heap() is heap
+        assert other.is_heap() is heap
+        before = str(other)
+
+        assert value.unsplit(other) is None
+        assert str(value) == initial + suffix
+        assert str(other) == before
+
+    def test_mutable_unsplit_self_alias_is_rejected_without_mutation(self):
+        raw = BytesMut.from_bytes(b"self")
+        with pytest.raises(RuntimeError):
+            raw.unsplit(raw)
+        assert bytes(raw) == b"self"
+
+        text = Utf8BytesMut.from_str("self")
+        with pytest.raises(RuntimeError):
+            text.unsplit(text)
+        assert str(text) == "self"
 
 
 # ---------------------------------------------------------------------------
@@ -1734,7 +1776,7 @@ class TestUtf8PushOperations:
 
     def test_utf8_buffer_push_str_overflow(self):
         buf = Utf8Buffer()
-        with pytest.raises(ValueError):
+        with pytest.raises(BufferError):
             buf.push_str("x" * 63)
 
 
@@ -1748,13 +1790,13 @@ class TestMultibyteUtf8:
 
     def test_cafe_len_is_bytes(self):
         buf = Utf8Bytes.from_str("caf\u00e9")
-        assert len(buf) == 4  # Unicode scalar values; remaining() is still five bytes.
-        assert buf.remaining() == 5
+        assert len(buf) == 4  # Unicode scalar values; remaining_bytes() is still five bytes.
+        assert buf.remaining_bytes() == 5
 
     def test_crab_emoji_len(self):
         buf = Utf8BytesMut.from_str("\U0001f980")
-        assert len(buf) == 1  # One Unicode scalar value; remaining() is still four bytes.
-        assert buf.remaining() == 4
+        assert len(buf) == 1  # One Unicode scalar value; remaining_bytes() is still four bytes.
+        assert buf.remaining_bytes() == 4
 
     def test_cafe_iteration(self):
         buf = Utf8Buffer.from_str("caf\u00e9")
@@ -1785,11 +1827,11 @@ class TestMultibyteUtf8:
     def test_byte_advance_requires_char_boundary(self, make_buf):
         buf = make_buf()
 
-        with pytest.raises(BufferError, match="UTF-8 character boundary"):
-            buf.advance(1)
+        with pytest.raises(ValueError, match="UTF-8 character boundary"):
+            buf.advance_bytes(1)
 
         assert str(buf) == "\u00e9x"
-        buf.advance(2)
+        buf.advance_bytes(2)
         assert str(buf) == "x"
 
     @pytest.mark.parametrize(
@@ -1805,9 +1847,9 @@ class TestMultibyteUtf8:
     def test_numeric_reads_require_char_boundary(self, make_buf):
         buf = make_buf()
 
-        with pytest.raises(BufferError, match="UTF-8 character boundary"):
+        with pytest.raises(ValueError, match="UTF-8 character boundary"):
             buf.get_u8()
-        with pytest.raises(BufferError, match="UTF-8 character boundary"):
+        with pytest.raises(ValueError, match="UTF-8 character boundary"):
             buf.get_uint(1)
 
         assert str(buf) == "\u00e9x"
@@ -1908,6 +1950,16 @@ class TestClearTruncate:
         buf.truncate(5)
         assert bytes(buf) == b"hello"
 
+    def test_buffer_resize_uses_the_explicit_fill_byte_and_is_atomic(self):
+        buf = Buffer.from_bytes(b"hi")
+        buf.resize(4, ord("x"))
+        assert bytes(buf) == b"hixx"
+
+        before = bytes(buf)
+        with pytest.raises(BufferError):
+            buf.resize(63, 0)
+        assert bytes(buf) == before
+
 
 # ---------------------------------------------------------------------------
 # UTF-8 char-offset semantics for truncate / split / slice / byte_len
@@ -1931,12 +1983,12 @@ class TestUtf8CharOffsets:
     )
     def test_truncate_at_char_offset_crossing_multibyte(self, make_buf):
         buf = make_buf()
-        buf.truncate(3)  # keep "caf"; the é (byte offsets 3..5) is dropped
+        buf.truncate_chars(3)  # keep "caf"; the é (byte offsets 3..5) is dropped
         assert str(buf) == "caf"
 
     def test_truncate_between_multibyte_chars(self):
         buf = Utf8BytesMut.from_str("éé")
-        buf.truncate(1)  # keep one scalar value across a multibyte boundary
+        buf.truncate_chars(1)  # keep one scalar value across a multibyte boundary
         assert str(buf) == "é"
 
     @pytest.mark.parametrize(
@@ -1948,7 +2000,7 @@ class TestUtf8CharOffsets:
         ids=["Utf8Bytes", "CompactUtf8Bytes"],
     )
     def test_split_to_at_char_offset(self, make_buf):
-        head = make_buf().split_to(4)  # four scalar values -> "café"
+        head = make_buf().split_to_chars(4)  # four scalar values -> "café"
         assert str(head) == "café"
 
     @pytest.mark.parametrize(

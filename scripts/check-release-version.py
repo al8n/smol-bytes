@@ -8,31 +8,31 @@ import json
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_MANIFESTS = {
-    "smol-bytes": ROOT / "smol-bytes" / "Cargo.toml",
-    "smol-bytes-py": ROOT / "smol-bytes-py" / "Cargo.toml",
-    "smol-bytes-wasm": ROOT / "smol-bytes-wasm" / "Cargo.toml",
-}
+PACKAGE_NAMES = ("smol-bytes", "smol-bytes-py", "smol-bytes-wasm")
+JS_PACKAGE_NAME = "smol-bytes"
 
 
-def cargo_version() -> str:
-    with (ROOT / "Cargo.toml").open("rb") as source:
+def cargo_version(root: Path = ROOT) -> str:
+    """Return the workspace version after checking every inheriting package."""
+    with (root / "Cargo.toml").open("rb") as source:
         workspace_manifest = tomllib.load(source)
 
     workspace_version = workspace_manifest["workspace"]["package"]["version"]
     if not isinstance(workspace_version, str) or not workspace_version:
         raise ValueError("workspace.package.version must be a non-empty string")
 
-    for package_name, manifest_path in PACKAGE_MANIFESTS.items():
+    for package_name in PACKAGE_NAMES:
+        manifest_path = root / package_name / "Cargo.toml"
         with manifest_path.open("rb") as source:
             package = tomllib.load(source)["package"]
 
         if package.get("name") != package_name:
             raise ValueError(
-                f"{manifest_path.relative_to(ROOT)} has package name "
+                f"{manifest_path.relative_to(root)} has package name "
                 f"{package.get('name')!r}, expected {package_name!r}"
             )
 
@@ -48,35 +48,84 @@ def cargo_version() -> str:
     return workspace_version
 
 
+def read_json(path: Path) -> dict[str, Any]:
+    """Read a JSON object with a useful error for malformed metadata."""
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"{path.name} must contain a JSON object")
+    return value
+
+
+def require_js_identity(
+    metadata: dict[str, Any],
+    path: Path,
+    location: str,
+    version: str,
+) -> None:
+    """Check one npm metadata object against the canonical package identity."""
+    name = metadata.get("name")
+    if name != JS_PACKAGE_NAME:
+        raise ValueError(
+            f"{path} {location} package name {name!r} does not match "
+            f"expected {JS_PACKAGE_NAME!r}"
+        )
+
+    js_version = metadata.get("version")
+    if js_version != version:
+        raise ValueError(
+            f"{path} {location} package version {js_version!r} does not match "
+            f"Cargo version {version!r}"
+        )
+
+
+def check_js_metadata(root: Path, version: str) -> None:
+    """Require both npm manifests to agree with Cargo's package identity."""
+    package_json_path = root / "js" / "package.json"
+    package_lock_path = root / "js" / "package-lock.json"
+
+    require_js_identity(read_json(package_json_path), package_json_path.relative_to(root), "root", version)
+
+    package_lock = read_json(package_lock_path)
+    relative_lock = package_lock_path.relative_to(root)
+    require_js_identity(package_lock, relative_lock, "top-level", version)
+
+    packages = package_lock.get("packages")
+    if not isinstance(packages, dict):
+        raise ValueError(f"{relative_lock} packages must be a JSON object")
+    root_package = packages.get("")
+    if not isinstance(root_package, dict):
+        raise ValueError(f"{relative_lock} packages[\"\"] must be a JSON object")
+    require_js_identity(root_package, relative_lock, 'packages[""]', version)
+
+
+def verify_release(root: Path = ROOT, tag: str | None = None, check_js: bool = False) -> str:
+    """Verify metadata at *root* and return the consistent Cargo version."""
+    version = cargo_version(root)
+
+    if tag is not None:
+        if not tag.startswith("v") or len(tag) == 1:
+            raise ValueError(f"release tag {tag!r} must have the form v<version>")
+        if tag[1:] != version:
+            raise ValueError(f"release tag {tag!r} does not match Cargo version {version!r}")
+
+    if check_js:
+        check_js_metadata(root, version)
+
+    return version
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="expected release tag, including the leading v")
     parser.add_argument(
         "--check-js",
         action="store_true",
-        help="also require js/package.json to use the Cargo version",
+        help="also require npm package.json and package-lock.json metadata to match Cargo",
     )
     args = parser.parse_args()
 
     try:
-        version = cargo_version()
-
-        if args.tag is not None:
-            if not args.tag.startswith("v") or len(args.tag) == 1:
-                raise ValueError(f"release tag {args.tag!r} must have the form v<version>")
-            if args.tag[1:] != version:
-                raise ValueError(
-                    f"release tag {args.tag!r} does not match Cargo version {version!r}"
-                )
-
-        if args.check_js:
-            package_json = json.loads((ROOT / "js" / "package.json").read_text())
-            js_version = package_json.get("version")
-            if js_version != version:
-                raise ValueError(
-                    f"js/package.json version {js_version!r} does not match "
-                    f"Cargo version {version!r}"
-                )
+        version = verify_release(tag=args.tag, check_js=args.check_js)
     except (
         KeyError,
         OSError,

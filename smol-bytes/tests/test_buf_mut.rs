@@ -287,10 +287,7 @@ fn advanced_bytes_mut_len_resize_set_len_and_split_are_visible() {
     unsafe { buffer.set_len(2) };
     assert_eq!(buffer.as_slice(), b"cd");
 
-    let head = buffer
-      .try_split_to(2)
-      .unwrap()
-      .unwrap_or_else(BytesMut::from);
+    let head = buffer.try_split_to(2).unwrap();
     assert_eq!(head.as_slice(), b"cd");
     assert!(buffer.is_empty());
   }

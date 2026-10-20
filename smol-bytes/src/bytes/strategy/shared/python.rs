@@ -1,10 +1,12 @@
 use crate::{
   Buf, OutOfBounds, RangeOutOfBounds,
-  python::{PyBufCmp, PyBufCommon, PyBufExt, py_check_alloc},
+  python::{
+    PyBufCmp, PyBufCommon, PyBufExt, py_byte_range, py_check_alloc, py_offset, py_raw_str,
+    py_readable_buffer_snapshot,
+  },
 };
 use pyo3::{
   basic::CompareOp,
-  exceptions::PyUnicodeDecodeError,
   prelude::{Bound, *},
   types::{PyAny, PyBytes, PyString},
 };
@@ -43,7 +45,7 @@ impl Iter {
 /// Instances behave like immutable Python `bytes` objects backed by the same zero-copy storage as
 /// the Rust type. All `get_*` accessors from the `Buf` trait are available, along with slicing,
 /// splitting, and comparison semantics that mirror `shared::Bytes`.
-#[pyclass(name = "Bytes", skip_from_py_object)]
+#[pyclass(name = "Bytes")]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PySharedBytes {
@@ -132,10 +134,10 @@ impl PySharedBytes {
   ///     b'Hello'
   #[staticmethod]
   #[pyo3(name = "from_bytes")]
-  fn __python_from_bytes(py_bytes: &[u8]) -> PyResult<Self> {
-    py_check_alloc(py_bytes.len())?;
+  fn __python_from_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let data = py_readable_buffer_snapshot(data)?;
     Ok(Self {
-      inner: super::Bytes::copy_from_slice(py_bytes),
+      inner: super::Bytes::copy_from_slice(&data),
     })
   }
 
@@ -153,15 +155,15 @@ impl PySharedBytes {
   ///     MemoryError: If the requested allocation cannot be satisfied.
   ///
   /// Example:
-  ///     >>> b = Bytes.from_str("Hello")
+  ///     >>> b = Bytes.from_utf8("Hello")
   ///     >>> bytes(b)
   ///     b'Hello'
   #[staticmethod]
-  #[pyo3(name = "from_str")]
-  fn __python_from_str(py_str: &str) -> PyResult<Self> {
-    py_check_alloc(py_str.len())?;
+  #[pyo3(name = "from_utf8")]
+  fn __python_from_str(s: &str) -> PyResult<Self> {
+    py_check_alloc(s.len())?;
     Ok(Self {
-      inner: super::Bytes::from(py_str),
+      inner: super::Bytes::from(s),
     })
   }
 
@@ -206,10 +208,9 @@ impl PySharedBytes {
     self.py_richcmp(other, op)
   }
 
-  /// Interpret the bytes as UTF-8, raising `UnicodeDecodeError` on failure.
-  fn __str__(&self, py: Python<'_>) -> PyResult<&str> {
-    ::core::str::from_utf8(self.inner.as_ref())
-      .map_err(|err| PyUnicodeDecodeError::new_err_from_utf8(py, self.inner.as_ref(), err))
+  /// Return the same total representation as `str(bytes(self))`.
+  fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+    py_raw_str(self.inner.as_ref(), py)
   }
 
   /// Debug representation mirroring Rust's `Debug` output.
@@ -240,9 +241,16 @@ impl PySharedBytes {
   ///
   /// Raises:
   ///     UnicodeDecodeError: If the buffer contains invalid UTF-8.
-  #[pyo3(name = "to_string")]
+  #[pyo3(name = "decode_utf8")]
   fn __python_to_string<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
     self.py_to_string(py)
+  }
+
+  /// Return an independent mutable copy of the currently visible bytes.
+  #[pyo3(name = "to_mutable")]
+  fn __python_to_mutable(&self) -> PyResult<crate::BytesMut> {
+    py_check_alloc(self.inner.len())?;
+    Ok(crate::BytesMut::from(self.inner.as_ref()))
   }
 
   /// Check if the bytes are using inline (stack) storage.
@@ -299,8 +307,8 @@ impl PySharedBytes {
   /// Raises:
   ///     BufferError: If trying to advance beyond available data.
   #[pyo3(name = "advance")]
-  fn __python_advance(&mut self, cnt: usize) -> PyResult<()> {
-    self.py_advance(cnt)
+  fn __python_advance(&mut self, cnt: &Bound<'_, PyAny>) -> PyResult<()> {
+    self.py_advance(py_offset(cnt, "cnt")?)
   }
 
   /// Truncate the buffer to the specified length.
@@ -310,8 +318,9 @@ impl PySharedBytes {
   /// Args:
   ///     new_len: The new length of the buffer.
   #[pyo3(name = "truncate")]
-  fn __python_truncate(&mut self, new_len: usize) {
-    self.inner.truncate(new_len);
+  fn __python_truncate(&mut self, new_len: &Bound<'_, PyAny>) -> PyResult<()> {
+    self.inner.truncate(py_offset(new_len, "new_len")?);
+    Ok(())
   }
 
   /// Clear the buffer, removing all data.
@@ -342,8 +351,8 @@ impl PySharedBytes {
   ///     >>> bytes(buf)
   ///     b' world'
   #[pyo3(name = "split_to")]
-  fn __python_split_to(&mut self, at: usize) -> PyResult<Self> {
-    self.py_split_to(at)
+  fn __python_split_to(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    self.py_split_to(py_offset(at, "at")?)
   }
 
   /// Split the buffer at the given position, returning the tail.
@@ -368,8 +377,8 @@ impl PySharedBytes {
   ///     >>> bytes(tail)
   ///     b'world'
   #[pyo3(name = "split_off")]
-  fn __python_split_off(&mut self, at: usize) -> PyResult<Self> {
-    self.py_split_off(at)
+  fn __python_split_off(&mut self, at: &Bound<'_, PyAny>) -> PyResult<Self> {
+    self.py_split_off(py_offset(at, "at")?)
   }
 
   /// Get a slice of the buffer as a new Bytes.
@@ -384,7 +393,8 @@ impl PySharedBytes {
   ///     Bytes: A new buffer containing the specified range.
   ///
   /// Raises:
-  ///     IndexError: If the range is invalid.
+  ///     ValueError: If `start` exceeds `end`.
+  ///     IndexError: If either endpoint is out of bounds.
   ///
   /// Example:
   ///     >>> buf = Bytes.from_bytes(b"hello world")
@@ -392,7 +402,8 @@ impl PySharedBytes {
   ///     >>> bytes(slice)
   ///     b'hello'
   #[pyo3(name = "slice")]
-  fn __python_slice(&self, start: usize, end: usize) -> PyResult<Self> {
+  fn __python_slice(&self, start: &Bound<'_, PyAny>, end: &Bound<'_, PyAny>) -> PyResult<Self> {
+    let (start, end) = py_byte_range(self.inner.len(), start, end)?;
     self.py_slice(start, end)
   }
 

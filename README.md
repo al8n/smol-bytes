@@ -36,7 +36,7 @@ matters.
 
 ```toml
 [dependencies]
-smol-bytes = "0.1"
+smol-bytes = "0.2"
 ```
 
 Python (`pip install smol-bytes`) and JavaScript (`npm install smol-bytes`)
@@ -103,13 +103,24 @@ Rule of thumb: use `shared` (the default) for I/O and `bytes` interop; use
 | `Utf8Bytes` / `compact::Utf8Bytes` | Shared or compacting UTF-8 bytes | No | Immutable UTF-8 value |
 | `Utf8BytesMut` | Inline or growable valid UTF-8 bytes | Yes | Mutable UTF-8 value |
 
-Every handle is 64 bytes. All byte types implement `bytes::Buf`, and the
-mutable ones implement `bytes::BufMut`.
+Every handle is 64 bytes. With the `bytes` dependency enabled, all byte types
+implement `bytes::Buf`, and the mutable ones implement `bytes::BufMut`.
 
-`BytesMut::split_to` and `BytesMut::split_off` return `Ok(BytesMut)` when the
-output is growable heap storage and `Err(Buffer)` when the output is fixed
-inline storage. The `try_split_*` variants add an outer bounds `Result`, so
-their shape is `Result<Result<BytesMut, Buffer>, OutOfBounds>`.
+The immutable strategy types have immutable payloads but mutable views:
+`advance`, `truncate`, and `clear` change only the visible cursor/window.
+`Utf8Bytes` offers the same byte-indexed, UTF-8-boundary-checked view
+operations and can reclaim unique full heap allocations with `try_into_mut`.
+`Utf8Buffer` and `Utf8BytesMut` expose `as_mut_str`, `AsMut<str>`,
+`BorrowMut<str>`, `DerefMut<Target = str>`, and mutable string-range indexing;
+the standard `str` rules preserve UTF-8 validity.
+
+`BytesMut::split_to`, `split_off`, and `split` always return `BytesMut`.
+Inline results stay inline; splitting an inline value's reserved-but-unwritten
+capacity promotes it to heap storage so capacity partitioning remains exact.
+`try_split_to` and `try_split_off` return `Result<BytesMut, OutOfBounds>` and
+leave the receiver unchanged on bounds failure. `unsplit` always consumes and
+appends its argument, using the zero-copy `bytes::BytesMut` path for contiguous
+heap halves and copying/promoting only when required.
 
 Rust UTF-8 split and slice indices are byte offsets that must fall on
 character boundaries; offenders panic, and the `try_split_to`,
@@ -119,6 +130,36 @@ bindings differ deliberately — see below.)
 The UTF-8 wrappers implement `FromStr`. Heap-capable wrappers parse
 infallibly; `Utf8Buffer` returns `TryPutError` when text exceeds its fixed
 inline capacity.
+
+## 0.2 API migration
+
+0.2 intentionally removes several ambiguous or lossy APIs.
+For complete Rust, Python, and JavaScript examples, see
+[the 0.2.0 changelog and migration guide](https://github.com/al8n/smol-bytes/blob/main/CHANGELOG.md#020---2026-10-18).
+
+- Replace `Utf8Buffer::from(text)` with `Utf8Buffer::try_from(text)?` (or
+  `Utf8Buffer::try_from_str(text)?`). `FromStr` remains available. This makes
+  the 62-byte fixed-capacity limit explicit.
+- `BytesMut` split methods now return `BytesMut` directly. Remove an inner
+  `match`/`unwrap` around `split`, `split_to`, and `split_off`; use the
+  corresponding `try_split_*` method when bounds must be reported instead of
+  panicking. `try_split` is removed, and `unsplit` now returns `()`.
+- Use `Buffer::resize(new_len, value)` and
+  `Buffer::try_resize(new_len, value)` to choose the byte written during
+  extension. Failed `try_resize` calls are atomic.
+- UTF-8 index operations now use `Utf8IndexError`, preserving whether an
+  invalid character boundary, index, or full range caused the failure.
+  Converting owned `Buffer`, `BytesMut`, or raw strategy bytes into a UTF-8
+  wrapper returns `FromUtf8Error<B>` on invalid input; call `into_bytes()` to
+  recover the original allocation and view.
+- Variable-width inherent `Buffer::try_get_uint{,_le,_ne}` and
+  `Buffer::try_get_int{,_le,_ne}` methods now
+  return `TryGetIntegerError`, distinguishing an invalid width from missing
+  bytes. The `bytes::Buf` trait methods retain `bytes`' own error type and
+  panic contract.
+- `Utf8Buf` and `Utf8BufMut` are sealed implementation traits. Generic mutable
+  code can use `try_push`/`try_push_str` and each type's `CapacityError`;
+  `Utf8Buffer` reports `TryPutError`, while `Utf8BytesMut` uses `Infallible`.
 
 ## `bytes` interop
 
@@ -130,27 +171,60 @@ allows:
 - `compact::Bytes::from(bytes::Bytes)` inlines payloads of at most 62 bytes
   and shares larger ones.
 - `BytesMut::freeze_shared` / `freeze_compact` convert without copying heap
-  contents; `Bytes::try_into_mut` reclaims unique heap allocations.
+  contents; `BytesMut::freeze` is the root-default shared conversion.
+- `Utf8BytesMut::freeze` similarly returns the root-default `Utf8Bytes`;
+  `freeze_shared` and `freeze_compact` remain available for explicit targets.
+- Consuming `shared::Bytes`/`compact::Bytes` and UTF-8 strategy conversions
+  apply the target strategy: large heap values keep their allocation and small
+  values compact when converted to the compact strategy.
+- `Bytes::try_into_mut` and `Utf8Bytes::try_into_mut` reclaim unique full heap
+  allocations; a shared or sliced view is returned unchanged on failure.
+
+```rust
+use smol_bytes::{BytesMut, Utf8Bytes, Utf8BytesMut, compact};
+
+let bytes = BytesMut::from(&b"payload"[..]).freeze();
+assert_eq!(bytes, b"payload"[..]);
+
+let mut text = Utf8Bytes::from("header: value");
+text.advance(8);
+assert_eq!(text.as_str(), "value"); // only this view moved
+
+let compact: compact::Bytes = bytes.into();
+assert_eq!(compact, b"payload"[..]);
+
+let frozen = Utf8BytesMut::from("done").freeze();
+assert_eq!(frozen.as_str(), "done");
+```
 
 ## Features and MSRV
 
 | Feature | Description |
 | --- | --- |
-| `std` (default) | Standard-library support and the heap-backed types |
-| `alloc` | Heap-backed types without `std` |
+| `std` (default) | Enables `alloc`, `bytes/std`, and Serde's `std`/`result` support |
+| `alloc` | Heap-backed types and the optional `bytes` dependency without `std` |
+| `bytes` | Compatibility alias for `alloc` |
 | `serde` | Serde support |
-| `schemars` | Schemars v1 string schemas for UTF-8 wrappers; implies `alloc` |
+| `schemars` | Schemars v1 schemas; UTF-8 wrappers are strings and byte wrappers serialize as `array<u8>`; implies `alloc` |
 | `borsh` | Borsh support |
 | `arbitrary` | `arbitrary` support for generated values |
-| `quickcheck` | QuickCheck support |
+| `quickcheck` | QuickCheck support; implies `std` |
 | `async-graphql` | `Bytes` and `String` GraphQL scalars for `Bytes` and `Utf8Bytes`; implies `std` |
 | `sqlx` | `sqlx` `Type`/`Encode`/`Decode` for `Bytes` and `Utf8Bytes`; implies `std` |
 | `pyo3` | Python bindings; implies `std` |
 | `wasm` | WebAssembly bindings; implies `std` |
 
 With no features enabled the crate is `no_std` and provides the fixed
-`Buffer` and `Utf8Buffer` types; `alloc` adds the heap-backed types without
-`std`.
+`Buffer` and `Utf8Buffer` types. `bytes::Buf`/`BufMut` are available once
+`alloc`, `std`, or the compatibility `bytes` feature is selected; `alloc` adds
+the heap-backed types without `std`.
+
+Byte wrapper JSON schemas describe serialization as `array<u8>` and accept an
+array or string under Schemars' deserialization contract. `Buffer` additionally
+sets `maxItems` for array input and `maxLength` for string input to `INLINE_CAP`.
+`maxLength` is a scalar-count bound; deserialization still enforces the actual
+UTF-8 byte capacity for multibyte strings. UTF-8 wrappers remain ordinary string
+schemas.
 
 The `sqlx` bindings decode by borrowing from the row, so a value of at most 62
 bytes is built inline with no heap allocation at all. That costs one thing:
@@ -198,28 +272,43 @@ maturin develop --features pyo3 --manifest-path smol-bytes-py/Cargo.toml
 python -m pytest tests/python -v
 ```
 
-The root `smol_bytes` module exposes `Buffer`, `BytesMut`, `Utf8Buffer`,
-`Utf8Bytes`, and `Utf8BytesMut`; `smol_bytes.shared` and `smol_bytes.compact`
-expose the immutable `Bytes` and `Utf8Bytes` strategy types.
+The root `smol_bytes` module exposes canonical shared `Bytes` and `Utf8Bytes`
+alongside `Buffer`, `BytesMut`, `Utf8Buffer`, and `Utf8BytesMut`.
+`smol_bytes.shared.Bytes` and `smol_bytes.shared.Utf8Bytes` are aliases of
+those exact root classes (including their root `__module__`), while
+`smol_bytes.compact` remains a distinct compact strategy.
 
-The UTF-8 classes are string-like from Python: `len()`, indexing, and the
-`truncate`/`split_to`/`split_off`/`slice` methods all work in Unicode
-characters, while `byte_len()` and the explicitly byte-oriented `Buf`-style
-methods (`advance`, `get_*`) work in bytes.
+Raw byte classes use `from_utf8()` and `decode_utf8()` for explicit text
+conversion; `str(raw)` is always the same total representation as
+`str(bytes(raw))`. Their `from_bytes()` and mutable `put_slice()` methods
+accept `bytes`, `bytearray`, and readable one-dimensional C-contiguous byte
+`memoryview` values, copying the input before mutation.
+
+The UTF-8 classes are string-like from Python: `len()`, indexing, and
+iteration use Unicode scalar values. Their explicit APIs are `char_len()`,
+`byte_len()`, `split_to_chars()`, `split_off_chars()`, `slice_chars()`, and
+for mutable/fixed classes `truncate_chars()`. `remaining_bytes()` and
+`advance_bytes()` are deliberately byte-oriented, as are `get_*` methods.
 
 ```python
-from smol_bytes import Utf8Bytes
-from smol_bytes.shared import Bytes
+from smol_bytes import Bytes, BytesMut, Utf8Bytes
 
 raw = Bytes.from_bytes(b"abc")
 assert raw.is_inline()
 assert bytes(raw) == b"abc"
+assert raw.decode_utf8() == "abc"
 
 text = Utf8Bytes.from_str("café")
 assert len(text) == 4        # Unicode characters
+assert text.char_len() == 4
 assert text.byte_len() == 5  # UTF-8 bytes
 assert str(text) == "café"
-assert str(text.split_to(3)) == "caf"
+assert str(text.split_to_chars(3)) == "caf"
+
+mutable = BytesMut.from_bytes(bytearray(b"abc"))
+frozen = mutable.freeze_shared()
+assert bytes(mutable) == b""  # source remains reusable
+assert bytes(frozen.to_mutable()) == b"abc"
 ```
 
 Binding behavior worth knowing:
@@ -231,14 +320,18 @@ Binding behavior worth knowing:
   snapshot copy, not a live view.
 - Slice assignment on the mutable classes requires matching lengths, and
   contiguous assignments take a direct copy fast path.
+- Python `unsplit()` uses non-consuming snapshot semantics: it appends the
+  call-entry contents while leaving the argument unchanged. Passing the same
+  mutable object as both operands raises `RuntimeError` atomically.
 
 ## JavaScript / WebAssembly
 
 Install the published package with `npm install smol-bytes`.
 
 To build from a checkout instead, install Node.js 20, `wasm-pack` 0.13.1, and
-the `wasm32-unknown-unknown` target. The generated package is pinned to
-wasm-bindgen 0.2.127 for reproducibility:
+the `wasm32-unknown-unknown` target. wasm-pack and Cargo resolve a compatible
+wasm-bindgen 0.2.x release; any separately installed wasm-bindgen helper must
+match the resolved crate version. CI checks the supported 0.2.x family.
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -254,22 +347,47 @@ The Wasm build entry point is:
 wasm-pack build smol-bytes-wasm --target bundler --out-dir ../js/pkg --out-name smol_bytes -- --features wasm
 ```
 
-The root export contains the core, mutable, and shared UTF-8 types; the
-`smol-bytes/shared` and `smol-bytes/compact` exports provide the strategy
-types. Byte conversions at the Wasm boundary return copies, offsets are byte
-offsets, and fallible operations throw catchable errors rather than trapping
-the instance.
+The root export canonically contains `Bytes` and `Utf8Bytes` using the shared
+strategy, alongside `Buffer`, `BytesMut`, `Utf8Buffer`, and `Utf8BytesMut`.
+`smol-bytes/shared` exports the exact same immutable class objects; the
+`smol-bytes/compact` entry point exports distinct compact classes. Every entry
+point initializes iteration, disposal, and input validation independently.
+
+Raw bytes use `fromUtf8()` and `decodeUtf8()`; they deliberately have no
+string-like `fromString()` or raw `toString()` API. Neither raw nor UTF-8
+public classes expose `fromStatic()`; UTF-8 classes retain
+`fromString()` / `toString()` and make byte units explicit:
+`byteLength()`, `charLength()`, `remainingBytes()`, `advanceBytes()`,
+`splitToBytes()`, `splitOffBytes()`, `sliceBytes()`, and `truncateBytes()`.
+Byte offsets must land at UTF-8 scalar boundaries. Numeric arguments are
+checked before WebAssembly coercion, and malformed JavaScript UTF-16 strings
+are rejected before encoding.
+
+Byte conversions at the Wasm boundary return copies. `clone()` is available on
+each public byte/string value class. Mutable `freezeShared()` / `freezeCompact()` drain their
+source into the selected immutable strategy, while immutable `toMutable()`
+returns an independent mutable value. JavaScript `unsplit()` snapshots and
+appends `other` without consuming it; self-aliasing deterministically doubles
+the value.
 
 ```typescript
-import { Utf8Bytes } from "smol-bytes";
+import { Bytes, BytesMut, Utf8Bytes } from "smol-bytes";
 import { Bytes as CompactBytes } from "smol-bytes/compact";
 
 const raw = CompactBytes.fromBytes(new Uint8Array([1, 2, 3]));
 console.assert(raw.isInline());
 console.assert(raw.toBytes()[2] === 3);
 
+const shared = Bytes.fromUtf8("hello");
+console.assert(shared.decodeUtf8() === "hello");
+
+const mutable = BytesMut.fromUtf8("ready");
+const frozen = mutable.freezeShared();
+console.assert(mutable.isEmpty() && frozen.decodeUtf8() === "ready");
+
 const text = Utf8Bytes.fromString("café");
-console.assert(text.len() === 5); // byte length
+console.assert(text.byteLength() === 5);
+console.assert(text.charLength() === 4);
 console.assert(text.toString() === "café");
 ```
 

@@ -1,9 +1,14 @@
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, ops::RangeBounds};
 
 use ::bytes::BufMut;
 use bytes::Buf;
 
-use crate::{INLINE_CAP, InvalidIntegerLength, OutOfBounds, buffer::Buffer, bytes::RawBytes};
+use crate::{
+  INLINE_CAP, InvalidIntegerLength, OutOfBounds, RangeOutOfBounds, TryPutIntegerCheckedError,
+  buffer::{Buffer, checked_signed_range, checked_unsigned_range},
+  bytes::RawBytes,
+  utf8_edit::{RawUtf8Storage, replace_bytes},
+};
 
 mod cmp;
 mod fmt;
@@ -29,7 +34,12 @@ mod wasm;
 #[doc = "Growable mutable byte buffer with inline/heap storage."]
 #[doc = ""]
 #[doc = "Stores up to 62 bytes inline on the stack. Larger data automatically"]
-#[doc = "promotes to heap allocation. Once on heap, stays on heap."]
+#[doc = "promotes to heap allocation. Heap storage does not automatically return"]
+#[doc = "to inline storage."]
+#[cfg_attr(
+  not(feature = "wasm"),
+  doc = " Call [`try_make_inline`](Self::try_make_inline) to compact an eligible Rust value."
+)]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
 #[cfg_attr(not(feature = "wasm"), doc = "# Inline vs Heap Storage")]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
@@ -54,19 +64,19 @@ mod wasm;
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split_off`](Self::split_off): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split_off`](Self::split_off): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split_to`](Self::split_to): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split_to`](Self::split_to): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`split`](Self::split): Returns `Ok(BytesMut)` for heap, `Err(Buffer)` for inline"
+  doc = "- [`split`](Self::split): Returns `BytesMut` for both heap and inline storage"
 )]
 #[cfg_attr(
   not(feature = "wasm"),
-  doc = "- [`unsplit`](Self::unsplit): Only works when both buffers are heap-allocated"
+  doc = "- [`unsplit`](Self::unsplit): Always consumes and appends the other buffer"
 )]
 #[cfg_attr(not(feature = "wasm"), doc = "")]
 #[cfg_attr(not(feature = "wasm"), doc = "## Examples")]
@@ -215,6 +225,65 @@ impl BytesMut {
       }
       Repr::Heap(b) => b.extend_from_slice(extend),
     }
+  }
+
+  /// Replaces a range of visible bytes with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &[u8]) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a range of visible bytes with `replacement`.
+  ///
+  /// The range is normalized before this growable buffer reserves storage, so
+  /// an invalid range leaves it unchanged.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &[u8],
+  ) -> Result<(), RangeOutOfBounds> {
+    let (start, end) = crate::normalize_range(range, self.len())?;
+    let mut storage = RawUtf8Storage::growable(self);
+    replace_bytes(&mut storage, start, end, replacement);
+    Ok(())
+  }
+
+  /// Appends a copy of the specified visible byte range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or growing the buffer overflows the
+  /// address space.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified visible byte range.
+  ///
+  /// The range is normalized before this growable buffer reserves storage, so
+  /// an invalid range leaves it unchanged.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), RangeOutOfBounds> {
+    let old_len = self.len();
+    let (start, end) = crate::normalize_range(range, old_len)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.resize(new_len, 0);
+    self.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
   }
 
   /// Clears the buffer, removing all data. Existing capacity is preserved.
@@ -405,6 +474,25 @@ impl BytesMut {
     }
   }
 
+  /// Tries to move this visible byte view into a fixed inline [`Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into a new inline buffer with cursor zero.
+  /// Longer values are returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Buffer, Self> {
+    if self.len() > INLINE_CAP {
+      return Err(self);
+    }
+
+    match self.0 {
+      Repr::Inline(storage) => Ok(storage),
+      Repr::Heap(bytes) => {
+        let visible: &[u8] = bytes.as_ref();
+        Ok(Buffer::try_from(visible).expect("length checked before conversion"))
+      }
+    }
+  }
+
   /// Converts the `BytesMut` into a heap allocated buffer if it is currently inline.
   ///
   /// If the buffer is already heap allocated, this function does nothing.
@@ -430,6 +518,36 @@ impl BytesMut {
     }
   }
 
+  /// Copies the current heap view into inline storage when it fits.
+  ///
+  /// Returns `false` without changing the buffer when the current view is
+  /// larger than [`INLINE_CAP`]. Existing inline buffers are left unchanged
+  /// and return `true`. This never allocates, but a successful conversion
+  /// discards hidden heap bytes and excess capacity.
+  ///
+  /// ```
+  /// use smol_bytes::{BytesMut, INLINE_CAP};
+  ///
+  /// let mut bytes = BytesMut::with_capacity(128);
+  /// bytes.extend_from_slice(b"short");
+  /// assert!(bytes.try_make_inline());
+  /// assert!(bytes.is_inline());
+  /// assert_eq!(bytes.capacity(), INLINE_CAP);
+  /// ```
+  pub fn try_make_inline(&mut self) -> bool {
+    let inline = match &self.0 {
+      Repr::Inline(_) => return true,
+      Repr::Heap(bytes) if bytes.len() > INLINE_CAP => return false,
+      Repr::Heap(bytes) => {
+        let visible: &[u8] = bytes.as_ref();
+        Buffer::try_from(visible).expect("heap view fits inline capacity")
+      }
+    };
+
+    self.0 = Repr::Inline(inline);
+    true
+  }
+
   /// Splits the bytes into two at the given index.
   ///
   /// Afterwards `self` contains elements `[0, at)`, and the returned value
@@ -438,13 +556,12 @@ impl BytesMut {
   /// semantics of [`bytes::BytesMut::split_off`].
   ///
   /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
+  /// reference count.
   ///
-  /// For inline buffers where `at` lies within the written length, the
-  /// tail is copied into a `Buffer` and returned as `Err(Buffer)`.
+  /// For inline buffers where `at` lies within the written length, the tail is
+  /// copied into another inline `BytesMut`.
   /// For inline buffers where `at > len` (splitting into uninitialized
-  /// capacity), the buffer is first promoted to heap and the split returns
-  /// `Ok(BytesMut)`.
+  /// capacity), the buffer is first promoted to heap before splitting.
   ///
   /// ## Examples
   ///
@@ -454,17 +571,9 @@ impl BytesMut {
   /// use smol_bytes::BytesMut;
   ///
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// match a.split_off(5) {
-  ///     Ok(mut b) => {
-  ///         // Heap: BytesMut can grow beyond 62 bytes
-  ///         b[0] = b'!';
-  ///         assert_eq!(&b[..], b"!world");
-  ///     }
-  ///     Err(mut b) => {
-  ///         // Inline: Buffer is limited to 62 bytes but still mutable
-  ///         assert_eq!(&b[..], b" world");
-  ///     }
-  /// }
+  /// let mut b = a.split_off(5);
+  /// b[0] = b'!';
+  /// assert_eq!(&b[..], b"!world");
   /// assert_eq!(&a[..], b"hello");
   /// ```
   ///
@@ -474,7 +583,7 @@ impl BytesMut {
   /// use smol_bytes::BytesMut;
   ///
   /// let mut a = BytesMut::with_capacity(1024);
-  /// let b = a.split_off(128).unwrap();
+  /// let b = a.split_off(128);
   /// assert_eq!(a.len(), 0);
   /// assert_eq!(a.capacity(), 128);
   /// assert_eq!(b.len(), 0);
@@ -485,7 +594,7 @@ impl BytesMut {
   ///
   /// Panics if `at > capacity`.
   #[must_use = "consider BytesMut::truncate if you don't need the other half"]
-  pub fn split_off(&mut self, at: usize) -> Result<Self, Buffer> {
+  pub fn split_off(&mut self, at: usize) -> Self {
     self
       .try_split_off(at)
       .unwrap_or_else(|_| panic!("split_off out of bounds: {} > {}", at, self.capacity()))
@@ -496,7 +605,7 @@ impl BytesMut {
   /// Returns [`OutOfBounds`] instead of panicking when `at > capacity`.
   ///
   /// See also [`split_off`](Self::split_off).
-  pub fn try_split_off(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let cap = self.capacity();
     if at > cap {
       return Err(OutOfBounds::new(at, cap));
@@ -514,8 +623,8 @@ impl BytesMut {
     }
 
     let result = match &mut self.0 {
-      Repr::Inline(b) => Err(b.try_split_off(at).expect("validated bounds")),
-      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_off(at)))),
+      Repr::Inline(b) => Self::from_inline(b.try_split_off(at).expect("validated bounds")),
+      Repr::Heap(b) => Self(Repr::Heap(b.split_off(at))),
     };
     Ok(result)
   }
@@ -536,16 +645,14 @@ impl BytesMut {
   ///
   /// let mut buf = BytesMut::with_capacity(1024);
   /// buf.put(&b"hello world"[..]);
-  /// let other = buf.split().unwrap();
+  /// let other = buf.split();
   /// assert!(buf.is_empty());
   /// assert_eq!(other, b"hello world"[..]);
   /// ```
   #[must_use = "consider BytesMut::clear if you don't need the other half"]
-  pub fn split(&mut self) -> Result<Self, Buffer> {
+  pub fn split(&mut self) -> Self {
     let len = self.len();
-    self
-      .try_split_to(len)
-      .unwrap_or_else(|_| panic!("split out of bounds: {}", len))
+    self.split_to(len)
   }
 
   /// Splits the buffer into two at the given index.
@@ -554,10 +661,8 @@ impl BytesMut {
   /// contains elements `[0, at)`.
   ///
   /// For heap-allocated buffers, this is an `O(1)` operation that increases the
-  /// reference count and returns `Ok(BytesMut)`.
-  ///
-  /// For inline buffers, the head is copied into a `Buffer` and returned as `Err(Buffer)`.
-  /// Both `BytesMut` and `Buffer` are mutable, but `Buffer` is limited to 62 bytes inline storage.
+  /// reference count. For inline buffers, the head is copied into another
+  /// inline `BytesMut`.
   ///
   /// ## Examples
   ///
@@ -566,23 +671,15 @@ impl BytesMut {
   ///
   /// // Inline buffer
   /// let mut a = BytesMut::from(&b"hello world"[..]);
-  /// match a.split_to(5) {
-  ///     Ok(mut b) => {
-  ///         // Heap: BytesMut can grow beyond 62 bytes
-  ///         b[0] = b'j';
-  ///         assert_eq!(&b[..], b"jello");
-  ///     }
-  ///     Err(b) => {
-  ///         // Inline: Buffer is limited to 62 bytes but still mutable
-  ///         assert_eq!(&b[..], b"hello");
-  ///     }
-  /// }
+  /// let mut b = a.split_to(5);
+  /// b[0] = b'j';
+  /// assert_eq!(&b[..], b"jello");
   /// assert_eq!(&a[..], b" world");
   ///
   /// // Heap buffer
   /// let mut a = BytesMut::with_capacity(64);
   /// a.extend_from_slice(b"hello world");
-  /// let mut b = a.split_to(5).unwrap();
+  /// let mut b = a.split_to(5);
   /// a[0] = b'!';  // Replaces the space with '!'
   /// b[0] = b'j';
   /// assert_eq!(&a[..], b"!world");
@@ -593,7 +690,7 @@ impl BytesMut {
   ///
   /// Panics if `at > len`.
   #[must_use = "consider BytesMut::advance if you don't need the other half"]
-  pub fn split_to(&mut self, at: usize) -> Result<Self, Buffer> {
+  pub fn split_to(&mut self, at: usize) -> Self {
     self
       .try_split_to(at)
       .unwrap_or_else(|_| panic!("split_to out of bounds: {} > {}", at, self.len()))
@@ -602,25 +699,17 @@ impl BytesMut {
   /// Attempts to split at `at`, returning [`OutOfBounds`] on failure instead of panicking.
   ///
   /// See also [`split_to`](Self::split_to).
-  pub fn try_split_to(&mut self, at: usize) -> Result<Result<Self, Buffer>, OutOfBounds> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, OutOfBounds> {
     let len = self.len();
     if at > len {
       return Err(OutOfBounds::new(at, len));
     }
 
     let result = match &mut self.0 {
-      Repr::Inline(b) => Err(b.try_split_to(at).expect("validated bounds")),
-      Repr::Heap(b) => Ok(Self(Repr::Heap(b.split_to(at)))),
+      Repr::Inline(b) => Self::from_inline(b.try_split_to(at).expect("validated bounds")),
+      Repr::Heap(b) => Self(Repr::Heap(b.split_to(at))),
     };
     Ok(result)
-  }
-
-  /// Attempts to split off all remaining bytes.
-  ///
-  /// See also [`split`](Self::split).
-  pub fn try_split(&mut self) -> Result<Result<Self, Buffer>, OutOfBounds> {
-    let len = self.len();
-    self.try_split_to(len)
   }
 
   /// Attempts to advance the readable cursor by `cnt` bytes.
@@ -694,12 +783,97 @@ impl BytesMut {
     Ok(())
   }
 
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_uint_checked(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    self.put_uint(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_uint_checked_le(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_unsigned_range(n, nbytes)?;
+    self.put_uint_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write an unsigned integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_uint_checked_ne(
+    &mut self,
+    n: u64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_uint_checked(n, nbytes)
+    } else {
+      self.try_put_uint_checked_le(n, nbytes)
+    }
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in big-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_int_checked(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    self.put_int(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in little-endian byte order.
+  ///
+  /// Growable buffers reserve storage as needed; this error reports only an
+  /// invalid width or an unrepresentable value.
+  pub fn try_put_int_checked_le(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    checked_signed_range(n, nbytes)?;
+    self.put_int_le(n, nbytes);
+    Ok(())
+  }
+
+  /// Tries to write a signed integer only when it fits exactly in `nbytes`
+  /// bytes in native-endian byte order.
+  pub fn try_put_int_checked_ne(
+    &mut self,
+    n: i64,
+    nbytes: usize,
+  ) -> Result<(), TryPutIntegerCheckedError> {
+    if cfg!(target_endian = "big") {
+      self.try_put_int_checked(n, nbytes)
+    } else {
+      self.try_put_int_checked_le(n, nbytes)
+    }
+  }
+
   /// Absorbs a `BytesMut` that was previously split off.
   ///
-  /// Both `BytesMut` objects must be heap allocated for this to succeed. If one of them
-  /// is inline, the method returns `Some(other)`, leaving `self` unchanged.
-  ///
-  /// If the two `BytesMut` objects were previously contiguous and not mutated
+  /// If the two heap-backed `BytesMut` objects were previously contiguous and not mutated
   /// in a way that causes re-allocation i.e., if `other` was created by
   /// calling `split_off` on this `BytesMut`, then this is an `O(1)` operation
   /// that just decreases a reference count and sets a few indices.
@@ -714,26 +888,30 @@ impl BytesMut {
   /// let mut buf = BytesMut::with_capacity(64);
   /// buf.extend_from_slice(b"aaabbbcccddd");
   ///
-  /// let split = buf.split_off(6).unwrap();
+  /// let split = buf.split_off(6);
   /// assert_eq!(b"aaabbb", &buf[..]);
   /// assert_eq!(b"cccddd", &split[..]);
   ///
-  /// assert!(buf.unsplit(split).is_none());
+  /// buf.unsplit(split);
   /// assert_eq!(b"aaabbbcccddd", &buf[..]);
   /// ```
-  pub fn unsplit(&mut self, other: Self) -> Option<Self> {
+  pub fn unsplit(&mut self, other: Self) {
+    if self.is_empty() {
+      *self = other;
+      return;
+    }
+
     match (&mut self.0, other.0) {
       (Repr::Heap(b1), Repr::Heap(b2)) => {
         b1.unsplit(b2);
-        None
       }
-      (_, Repr::Inline(storage)) => Some(Self(Repr::Inline(storage))),
-      (_, Repr::Heap(bytes_mut)) => Some(Self(Repr::Heap(bytes_mut))),
+      (_, Repr::Inline(storage)) => self.extend_from_slice(storage.as_slice()),
+      (_, Repr::Heap(bytes_mut)) => self.extend_from_slice(bytes_mut.as_ref()),
     }
   }
 
   #[inline]
-  pub(crate) fn freeze<S>(self) -> RawBytes<S>
+  pub(crate) fn freeze_with<S>(self) -> RawBytes<S>
   where
     RawBytes<S>: crate::strategy::ImmutableStorage,
   {
@@ -741,6 +919,22 @@ impl BytesMut {
       Repr::Inline(storage) => RawBytes::inline(storage),
       Repr::Heap(b) => RawBytes::heap(b.freeze()),
     }
+  }
+
+  /// Converts this mutable buffer into the default shared immutable [`Bytes`](crate::Bytes).
+  ///
+  /// Heap-backed values retain their allocation. [`freeze_compact`](Self::freeze_compact)
+  /// also transfers existing heap storage without copying, including a short current view;
+  /// its compact strategy applies to later shortening or view operations.
+  ///
+  /// ```
+  /// use smol_bytes::BytesMut;
+  ///
+  /// let bytes = BytesMut::from(&b"hello"[..]).freeze();
+  /// assert_eq!(bytes, b"hello"[..]);
+  /// ```
+  pub fn freeze(self) -> crate::Bytes {
+    self.freeze_with()
   }
 
   /// Converts `self` into an immutable [`shared::Bytes`](crate::shared::Bytes).
@@ -768,7 +962,7 @@ impl BytesMut {
   /// th.join().unwrap();
   /// ```
   pub fn freeze_shared(self) -> crate::shared::Bytes {
-    self.freeze()
+    self.freeze_with()
   }
 
   /// Converts `self` into an immutable [`compact::Bytes`](crate::compact::Bytes).
@@ -776,6 +970,10 @@ impl BytesMut {
   /// The conversion is zero cost and is used to indicate that the slice
   /// referenced by the handle will no longer be mutated. Once the conversion
   /// is done, the handle can be cloned and shared across threads.
+  ///
+  /// Existing heap storage is transferred without copying. In particular, a
+  /// short heap view is not immediately canonicalized; the compact strategy
+  /// applies to subsequent shortening or view operations.
   ///
   /// ## Examples
   ///
@@ -796,7 +994,7 @@ impl BytesMut {
   /// th.join().unwrap();
   /// ```
   pub fn freeze_compact(self) -> crate::compact::Bytes {
-    self.freeze()
+    self.freeze_with()
   }
 
   /// Returns the remaining spare capacity of the buffer as a slice of [`MaybeUninit<u8>`].
@@ -856,7 +1054,7 @@ impl BytesMut {
   /// assert_eq!(64, buf.capacity());
   ///
   /// buf.extend_from_slice(b"abcd");
-  /// let mut split = buf.split().unwrap();
+  /// let mut split = buf.split();
   /// assert_eq!(60, buf.capacity());
   /// assert_eq!(4, split.len());
   /// assert_eq!(false, split.try_reclaim(64));
@@ -1118,24 +1316,34 @@ impl Buf for BytesMut {
 
   #[cfg_attr(not(coverage), inline(always))]
   fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
-    match self.split_to(len) {
-      Ok(a) => a.freeze_shared().into(),
-      Err(b) => ::bytes::Bytes::copy_from_slice(b.as_slice()),
-    }
+    self.split_to(len).freeze_shared().into()
   }
 
-  crate::macros::forward_buf! { 0 {
-    i16,
-    i32,
-    i64,
-    i128,
-    u16,
-    u32,
-    u64,
-    u128,
-    f32,
-    f64,
-  }}
+  fn get_int(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint(self, nbytes), nbytes)
+  }
+
+  fn get_int_le(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_le(self, nbytes), nbytes)
+  }
+
+  fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+    crate::buffer::sign_extend(::bytes::Buf::get_uint_ne(self, nbytes), nbytes)
+  }
+
+  fn try_get_int(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint(self, nbytes).map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_le(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
+
+  fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+    ::bytes::Buf::try_get_uint_ne(self, nbytes)
+      .map(|value| crate::buffer::sign_extend(value, nbytes))
+  }
 }
 
 unsafe impl BufMut for BytesMut {

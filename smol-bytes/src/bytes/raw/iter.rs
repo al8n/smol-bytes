@@ -5,7 +5,7 @@ where
   Self: ImmutableStorage,
 {
   fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
-    BytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze_with()
   }
 }
 
@@ -14,7 +14,7 @@ where
   Self: ImmutableStorage,
 {
   fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
-    BytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze_with()
   }
 }
 
@@ -23,7 +23,26 @@ where
   Self: ImmutableStorage,
 {
   fn from_iter<T: IntoIterator<Item = &'a u8>>(iter: T) -> Self {
-    BytesMut::from_iter(iter).freeze()
+    BytesMut::from_iter(iter).freeze_with()
+  }
+}
+
+impl<S> FromIterator<bytes::Bytes> for RawBytes<S>
+where
+  Self: ImmutableStorage,
+{
+  fn from_iter<T: IntoIterator<Item = bytes::Bytes>>(iter: T) -> Self {
+    BytesMut::from_iter(iter).freeze_with()
+  }
+}
+
+impl<S, T> FromIterator<RawBytes<T>> for RawBytes<S>
+where
+  Self: ImmutableStorage,
+  RawBytes<T>: ImmutableStorage,
+{
+  fn from_iter<I: IntoIterator<Item = RawBytes<T>>>(iter: I) -> Self {
+    BytesMut::from_iter(iter).freeze_with()
   }
 }
 

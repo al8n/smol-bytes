@@ -9,6 +9,7 @@ use core::{
 };
 
 use super::error::*;
+use crate::utf8_edit::{RawUtf8Storage, replace_bytes};
 
 mod cmp;
 mod fmt;
@@ -18,7 +19,9 @@ mod iter;
 mod ops;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub(crate) use io::{assert_uint_width, sign_extend};
+pub(crate) use io::sign_extend;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub(crate) use io::{checked_signed_range, checked_unsigned_range};
 
 #[cfg(feature = "arbitrary")]
 mod arbitrary;
@@ -34,9 +37,6 @@ mod python;
 
 #[cfg(feature = "wasm")]
 mod wasm;
-
-#[cfg(any(feature = "alloc", feature = "std"))]
-pub use bytes::TryGetError;
 
 /// Number of bytes that can be stored inline.
 pub const INLINE_CAP: usize = InlineSize::MAX as usize;
@@ -149,7 +149,7 @@ impl InlineSize {
 #[cfg_attr(feature = "wasm", doc = "console.log(buf.len()); // 3")]
 #[cfg_attr(feature = "wasm", doc = "```")]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass(skip_from_py_object))]
+#[cfg_attr(feature = "pyo3", ::pyo3::prelude::pyclass)]
 #[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Buffer {
   // Invariant: 0 <= cur <= end <= INLINE_CAP, and buf[0..end] is initialized.
@@ -331,9 +331,26 @@ impl Buffer {
 
   /// Reclaims consumed prefix space when doing so provides `additional`
   /// bytes of writable tail without allocating.
-  #[cfg(any(feature = "alloc", feature = "std"))]
+  ///
+  /// Returns `false` without changing the buffer when `additional` cannot
+  /// fit after reclaiming the consumed prefix.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Buffer, INLINE_CAP};
+  ///
+  /// let mut buffer = Buffer::from(*b"abcd");
+  /// buffer.advance(2);
+  /// assert!(!buffer.try_reclaim(usize::MAX));
+  /// assert_eq!(buffer.as_slice(), b"cd");
+  /// assert_eq!(buffer.capacity(), INLINE_CAP - 2);
+  /// assert!(buffer.try_reclaim(60));
+  /// assert_eq!(buffer.as_slice(), b"cd");
+  /// assert_eq!(buffer.capacity(), INLINE_CAP);
+  /// ```
   #[cfg_attr(not(coverage), inline(always))]
-  pub(crate) fn try_reclaim(&mut self, additional: usize) -> bool {
+  pub fn try_reclaim(&mut self, additional: usize) -> bool {
     if additional <= self.remaining_mut() {
       return true;
     }
@@ -712,7 +729,92 @@ impl Buffer {
     Ok(unsafe { Self::copy_from_slice(&self.as_slice()[begin..end]) })
   }
 
-  /// Resizes the buffer to the specified length, filling with zeros if expanding.
+  /// Replaces a range of visible bytes with `replacement`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or the replacement cannot fit in the
+  /// remaining tail capacity.
+  pub fn replace_range(&mut self, range: impl RangeBounds<usize>, replacement: &[u8]) {
+    self
+      .try_replace_range(range, replacement)
+      .unwrap_or_else(|error| panic!("replace_range failed: {error}"));
+  }
+
+  /// Tries to replace a range of visible bytes with `replacement`.
+  ///
+  /// The range is normalized before capacity is checked. On error this buffer
+  /// is unchanged; consumed prefix storage is not reclaimed implicitly.
+  pub fn try_replace_range(
+    &mut self,
+    range: impl RangeBounds<usize>,
+    replacement: &[u8],
+  ) -> Result<(), ByteEditError> {
+    let old_len = self.len();
+    let (start, end) = normalize_range(range, old_len)?;
+    let removed = end - start;
+    let growth = replacement.len().saturating_sub(removed);
+    let available = self.remaining_mut();
+    if growth > available {
+      return Err(
+        TryPutError {
+          requested: growth,
+          available,
+        }
+        .into(),
+      );
+    }
+
+    let mut storage = RawUtf8Storage::fixed(self);
+    replace_bytes(&mut storage, start, end, replacement);
+    Ok(())
+  }
+
+  /// Appends a copy of the specified visible byte range.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the range is invalid or its bytes do not fit in the remaining
+  /// tail capacity.
+  pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+    self
+      .try_extend_from_within(range)
+      .unwrap_or_else(|error| panic!("extend_from_within failed: {error}"));
+  }
+
+  /// Tries to append a copy of the specified visible byte range.
+  ///
+  /// The range is normalized before capacity is checked. On error this buffer
+  /// is unchanged; consumed prefix storage is not reclaimed implicitly.
+  pub fn try_extend_from_within(
+    &mut self,
+    range: impl RangeBounds<usize>,
+  ) -> Result<(), ByteEditError> {
+    let old_len = self.len();
+    let (start, end) = normalize_range(range, old_len)?;
+    let count = end - start;
+    let new_len = old_len.checked_add(count).expect("buffer length overflow");
+    let available = self.remaining_mut();
+    if count > available {
+      return Err(
+        TryPutError {
+          requested: count,
+          available,
+        }
+        .into(),
+      );
+    }
+
+    if count == 0 {
+      return Ok(());
+    }
+
+    self.resize(new_len, 0);
+    self.as_mut_slice().copy_within(start..end, old_len);
+    Ok(())
+  }
+
+  /// Resizes the buffer to the specified length, filling with `value` if expanding.
   ///
   /// ## Example
   ///
@@ -720,17 +822,17 @@ impl Buffer {
   /// use smol_bytes::Buffer;
   ///
   /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
-  /// buf.resize(8);
-  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  /// buf.resize(8, b'x');
+  /// assert_eq!(buf.as_slice(), b"helloxxx");
   ///
-  /// buf.resize(3);
+  /// buf.resize(3, 0);
   /// assert_eq!(buf.as_slice(), b"hel");
   /// ```
   ///
   /// ## Panics
   ///
   /// Panics if the new length exceeds capacity.
-  pub fn resize(&mut self, new_len: usize) {
+  pub fn resize(&mut self, new_len: usize, value: u8) {
     let current_len = self.remaining();
 
     if new_len == current_len {
@@ -752,10 +854,11 @@ impl Buffer {
       self.capacity()
     );
 
-    self.put_bytes(0, additional);
+    self.put_bytes(value, additional);
   }
 
-  /// Tries to resize the buffer to the specified length, filling with zeros if expanding.
+  /// Tries to resize the buffer to the specified length, filling with `value`
+  /// if expanding.
   ///
   /// Returns `Err(OutOfBounds)` if the new length exceeds capacity.
   ///
@@ -765,13 +868,13 @@ impl Buffer {
   /// use smol_bytes::Buffer;
   ///
   /// let mut buf = Buffer::try_from(&b"hello"[..]).unwrap();
-  /// assert!(buf.try_resize(8).is_ok());
-  /// assert_eq!(buf.as_slice(), b"hello\0\0\0");
+  /// assert!(buf.try_resize(8, b'x').is_ok());
+  /// assert_eq!(buf.as_slice(), b"helloxxx");
   ///
-  /// assert!(buf.try_resize(3).is_ok());
+  /// assert!(buf.try_resize(3, 0).is_ok());
   /// assert_eq!(buf.as_slice(), b"hel");
   /// ```
-  pub const fn try_resize(&mut self, new_len: usize) -> Result<(), OutOfBounds> {
+  pub const fn try_resize(&mut self, new_len: usize, value: u8) -> Result<(), OutOfBounds> {
     let current_len = self.remaining();
 
     if new_len == current_len {
@@ -789,7 +892,7 @@ impl Buffer {
       return Err(OutOfBounds::new(new_len, self.capacity()));
     }
 
-    match self.try_put_bytes(0, additional) {
+    match self.try_put_bytes(value, additional) {
       Ok(()) => Ok(()),
       Err(_) => {
         // The identical capacity check above makes this branch unreachable;
@@ -1099,7 +1202,7 @@ impl Buffer {
 const _: () = {
   use bytes::{Buf, BufMut, buf::UninitSlice};
 
-  use crate::macros::{forward_buf, forward_buf_mut};
+  use crate::macros::forward_buf_mut;
 
   impl Buf for Buffer {
     #[cfg_attr(not(coverage), inline(always))]
@@ -1117,17 +1220,28 @@ const _: () = {
       Self::advance(self, cnt);
     }
 
-    forward_buf! {
-      i16,
-      i32,
-      i64,
-      i128,
-      u16,
-      u32,
-      u64,
-      u128,
-      f32,
-      f64,
+    fn get_int(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint(self, nbytes), nbytes)
+    }
+
+    fn get_int_le(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint_le(self, nbytes), nbytes)
+    }
+
+    fn get_int_ne(&mut self, nbytes: usize) -> i64 {
+      sign_extend(::bytes::Buf::get_uint_ne(self, nbytes), nbytes)
+    }
+
+    fn try_get_int(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint(self, nbytes).map(|value| sign_extend(value, nbytes))
+    }
+
+    fn try_get_int_le(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint_le(self, nbytes).map(|value| sign_extend(value, nbytes))
+    }
+
+    fn try_get_int_ne(&mut self, nbytes: usize) -> Result<i64, bytes::TryGetError> {
+      ::bytes::Buf::try_get_uint_ne(self, nbytes).map(|value| sign_extend(value, nbytes))
     }
   }
 

@@ -18,13 +18,16 @@ workspace = true
 
 [features]
 default = ["std"]
-alloc = ["serde_core?/alloc", "bytes"]
-std = ["bytes/default", "serde_core?/default"]
+alloc = ["dep:bytes", "serde_core?/alloc"]
+std = ["alloc", "bytes/std", "serde_core?/std", "serde_core?/result"]
+# Compatibility feature for callers that previously selected bytes directly.
+bytes = ["alloc"]
 serde = ["dep:serde_core"]
 # Schemars needs allocation for schema documents, but not std or wrapper Serde impls.
 schemars = ["dep:schemars", "alloc"]
 borsh = ["dep:borsh"]
 arbitrary = ["dep:arbitrary"]
+quickcheck = ["dep:quickcheck", "std"]
 # `async-graphql`'s derives expand to `::std::` paths, so this integration
 # cannot be built without `std`.
 async-graphql = ["dep:async-graphql", "std"]
@@ -47,7 +50,7 @@ sqlx = { version = "0.9", optional = true, default-features = false }
 arbitrary = { version = "1", optional = true, default-features = false }
 quickcheck = { version = "1", optional = true, default-features = false }
 
-pyo3 = { version = "0.29", default-features = false, features = ["macros", "abi3-py311"], optional = true }
+pyo3 = { version = "0.30", default-features = false, features = ["macros", "abi3-py311"], optional = true }
 wasm-bindgen = { version = "0.2", default-features = false, features = ["strict-macro"], optional = true }
 js-sys = { version = "0.3", optional = true }
 getrandom = { version = "0.4", default-features = false, features = ["wasm_js"], optional = true }

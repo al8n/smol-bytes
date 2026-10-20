@@ -1,12 +1,18 @@
 use core::ops::RangeBounds;
 
-use super::error::{Utf8Error, normalize_range};
+use super::error::{OutOfBounds, Utf8IndexError, normalize_range};
+
+/// Implementation detail that prevents downstream crates from implementing
+/// the UTF-8 buffer traits.
+pub(crate) mod sealed {
+  pub trait Sealed {}
+}
 
 /// Extension trait for UTF-8 validated buffer types.
 ///
 /// This trait provides common functionality for buffer types that guarantee
 /// valid UTF-8 content, such as `Utf8Buffer`, `Utf8Bytes`, and `Utf8BytesMut`.
-pub trait Utf8Buf: AsRef<str> + Sized {
+pub trait Utf8Buf: sealed::Sealed + AsRef<str> + Sized {
   /// Returns the contents as a string slice.
   ///
   /// # Examples
@@ -63,7 +69,7 @@ pub trait Utf8Buf: AsRef<str> + Sized {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or does not lie on a UTF-8 character boundary.
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error>;
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError>;
 
   /// Splits the buffer at the given index, returning the content after the split point.
   ///
@@ -79,7 +85,7 @@ pub trait Utf8Buf: AsRef<str> + Sized {
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or does not lie on a UTF-8 character boundary.
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error>;
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError>;
 
   /// Returns a sub-slice of the buffer.
   ///
@@ -95,58 +101,33 @@ pub trait Utf8Buf: AsRef<str> + Sized {
   /// # Errors
   ///
   /// Returns an error if the range is out of bounds or does not lie on UTF-8 character boundaries.
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error>;
-
-  /// Helper function to convert range bounds to start and end indices.
-  ///
-  /// This is used internally by slice operations to validate and normalize ranges.
-  fn range_bounds_to_start_end(
-    &self,
-    range: impl RangeBounds<usize>,
-  ) -> Result<(usize, usize), Utf8Error> {
-    let len = self.len();
-    let (start, end) =
-      normalize_range(range, len).map_err(|err| Utf8Error::OutOfBounds { at: err.end, len })?;
-
-    let s = self.as_str();
-    if !s.is_char_boundary(start) {
-      return Err(Utf8Error::InvalidCharBoundary { at: start });
-    }
-    if !s.is_char_boundary(end) {
-      return Err(Utf8Error::InvalidCharBoundary { at: end });
-    }
-
-    Ok((start, end))
-  }
-
-  /// Validates that an index is within bounds and on a character boundary.
-  ///
-  /// This is used internally by split operations.
-  fn validate_char_boundary(&self, at: usize) -> Result<(), Utf8Error> {
-    let len = self.len();
-
-    if at > len {
-      return Err(Utf8Error::OutOfBounds { at, len });
-    }
-
-    if !self.as_str().is_char_boundary(at) {
-      return Err(Utf8Error::InvalidCharBoundary { at });
-    }
-
-    Ok(())
-  }
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError>;
 }
 
 /// Extension trait for mutable UTF-8 validated buffer types.
 ///
 /// This trait provides common mutable operations for buffer types that can be
 /// modified while maintaining UTF-8 validity.
-pub trait Utf8BufMut: Utf8Buf {
+pub trait Utf8BufMut: Utf8Buf + AsMut<str> {
+  /// The error returned when an append cannot fit.
+  type CapacityError: core::error::Error;
+
+  /// Returns the contents as a mutable string slice.
+  fn as_mut_str(&mut self) -> &mut str {
+    self.as_mut()
+  }
+
   /// Truncates at a UTF-8 character boundary.
   ///
   /// A length at or beyond the current byte length is a no-op. On failure the
   /// buffer is unchanged.
-  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8Error>;
+  fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError>;
+
+  /// Attempts to append a character.
+  fn try_push(&mut self, ch: char) -> Result<(), Self::CapacityError>;
+
+  /// Attempts to append a string slice.
+  fn try_push_str(&mut self, s: &str) -> Result<(), Self::CapacityError>;
 
   /// Appends a character to the buffer.
   ///
@@ -160,7 +141,11 @@ pub trait Utf8BufMut: Utf8Buf {
   /// buf.push('b');
   /// assert_eq!(buf.as_str(), "ab");
   /// ```
-  fn push(&mut self, ch: char);
+  fn push(&mut self, ch: char) {
+    if let Err(error) = self.try_push(ch) {
+      panic!("UTF-8 buffer capacity exceeded: {error}");
+    }
+  }
 
   /// Appends a string slice to the buffer.
   ///
@@ -173,7 +158,11 @@ pub trait Utf8BufMut: Utf8Buf {
   /// buf.push_str("hello");
   /// assert_eq!(buf.as_str(), "hello");
   /// ```
-  fn push_str(&mut self, s: &str);
+  fn push_str(&mut self, s: &str) {
+    if let Err(error) = self.try_push_str(s) {
+      panic!("UTF-8 buffer capacity exceeded: {error}");
+    }
+  }
 
   /// Clears the buffer, removing all contents.
   ///
@@ -187,6 +176,33 @@ pub trait Utf8BufMut: Utf8Buf {
   /// assert!(buf.is_empty());
   /// ```
   fn clear(&mut self);
+}
+
+/// Validates that `at` is a visible UTF-8 character boundary.
+pub(crate) fn validate_char_boundary(s: &str, at: usize) -> Result<(), Utf8IndexError> {
+  let len = s.len();
+  if at > len {
+    return Err(OutOfBounds::new(at, len).into());
+  }
+  if !s.is_char_boundary(at) {
+    return Err(Utf8IndexError::InvalidCharBoundary { index: at });
+  }
+  Ok(())
+}
+
+/// Normalizes a range and validates both UTF-8 character boundaries.
+pub(crate) fn range_bounds_to_start_end(
+  s: &str,
+  range: impl RangeBounds<usize>,
+) -> Result<(usize, usize), Utf8IndexError> {
+  let (start, end) = normalize_range(range, s.len())?;
+  if !s.is_char_boundary(start) {
+    return Err(Utf8IndexError::InvalidCharBoundary { index: start });
+  }
+  if !s.is_char_boundary(end) {
+    return Err(Utf8IndexError::InvalidCharBoundary { index: end });
+  }
+  Ok((start, end))
 }
 
 /// Maps a Unicode-scalar offset to its byte offset in `s`.

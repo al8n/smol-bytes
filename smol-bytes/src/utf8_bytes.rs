@@ -1,9 +1,9 @@
 use core::{borrow::Borrow, ops::RangeBounds, str};
 
 use super::{
-  bytes::{RawBytes, strategy::ImmutableStorage},
+  bytes::{RawBytes, strategy::ImmutableStorage, visible_subslice_range},
   error::*,
-  utf8_buf::Utf8Buf,
+  utf8_buf::{Utf8Buf, range_bounds_to_start_end, sealed, validate_char_boundary},
 };
 
 mod cmp;
@@ -29,7 +29,7 @@ pub use python::PyCompactUtf8Bytes;
 pub use python::PySharedUtf8Bytes;
 
 #[cfg(feature = "wasm")]
-mod wasm;
+pub(crate) mod wasm;
 
 /// Immutable UTF-8 string with inline/heap storage, generic over the
 /// immutable storage strategy `S`.
@@ -57,6 +57,8 @@ impl<S> Clone for Utf8Bytes<S> {
     }
   }
 }
+
+impl<S> sealed::Sealed for Utf8Bytes<S> {}
 
 impl<S> Default for Utf8Bytes<S>
 where
@@ -107,6 +109,34 @@ where
     }
   }
 
+  /// Validates owned raw bytes as UTF-8 without losing their storage strategy
+  /// or current view on failure.
+  pub fn from_utf8(bytes: RawBytes<S>) -> Result<Self, FromUtf8Error<RawBytes<S>>> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self { inner: bytes }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+
+  /// Decodes owned bytes as UTF-8, replacing malformed sequences with
+  /// `U+FFFD`.
+  ///
+  /// Valid input keeps its storage strategy and current view. Invalid input is
+  /// converted through an owned [`String`](std::string::String).
+  ///
+  /// ```
+  /// use smol_bytes::{Bytes, Utf8Bytes};
+  ///
+  /// let text = Utf8Bytes::from_utf8_lossy(Bytes::from(&b"hi\xff"[..]));
+  /// assert_eq!(text.as_str(), "hi\u{FFFD}");
+  /// ```
+  pub fn from_utf8_lossy(bytes: RawBytes<S>) -> Self {
+    match Self::from_utf8(bytes) {
+      Ok(value) => value,
+      Err(error) => Self::from(std::string::String::from_utf8_lossy(error.as_bytes()).into_owned()),
+    }
+  }
+
   /// Returns a reference to the inner `RawBytes`.
   ///
   /// Note: named `as_inner` (not `as_bytes`) to avoid shadowing
@@ -120,6 +150,18 @@ where
   /// Consumes `self` and returns the inner `RawBytes`.
   pub fn into_inner(self) -> RawBytes<S> {
     self.inner
+  }
+
+  /// Tries to convert this view into mutable UTF-8 bytes without copying.
+  ///
+  /// The conversion succeeds when the underlying immutable bytes are uniquely
+  /// owned and cover their full allocation. On failure, this exact view and
+  /// storage strategy are returned unchanged.
+  pub fn try_into_mut(self) -> Result<crate::Utf8BytesMut, Self> {
+    match self.inner.try_into_mut() {
+      Ok(inner) => Ok(crate::Utf8BytesMut { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
   }
 
   /// Returns the contents as a string slice.
@@ -153,6 +195,67 @@ where
     self.inner.is_heap()
   }
 
+  /// Returns whether this is the only reference to its heap allocation.
+  ///
+  /// Inline values and static backing never report uniqueness.
+  #[inline]
+  pub fn is_unique(&self) -> bool {
+    self.inner.is_unique()
+  }
+
+  /// Clears this value's visible view without changing the immutable payload.
+  #[inline]
+  pub fn clear(&mut self) {
+    self.inner.clear();
+  }
+
+  /// Truncates this value's visible view at a UTF-8 character boundary.
+  pub fn truncate(&mut self, new_len: usize) {
+    self
+      .try_truncate(new_len)
+      .expect("new_len must lie on a UTF-8 character boundary");
+  }
+
+  /// Tries to truncate this value's visible view at a UTF-8 character boundary.
+  pub fn try_truncate(&mut self, new_len: usize) -> Result<(), Utf8IndexError> {
+    if new_len >= self.len() {
+      return Ok(());
+    }
+    validate_char_boundary(self.as_str(), new_len)?;
+    self.inner.truncate(new_len);
+    Ok(())
+  }
+
+  /// Removes and returns the last Unicode scalar value.
+  ///
+  /// This operates on Unicode scalar values, not grapheme clusters. It never
+  /// allocates; storage changes continue to follow the selected strategy.
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let mut text = Utf8Bytes::from("aé");
+  /// assert_eq!(text.pop(), Some('é'));
+  /// assert_eq!(text.as_str(), "a");
+  /// ```
+  pub fn pop(&mut self) -> Option<char> {
+    let ch = self.as_str().chars().next_back()?;
+    self.truncate(self.len() - ch.len_utf8());
+    Some(ch)
+  }
+
+  /// Advances this value's visible view by `cnt` UTF-8 bytes.
+  pub fn advance(&mut self, cnt: usize) {
+    self.try_advance(cnt).expect("advance failed");
+  }
+
+  /// Tries to advance this value's visible view by `cnt` UTF-8 bytes.
+  pub fn try_advance(&mut self, cnt: usize) -> Result<(), Utf8IndexError> {
+    validate_char_boundary(self.as_str(), cnt)?;
+    self.inner.try_advance(cnt).expect("already checked bounds");
+    Ok(())
+  }
+
   /// Splits the bytes at the given index.
   ///
   /// # Panics
@@ -179,7 +282,7 @@ where
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_to(self, at)
   }
 
@@ -209,7 +312,7 @@ where
   /// # Errors
   ///
   /// Returns an error if `at` is out of bounds or not on a character boundary.
-  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
+  pub fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_split_off(self, at)
   }
 
@@ -238,8 +341,61 @@ where
   /// # Errors
   ///
   /// Returns an error if the range is out of bounds or not on character boundaries.
-  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
+  pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
     <Self as Utf8Buf>::try_slice(self, range)
+  }
+
+  /// Returns a slice identified by a string reference into this value's
+  /// current visible view.
+  ///
+  /// A non-empty `subset` must be address-contained in the current view.
+  /// Empty subsets always return the canonical empty value. The containment
+  /// check is `O(1)`; shared heap views retain their allocation while compact
+  /// short views may be inlined by the existing slice strategy.
+  ///
+  /// # Panics
+  ///
+  /// Panics when a non-empty subset is not contained in the current visible
+  /// view.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let text = Utf8Bytes::from("café");
+  /// let accent = text.slice_ref(&text.as_str()[3..]);
+  /// assert_eq!(accent.as_str(), "é");
+  /// ```
+  pub fn slice_ref(&self, subset: &str) -> Self {
+    self
+      .try_slice_ref(subset)
+      .expect("slice_ref subset must be contained in the current visible view")
+  }
+
+  /// Attempts to return a slice identified by a string reference into this
+  /// value's current visible view.
+  ///
+  /// Empty subsets are accepted regardless of origin. Existing UTF-8 slice
+  /// validation remains responsible for validating the resulting byte range.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::Utf8Bytes;
+  ///
+  /// let text = Utf8Bytes::from("  café  ");
+  /// let trimmed = text.try_slice_ref(text.as_str().trim()).unwrap();
+  /// assert_eq!(trimmed.as_str(), "café");
+  /// assert!(text.try_slice_ref("café").is_none());
+  /// ```
+  pub fn try_slice_ref(&self, subset: &str) -> Option<Self> {
+    if subset.is_empty() {
+      return Some(Self::new());
+    }
+
+    let range = visible_subslice_range(self.as_str().as_bytes(), subset.as_bytes())?;
+    self.try_slice(range).ok()
   }
 }
 
@@ -281,6 +437,26 @@ where
   }
 }
 
+#[cfg(feature = "std")]
+impl<S> AsRef<std::ffi::OsStr> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn as_ref(&self) -> &std::ffi::OsStr {
+    std::ffi::OsStr::new(self.as_str())
+  }
+}
+
+#[cfg(feature = "std")]
+impl<S> AsRef<std::path::Path> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn as_ref(&self) -> &std::path::Path {
+    std::path::Path::new(self.as_str())
+  }
+}
+
 // The trait impl holds the real bodies. Inherent methods (above) forward
 // here via explicit `<Self as Utf8Buf>::method` UFCS so there is no
 // ambiguity about which impl is called and no fragile reliance on the
@@ -289,15 +465,15 @@ impl<S> Utf8Buf for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
 {
-  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_to(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
     Ok(Self {
       inner: self.inner.try_split_to(at).expect("already checked bounds"),
     })
   }
 
-  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8Error> {
-    self.validate_char_boundary(at)?;
+  fn try_split_off(&mut self, at: usize) -> Result<Self, Utf8IndexError> {
+    validate_char_boundary(self.as_str(), at)?;
     Ok(Self {
       inner: self
         .inner
@@ -306,8 +482,8 @@ where
     })
   }
 
-  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8Error> {
-    let (start, end) = self.range_bounds_to_start_end(range)?;
+  fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, Utf8IndexError> {
+    let (start, end) = range_bounds_to_start_end(self.as_str(), range)?;
     Ok(Self {
       inner: self
         .inner

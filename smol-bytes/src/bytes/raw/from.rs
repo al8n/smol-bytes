@@ -118,6 +118,16 @@ where
   }
 }
 
+impl<S> From<RawBytes<S>> for Box<[u8]>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  #[inline]
+  fn from(bytes: RawBytes<S>) -> Self {
+    bytes.into_boxed_slice()
+  }
+}
+
 impl<S> From<RawBytes<S>> for Arc<[u8]>
 where
   RawBytes<S>: ImmutableStorage,
@@ -138,13 +148,23 @@ where
   }
 }
 
+impl<S> From<RawBytes<S>> for ::bytes::BytesMut
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  #[inline]
+  fn from(bytes: RawBytes<S>) -> Self {
+    BytesMut::from(bytes).into()
+  }
+}
+
 impl<S> From<BytesMut> for RawBytes<S>
 where
   Self: ImmutableStorage,
 {
   #[inline]
   fn from(v: BytesMut) -> Self {
-    v.freeze()
+    v.freeze_with()
   }
 }
 

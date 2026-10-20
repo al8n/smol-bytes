@@ -1,16 +1,20 @@
 use super::*;
 use pyo3::{
   basic::CompareOp,
-  exceptions::{PyBufferError, PyIndexError, PyOverflowError, PyUnicodeDecodeError, PyValueError},
+  buffer::PyBuffer,
+  exceptions::{
+    PyBufferError, PyIndexError, PyOverflowError, PyTypeError, PyUnicodeDecodeError, PyValueError,
+  },
   prelude::*,
   types::{
     PyAny, PyByteArray, PyByteArrayMethods, PyBytes, PyInt, PyMemoryView, PyModule, PyRange,
-    PySlice, PySliceIndices, PyString,
+    PySlice, PyString, PyStringMethods, slice::PySliceIndices,
   },
 };
 
 use crate::{
-  Buf, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetError, utf8_buf::char_offset_to_byte,
+  Buf, BufTryGetError, BytesMut, OutOfBounds, RangeOutOfBounds, TryGetIntegerError, Utf8EditError,
+  Utf8IndexError, utf8_buf::char_offset_to_byte,
 };
 
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -30,7 +34,7 @@ pub(crate) fn validate_utf8_advance(value: &impl AsRef<str>, cnt: usize) -> PyRe
   }
 
   if !value.is_char_boundary(cnt) {
-    return Err(PyBufferError::new_err(format!(
+    return Err(PyValueError::new_err(format!(
       "cannot advance to byte {}: not a UTF-8 character boundary",
       cnt
     )));
@@ -58,6 +62,67 @@ pub(crate) fn py_check_alloc(additional: usize) -> PyResult<()> {
     .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))
 }
 
+/// Copies a supported Python buffer before an operation can mutate its
+/// destination. The public raw-byte API deliberately accepts only one-dimensional,
+/// C-contiguous one-byte buffers, so callers never observe partial writes or
+/// live aliases into Python-owned memory.
+pub(crate) fn py_readable_buffer_snapshot(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+  let py = value.py();
+  if let Ok(buffer) = PyBuffer::<u8>::get(value) {
+    if buffer.dimensions() != 1 || !buffer.is_c_contiguous() {
+      return Err(PyBufferError::new_err(
+        "expected a readable 1D C-contiguous byte buffer",
+      ));
+    }
+    let item_count = buffer.item_count();
+    py_check_alloc(item_count)?;
+    let mut snapshot = Vec::new();
+    snapshot
+      .try_reserve_exact(item_count)
+      .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
+    snapshot.resize(item_count, 0);
+    buffer.copy_to_slice(py, &mut snapshot)?;
+    return Ok(snapshot);
+  }
+
+  match PyBuffer::<i8>::get(value) {
+    Ok(buffer) => {
+      if buffer.dimensions() != 1 || !buffer.is_c_contiguous() {
+        return Err(PyBufferError::new_err(
+          "expected a readable 1D C-contiguous byte buffer",
+        ));
+      }
+      let item_count = buffer.item_count();
+      py_check_alloc(item_count)?;
+      let mut signed = Vec::new();
+      signed
+        .try_reserve_exact(item_count)
+        .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
+      signed.resize(item_count, 0);
+      buffer.copy_to_slice(py, &mut signed)?;
+
+      py_check_alloc(item_count)?;
+      let mut snapshot = Vec::new();
+      snapshot
+        .try_reserve_exact(item_count)
+        .map_err(|_| pyo3::exceptions::PyMemoryError::new_err("allocation failed"))?;
+      for byte in signed {
+        snapshot.push(byte as u8);
+      }
+      Ok(snapshot)
+    }
+    Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(error),
+    Err(_) => Err(PyBufferError::new_err(
+      "expected a readable 1D C-contiguous byte buffer",
+    )),
+  }
+}
+
+/// Mirrors `str(bytes(value))`: raw wrappers always have a total `str()`.
+pub(crate) fn py_raw_str(value: &[u8], py: Python<'_>) -> PyResult<String> {
+  Ok(PyBytes::new(py, value).str()?.to_str()?.to_owned())
+}
+
 impl From<TryPutError> for PyErr {
   fn from(err: TryPutError) -> PyErr {
     PyBufferError::new_err(format!(
@@ -82,6 +147,18 @@ impl From<TryPutIntegerError> for PyErr {
   }
 }
 
+impl From<TryGetIntegerError> for PyErr {
+  fn from(err: TryGetIntegerError) -> PyErr {
+    match err {
+      TryGetIntegerError::NotEnoughBytes(err) => PyBufferError::new_err(format!(
+        "cannot get {} bytes, only {} bytes available",
+        err.requested, err.available
+      )),
+      TryGetIntegerError::InvalidLength(err) => PyValueError::new_err(err.to_string()),
+    }
+  }
+}
+
 impl From<OutOfBounds> for PyErr {
   fn from(err: OutOfBounds) -> PyErr {
     PyIndexError::new_err(format!(
@@ -100,7 +177,32 @@ impl From<RangeOutOfBounds> for PyErr {
   }
 }
 
-fn try_get_error_parts(err: &TryGetError) -> (usize, usize) {
+impl From<Utf8IndexError> for PyErr {
+  fn from(err: Utf8IndexError) -> PyErr {
+    match err {
+      Utf8IndexError::InvalidCharBoundary { index } => PyValueError::new_err(format!(
+        "index {} does not lie on a UTF-8 character boundary",
+        index
+      )),
+      Utf8IndexError::IndexOutOfBounds(err) => err.into(),
+      Utf8IndexError::RangeOutOfBounds(err) if err.start > err.end => {
+        PyValueError::new_err("start must not exceed end")
+      }
+      Utf8IndexError::RangeOutOfBounds(err) => err.into(),
+    }
+  }
+}
+
+impl From<Utf8EditError> for PyErr {
+  fn from(err: Utf8EditError) -> PyErr {
+    match err {
+      Utf8EditError::Index(error) => error.into(),
+      Utf8EditError::Capacity(error) => error.into(),
+    }
+  }
+}
+
+fn try_get_error_parts(err: &BufTryGetError) -> (usize, usize) {
   (err.requested, err.available)
 }
 
@@ -174,6 +276,66 @@ fn py_index_int<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyInt>> {
       .getattr("stop")?
       .cast_into::<PyInt>()?,
   )
+}
+
+/// Converts a public byte or character offset using Python's index protocol.
+/// Negative offsets are invalid API offsets, while values too large for the
+/// numeric target preserve Python's `OverflowError` contract.
+pub(crate) fn py_offset(value: &Bound<'_, PyAny>, name: &str) -> PyResult<usize> {
+  let offset = py_index_int(value)?.extract::<i128>()?;
+  if offset < 0 {
+    return Err(PyIndexError::new_err(format!(
+      "{} must be nonnegative",
+      name
+    )));
+  }
+  usize::try_from(offset).map_err(|_| PyOverflowError::new_err(format!("{} is too large", name)))
+}
+
+/// Converts a Unicode scalar-value offset to a UTF-8 byte offset.
+pub(crate) fn py_char_offset(
+  value: &str,
+  offset: &Bound<'_, PyAny>,
+  name: &str,
+) -> PyResult<usize> {
+  let offset = py_offset(offset, name)?;
+  char_offset_to_byte(value, offset)
+    .ok_or_else(|| PyIndexError::new_err(format!("{} out of range", name)))
+}
+
+/// Converts an inclusive/exclusive scalar-value range to UTF-8 byte offsets.
+pub(crate) fn py_char_range(
+  value: &str,
+  start: &Bound<'_, PyAny>,
+  end: &Bound<'_, PyAny>,
+) -> PyResult<(usize, usize)> {
+  let start_offset = py_offset(start, "start")?;
+  let end_offset = py_offset(end, "end")?;
+  if start_offset > end_offset {
+    return Err(PyValueError::new_err("start must not exceed end"));
+  }
+  let start = char_offset_to_byte(value, start_offset)
+    .ok_or_else(|| PyIndexError::new_err("start out of range"))?;
+  let end = char_offset_to_byte(value, end_offset)
+    .ok_or_else(|| PyIndexError::new_err("end out of range"))?;
+  Ok((start, end))
+}
+
+/// Validates an inclusive/exclusive byte range for copy-producing raw slices.
+pub(crate) fn py_byte_range(
+  len: usize,
+  start: &Bound<'_, PyAny>,
+  end: &Bound<'_, PyAny>,
+) -> PyResult<(usize, usize)> {
+  let start = py_offset(start, "start")?;
+  let end = py_offset(end, "end")?;
+  if start > end {
+    return Err(PyValueError::new_err("start must not exceed end"));
+  }
+  if end > len {
+    return Err(PyIndexError::new_err("slice range out of bounds"));
+  }
+  Ok((start, end))
 }
 
 /// Normalizes a Python integer/index or slice without exposing Rust indexing.
@@ -374,31 +536,17 @@ pub(crate) fn py_str_contains(value: &str, item: &Bound<'_, PyAny>) -> PyResult<
 
 /// Parses the public Python variable-width integer argument.
 pub(crate) fn py_integer_width(value: &Bound<'_, PyAny>) -> PyResult<usize> {
-  let py = value.py();
-  let width = py_index_int(value)?.extract::<usize>().map_err(|err| {
-    if err.is_instance_of::<PyOverflowError>(py) {
-      PyValueError::new_err("nbytes must be in the range 0..=8")
-    } else {
-      err
-    }
-  })?;
+  let width = py_index_int(value)?.extract::<i128>()?;
 
-  if width <= 8 {
-    Ok(width)
+  if (0..=8).contains(&width) {
+    Ok(width as usize)
   } else {
     Err(PyValueError::new_err("nbytes must be in the range 0..=8"))
   }
 }
 
 fn py_assignment_byte(value: &Bound<'_, PyAny>) -> PyResult<u8> {
-  let py = value.py();
-  py_index_int(value)?.extract::<u8>().map_err(|err| {
-    if err.is_instance_of::<PyOverflowError>(py) {
-      PyValueError::new_err("byte must be in range(0, 256)")
-    } else {
-      err
-    }
-  })
+  py_index_int(value)?.extract::<u8>()
 }
 
 fn py_slice_assignment_bytes(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
@@ -470,18 +618,12 @@ where
 impl PyBufCommon for BytesMut {
   #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_to(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
-    match self.try_split_to(at)? {
-      Ok(bytes) => Ok(bytes),
-      Err(buffer) => Ok(BytesMut::from_inline(buffer)),
-    }
+    self.try_split_to(at)
   }
 
   #[cfg_attr(not(coverage), inline(always))]
   fn py_try_split_off(&mut self, at: usize) -> Result<BytesMut, OutOfBounds> {
-    match self.try_split_off(at)? {
-      Ok(bytes) => Ok(bytes),
-      Err(buffer) => Ok(BytesMut::from_inline(buffer)),
-    }
+    self.try_split_off(at)
   }
 
   #[cfg_attr(not(coverage), inline(always))]
@@ -530,7 +672,7 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
     py_bytes_getitem(self.as_ref(), index)
   }
 
-  fn py_map_try_get_error(err: TryGetError) -> PyErr {
+  fn py_map_try_get_error(err: BufTryGetError) -> PyErr {
     let (requested, available) = try_get_error_parts(&err);
     PyBufferError::new_err(format!(
       "cannot get {} bytes, only {} bytes available",
@@ -540,7 +682,7 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
 
   fn py_try_get<T, F>(&mut self, f: F) -> PyResult<T>
   where
-    F: FnOnce(&mut Self) -> Result<T, TryGetError>,
+    F: FnOnce(&mut Self) -> Result<T, BufTryGetError>,
   {
     f(self).map_err(Self::py_map_try_get_error)
   }
@@ -693,6 +835,9 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
   where
     Self: Sized,
   {
+    if start > end {
+      return Err(PyValueError::new_err("start must not exceed end"));
+    }
     self.py_try_slice(start, end).map_err(Into::into)
   }
 
@@ -700,7 +845,12 @@ pub trait PyBufExt: Buf + AsRef<[u8]> + PyBufCommon + Sized {
   where
     Self: Sized,
   {
-    self.py_try_advance(cnt).map_err(Into::into)
+    self.py_try_advance(cnt).map_err(|error| {
+      PyBufferError::new_err(format!(
+        "cannot advance {} bytes, only {} bytes available",
+        error.requested, error.available
+      ))
+    })
   }
 }
 
@@ -790,6 +940,9 @@ pub fn register_classes(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<
   m.add_class::<crate::bytes_mut::BytesMut>()?;
   m.getattr("BytesMut")?.setattr("__module__", module_name)?;
 
+  m.add_class::<crate::bytes::strategy::shared::PySharedBytes>()?;
+  m.getattr("Bytes")?.setattr("__module__", module_name)?;
+
   m.add_class::<crate::utf8_buffer::Utf8Buffer>()?;
   m.getattr("Utf8Buffer")?
     .setattr("__module__", module_name)?;
@@ -808,11 +961,25 @@ pub fn register_classes(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<
 /// into a Python module.
 ///
 /// `module_name` is the user-facing import path (e.g., `"smol_bytes.shared"`).
+/// This remains suitable for downstream extension modules that expose the
+/// shared classes directly.
 pub fn register_shared(m: &Bound<'_, PyModule>, module_name: &str) -> PyResult<()> {
   m.add_class::<crate::bytes::strategy::shared::PySharedBytes>()?;
   m.getattr("Bytes")?.setattr("__module__", module_name)?;
   m.add_class::<crate::utf8_bytes::PySharedUtf8Bytes>()?;
   m.getattr("Utf8Bytes")?.setattr("__module__", module_name)?;
+  Ok(())
+}
+
+/// Register historical shared-module aliases for canonical root shared
+/// classes. This deliberately does not touch `__module__`, so new pickles use
+/// the root path while old `smol_bytes.shared.*` pickles still resolve.
+pub fn register_shared_aliases(
+  m: &Bound<'_, PyModule>,
+  canonical: &Bound<'_, PyModule>,
+) -> PyResult<()> {
+  m.add("Bytes", canonical.getattr("Bytes")?)?;
+  m.add("Utf8Bytes", canonical.getattr("Utf8Bytes")?)?;
   Ok(())
 }
 

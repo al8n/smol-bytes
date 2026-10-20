@@ -1,5 +1,7 @@
 use core::{convert::Infallible, str::FromStr};
-use std::string::String;
+use std::{borrow::Cow, string::String, vec::Vec};
+
+use crate::{BytesMut, Utf8BytesMut};
 
 use super::*;
 
@@ -36,15 +38,49 @@ where
   }
 }
 
+impl<S> From<crate::Utf8Buffer> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  /// Moves the validated fixed buffer directly into inline immutable UTF-8
+  /// storage without revalidating or allocating.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use smol_bytes::{Utf8Buffer, Utf8Bytes};
+  ///
+  /// let buffer = Utf8Buffer::try_from("café").unwrap();
+  /// let bytes: Utf8Bytes = buffer.into();
+  /// assert_eq!(bytes.as_str(), "café");
+  /// ```
+  fn from(value: crate::Utf8Buffer) -> Self {
+    Self {
+      inner: value.into_inner().into(),
+    }
+  }
+}
+
+impl<'a, S> From<Cow<'a, str>> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Cow<'a, str>) -> Self {
+    match value {
+      Cow::Borrowed(value) => Self::from(value),
+      Cow::Owned(value) => Self::from(value),
+    }
+  }
+}
+
 impl<S> TryFrom<RawBytes<S>> for Utf8Bytes<S>
 where
   RawBytes<S>: ImmutableStorage,
 {
-  type Error = core::str::Utf8Error;
+  type Error = FromUtf8Error<RawBytes<S>>;
 
   fn try_from(bytes: RawBytes<S>) -> Result<Self, Self::Error> {
-    core::str::from_utf8(bytes.as_ref())?;
-    Ok(Self { inner: bytes })
+    Self::from_utf8(bytes)
   }
 }
 
@@ -61,9 +97,79 @@ where
   }
 }
 
+impl<S> TryFrom<Vec<u8>> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  type Error = FromUtf8Error<Vec<u8>>;
+
+  fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+    match core::str::from_utf8(&bytes) {
+      Ok(_) => Ok(Self {
+        inner: RawBytes::from(bytes),
+      }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+}
+
+impl<S> TryFrom<::bytes::Bytes> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage + From<::bytes::Bytes>,
+{
+  type Error = FromUtf8Error<::bytes::Bytes>;
+
+  fn try_from(bytes: ::bytes::Bytes) -> Result<Self, Self::Error> {
+    match core::str::from_utf8(bytes.as_ref()) {
+      Ok(_) => Ok(Self {
+        inner: RawBytes::from(bytes),
+      }),
+      Err(error) => Err(FromUtf8Error::new(bytes, error)),
+    }
+  }
+}
+
 impl<S> From<Utf8Bytes<S>> for RawBytes<S> {
   fn from(value: Utf8Bytes<S>) -> Self {
     value.inner
+  }
+}
+
+impl<S> From<Utf8BytesMut> for Utf8Bytes<S>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Utf8BytesMut) -> Self {
+    Self {
+      inner: value.into_inner().freeze_with(),
+    }
+  }
+}
+
+impl<S> From<Utf8Bytes<S>> for Utf8BytesMut
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Utf8Bytes<S>) -> Self {
+    Self {
+      inner: BytesMut::from(value.into_inner()),
+    }
+  }
+}
+
+impl From<crate::compact::Utf8Bytes> for crate::shared::Utf8Bytes {
+  fn from(value: crate::compact::Utf8Bytes) -> Self {
+    Self {
+      inner: value.into_inner().into(),
+    }
+  }
+}
+
+impl From<crate::shared::Utf8Bytes> for crate::compact::Utf8Bytes {
+  fn from(value: crate::shared::Utf8Bytes) -> Self {
+    Self {
+      inner: value.into_inner().into(),
+    }
   }
 }
 
@@ -76,6 +182,33 @@ where
   }
 }
 
+impl<S> From<Utf8Bytes<S>> for Vec<u8>
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Utf8Bytes<S>) -> Self {
+    value.into_inner().into_vec()
+  }
+}
+
+impl<S> From<Utf8Bytes<S>> for ::bytes::Bytes
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Utf8Bytes<S>) -> Self {
+    value.into_inner().into_bytes()
+  }
+}
+
+impl<S> From<Utf8Bytes<S>> for ::bytes::BytesMut
+where
+  RawBytes<S>: ImmutableStorage,
+{
+  fn from(value: Utf8Bytes<S>) -> Self {
+    BytesMut::from(value.into_inner()).into()
+  }
+}
+
 #[cfg(any(feature = "std", feature = "alloc"))]
 const _: () = {
   use std::{boxed::Box, rc::Rc, sync::Arc};
@@ -85,7 +218,7 @@ const _: () = {
     RawBytes<S>: ImmutableStorage,
   {
     fn from(value: Utf8Bytes<S>) -> Self {
-      value.as_str().into()
+      String::from(value).into_boxed_str()
     }
   }
 
@@ -121,7 +254,7 @@ const _: () = {
     RawBytes<S>: ImmutableStorage,
   {
     fn from(s: Box<str>) -> Self {
-      Self::from(s.as_ref())
+      Self::from(String::from(s))
     }
   }
 

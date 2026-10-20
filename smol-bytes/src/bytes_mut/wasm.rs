@@ -21,6 +21,12 @@ impl BytesMut {
     Self::with_capacity(capacity)
   }
 
+  /// Create a `BytesMut` containing `len` zero bytes.
+  #[wasm_bindgen(js_name = "zeroed")]
+  pub fn zeroed_wasm(len: usize) -> Self {
+    Self::zeroed(len)
+  }
+
   /// Create a `BytesMut` from a byte array.
   ///
   /// @param data - The source bytes to copy.
@@ -32,9 +38,10 @@ impl BytesMut {
   /// Create a `BytesMut` from a UTF-8 string.
   ///
   /// @param s - The source string whose bytes are copied.
-  #[wasm_bindgen(js_name = "fromString")]
-  pub fn from_string_wasm(s: &str) -> BytesMut {
-    BytesMut::from(s.as_bytes())
+  #[wasm_bindgen(js_name = "fromUtf8")]
+  pub fn from_utf8_wasm(s: js_sys::JsString) -> Result<BytesMut, JsError> {
+    let s = crate::wasm::js_string_to_string(&s)?;
+    Ok(BytesMut::from(s.as_bytes()))
   }
 
   /// Return contents as a `Uint8Array` (copy).
@@ -46,8 +53,8 @@ impl BytesMut {
   /// Return contents as a UTF-8 string.
   ///
   /// @throws {Error} If the buffer contains invalid UTF-8.
-  #[wasm_bindgen(js_name = "toString")]
-  pub fn to_string_wasm(&self) -> Result<String, JsError> {
+  #[wasm_bindgen(js_name = "decodeUtf8")]
+  pub fn decode_utf8_wasm(&self) -> Result<String, JsError> {
     core::str::from_utf8(self.as_slice())
       .map(|s| s.to_string())
       .map_err(|e| JsError::new(&e.to_string()))
@@ -89,6 +96,15 @@ impl BytesMut {
     bytes::Buf::remaining(self)
   }
 
+  /// Return the growable `bytes::BufMut` writable limit.
+  ///
+  /// This is `usize::MAX - len`, not the current allocation's spare capacity.
+  /// On Wasm it is bounded by the wasm32 `usize` range.
+  #[wasm_bindgen(js_name = "remainingMut")]
+  pub fn remaining_mut_wasm(&self) -> usize {
+    bytes::BufMut::remaining_mut(self)
+  }
+
   /// Advance the read cursor by `cnt` bytes.
   ///
   /// @throws {Error} If `cnt` exceeds the number of remaining bytes.
@@ -117,6 +133,18 @@ impl BytesMut {
     self.reserve(additional);
   }
 
+  /// Ensure this value is backed by a heap allocation.
+  #[wasm_bindgen(js_name = "makeHeap")]
+  pub fn make_heap_wasm(&mut self) {
+    self.make_heap();
+  }
+
+  /// Copy a small heap value back into inline storage when possible.
+  #[wasm_bindgen(js_name = "tryMakeInline")]
+  pub fn try_make_inline_wasm(&mut self) -> bool {
+    self.try_make_inline()
+  }
+
   /// Resize the buffer to `new_len`, filling new bytes with `value` if growing.
   #[wasm_bindgen(js_name = "resize")]
   pub fn resize_wasm(&mut self, new_len: usize, value: u8) {
@@ -131,7 +159,6 @@ impl BytesMut {
   pub fn split_to_wasm(&mut self, at: usize) -> Result<BytesMut, JsError> {
     self
       .try_split_to(at)
-      .map(|r| r.unwrap_or_else(BytesMut::from))
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
@@ -143,22 +170,42 @@ impl BytesMut {
   pub fn split_off_wasm(&mut self, at: usize) -> Result<BytesMut, JsError> {
     self
       .try_split_off(at)
-      .map(|r| r.unwrap_or_else(BytesMut::from))
       .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Split all data out of this buffer, returning it. Self becomes empty.
   #[wasm_bindgen(js_name = "split")]
   pub fn split_wasm(&mut self) -> BytesMut {
-    self.split().unwrap_or_else(BytesMut::from)
+    self.split()
   }
 
-  /// Attempt to re-merge a previously split buffer back into this one.
-  ///
-  /// Returns `other` unchanged if the two buffers are not contiguous.
-  #[wasm_bindgen(js_name = "unsplit")]
-  pub fn unsplit_wasm(&mut self, other: BytesMut) -> Option<BytesMut> {
-    self.unsplit(other)
+  /// Return an independent mutable copy of bytes in range `[start, end)`.
+  #[wasm_bindgen(js_name = "slice")]
+  pub fn slice_wasm(&self, start: usize, end: usize) -> Result<BytesMut, JsError> {
+    if start > end || end > self.len() {
+      return Err(JsError::new("slice range is out of bounds"));
+    }
+    Ok(BytesMut::from(&self.as_slice()[start..end]))
+  }
+
+  /// Return an independent mutable copy of this value.
+  #[wasm_bindgen(js_name = "clone")]
+  pub fn clone_wasm(&self) -> BytesMut {
+    self.clone()
+  }
+
+  /// Freeze the current contents using the shared strategy and reset this buffer.
+  #[wasm_bindgen(js_name = "freezeShared")]
+  pub fn freeze_shared_wasm(&mut self) -> crate::bytes::strategy::shared::wasm::WasmSharedBytes {
+    let value = core::mem::take(self);
+    crate::bytes::strategy::shared::wasm::WasmSharedBytes::from_inner(value.freeze_shared())
+  }
+
+  /// Freeze the current contents using the compact strategy and reset this buffer.
+  #[wasm_bindgen(js_name = "freezeCompact")]
+  pub fn freeze_compact_wasm(&mut self) -> crate::bytes::strategy::compact::wasm::WasmCompactBytes {
+    let value = core::mem::take(self);
+    crate::bytes::strategy::compact::wasm::WasmCompactBytes::from_inner(value.freeze_compact())
   }
 
   // -- Buf getters --
@@ -361,6 +408,42 @@ impl BytesMut {
     Ok(bytes::Buf::get_f64_le(self))
   }
 
+  /// Read an unsigned integer encoded in `width` bytes, big-endian.
+  #[wasm_bindgen(js_name = "getUint")]
+  pub fn get_uint_wasm(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read an unsigned integer encoded in `width` bytes, little-endian.
+  #[wasm_bindgen(js_name = "getUintLe")]
+  pub fn get_uint_le_wasm(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint_le(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read an unsigned integer encoded in `width` bytes, native-endian.
+  #[wasm_bindgen(js_name = "getUintNe")]
+  pub fn get_uint_ne_wasm(&mut self, width: usize) -> Result<u64, JsError> {
+    bytes::Buf::try_get_uint_ne(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, big-endian.
+  #[wasm_bindgen(js_name = "getInt")]
+  pub fn get_int_wasm(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, little-endian.
+  #[wasm_bindgen(js_name = "getIntLe")]
+  pub fn get_int_le_wasm(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int_le(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Read a signed integer encoded in `width` bytes, native-endian.
+  #[wasm_bindgen(js_name = "getIntNe")]
+  pub fn get_int_ne_wasm(&mut self, width: usize) -> Result<i64, JsError> {
+    bytes::Buf::try_get_int_ne(self, width).map_err(|e| JsError::new(&e.to_string()))
+  }
+
   // -- BufMut putters --
 
   /// Write a byte slice into the buffer.
@@ -369,6 +452,60 @@ impl BytesMut {
   #[wasm_bindgen(js_name = "putSlice")]
   pub fn put_slice_wasm(&mut self, data: &[u8]) {
     self.extend_from_slice(data);
+  }
+
+  /// Append `count` copies of `value`.
+  #[wasm_bindgen(js_name = "putBytes")]
+  pub fn put_bytes_wasm(&mut self, value: u8, count: usize) {
+    bytes::BufMut::put_bytes(self, value, count);
+  }
+
+  /// Write an unsigned `width`-byte integer in big-endian byte order.
+  #[wasm_bindgen(js_name = "putUint")]
+  pub fn put_uint_wasm(&mut self, value: u64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_uint(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Write an unsigned `width`-byte integer in little-endian byte order.
+  #[wasm_bindgen(js_name = "putUintLe")]
+  pub fn put_uint_le_wasm(&mut self, value: u64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_uint_le(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Write an unsigned `width`-byte integer in native-endian byte order.
+  #[wasm_bindgen(js_name = "putUintNe")]
+  pub fn put_uint_ne_wasm(&mut self, value: u64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_uint_ne(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Write a signed `width`-byte integer in big-endian byte order.
+  #[wasm_bindgen(js_name = "putInt")]
+  pub fn put_int_wasm(&mut self, value: i64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_int(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Write a signed `width`-byte integer in little-endian byte order.
+  #[wasm_bindgen(js_name = "putIntLe")]
+  pub fn put_int_le_wasm(&mut self, value: i64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_int_le(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
+  }
+
+  /// Write a signed `width`-byte integer in native-endian byte order.
+  #[wasm_bindgen(js_name = "putIntNe")]
+  pub fn put_int_ne_wasm(&mut self, value: i64, width: usize) -> Result<(), JsError> {
+    self
+      .try_put_int_ne(value, width)
+      .map_err(|e| JsError::new(&e.to_string()))
   }
 
   /// Write an unsigned 8-bit integer.

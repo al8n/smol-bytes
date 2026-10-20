@@ -4,18 +4,58 @@ use std::string::ToString;
 
 use super::*;
 
-impl From<&str> for Utf8Buffer {
-  fn from(s: &str) -> Self {
-    let inner = Buffer::try_from(s.as_bytes()).expect("string too large for inline buffer");
-    Self { inner }
-  }
-}
-
 impl Utf8Buffer {
+  /// Validates a fixed buffer as UTF-8 without discarding it on failure.
+  pub fn from_utf8(buffer: Buffer) -> Result<Self, FromUtf8Error<Buffer>> {
+    match core::str::from_utf8(buffer.as_slice()) {
+      Ok(_) => Ok(Self { inner: buffer }),
+      Err(error) => Err(FromUtf8Error::new(buffer, error)),
+    }
+  }
+
   /// Tries to create a `Utf8Buffer` from a string slice.
   pub fn try_from_str(s: &str) -> Result<Self, TryPutError> {
     let inner = Buffer::try_from(s.as_bytes())?;
     Ok(Self { inner })
+  }
+}
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl<S> crate::utf8_bytes::Utf8Bytes<S> {
+  /// Tries to move this validated UTF-8 view into a fixed [`Utf8Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into inline storage, while longer values are
+  /// returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Utf8Buffer, Self> {
+    match self.inner.try_into_buffer() {
+      Ok(inner) => Ok(Utf8Buffer { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
+  }
+}
+
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl crate::Utf8BytesMut {
+  /// Tries to move this validated mutable UTF-8 view into a fixed
+  /// [`Utf8Buffer`].
+  ///
+  /// Inline values move their inline storage while preserving the cursor.
+  /// Short heap views are copied into inline storage, while longer values are
+  /// returned unchanged.
+  pub fn try_into_buffer(self) -> Result<Utf8Buffer, Self> {
+    match self.inner.try_into_buffer() {
+      Ok(inner) => Ok(Utf8Buffer { inner }),
+      Err(inner) => Err(Self { inner }),
+    }
+  }
+}
+
+impl TryFrom<&str> for Utf8Buffer {
+  type Error = TryPutError;
+
+  fn try_from(s: &str) -> Result<Self, Self::Error> {
+    Self::try_from_str(s)
   }
 }
 
@@ -35,12 +75,10 @@ impl From<Utf8Buffer> for Buffer {
 }
 
 impl TryFrom<Buffer> for Utf8Buffer {
-  type Error = core::str::Utf8Error;
+  type Error = FromUtf8Error<Buffer>;
 
   fn try_from(buffer: Buffer) -> Result<Self, Self::Error> {
-    // Validate UTF-8
-    core::str::from_utf8(buffer.as_slice())?;
-    Ok(Self { inner: buffer })
+    Self::from_utf8(buffer)
   }
 }
 
@@ -57,11 +95,29 @@ impl TryFrom<&[u8]> for Utf8Buffer {
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 const _: () = {
-  use std::{boxed::Box, rc::Rc, string::String, sync::Arc};
+  use std::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 
   impl From<Utf8Buffer> for String {
     fn from(value: Utf8Buffer) -> Self {
       value.as_str().to_string()
+    }
+  }
+
+  impl From<Utf8Buffer> for Vec<u8> {
+    fn from(value: Utf8Buffer) -> Self {
+      value.into_inner().as_slice().to_vec()
+    }
+  }
+
+  impl From<Utf8Buffer> for ::bytes::Bytes {
+    fn from(value: Utf8Buffer) -> Self {
+      ::bytes::Bytes::copy_from_slice(value.as_str().as_bytes())
+    }
+  }
+
+  impl From<Utf8Buffer> for ::bytes::BytesMut {
+    fn from(value: Utf8Buffer) -> Self {
+      ::bytes::BytesMut::from(value.as_str().as_bytes())
     }
   }
 
