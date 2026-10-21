@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-21
+
 ### Changed
 
 - **Rust:** deserializing `Utf8Bytes` and `compact::Utf8Bytes` no longer builds
@@ -511,7 +513,8 @@ Initial release.
   the instance when full.
 - Minimum supported Rust version is 1.85; the `bytes` dependency floor is 1.10.
 
-[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/al8n/smol-bytes/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/al8n/smol-bytes/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/al8n/smol-bytes/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/al8n/smol-bytes/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/al8n/smol-bytes/compare/a56cfeca004c750ef4df7b42af05a9c8d6b981ba...v0.1.7
