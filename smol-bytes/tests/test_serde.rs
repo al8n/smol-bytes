@@ -2,6 +2,7 @@
 #![warn(rust_2018_idioms)]
 
 use serde_test::{Token, assert_de_tokens, assert_de_tokens_error, assert_tokens};
+use smol_bytes::INLINE_CAP;
 
 #[test]
 fn test_ser_de_empty() {
@@ -298,4 +299,291 @@ fn buffer_json_string_enforces_inline_byte_capacity() {
     .unwrap_err()
     .to_string();
   assert!(error.contains("requested 63 but only 62 available"));
+}
+
+// ---------------------------------------------------------------------------
+// `Utf8Bytes` deserialization. The visitor accepts exactly what `String`'s
+// visitor accepts, rejects the rest with the same message, and keeps strings
+// of at most `INLINE_CAP` bytes inline under both immutable storage strategies.
+// ---------------------------------------------------------------------------
+
+const fn ascii(bytes: &'static [u8]) -> &'static str {
+  match core::str::from_utf8(bytes) {
+    Ok(s) => s,
+    Err(_) => panic!("fixture is not UTF-8"),
+  }
+}
+
+const SHORT: &str = "hello";
+const FULL_INLINE: &str = ascii(&[b'a'; INLINE_CAP]);
+const MIN_HEAP: &str = ascii(&[b'b'; INLINE_CAP + 1]);
+const LONG: &str = ascii(&[b'c'; 130]);
+// Twenty 3-byte scalars and two ASCII bytes fill the inline capacity exactly;
+// twenty-one 3-byte scalars overshoot it by one byte.
+const MULTIBYTE_FULL_INLINE: &str = "€€€€€€€€€€€€€€€€€€€€ab";
+const MULTIBYTE_MIN_HEAP: &str = "€€€€€€€€€€€€€€€€€€€€€";
+const _: () = {
+  assert!(MULTIBYTE_FULL_INLINE.len() == INLINE_CAP);
+  assert!(MULTIBYTE_MIN_HEAP.len() == INLINE_CAP + 1);
+};
+
+const STRINGS: [&str; 7] = [
+  "",
+  SHORT,
+  FULL_INLINE,
+  MIN_HEAP,
+  LONG,
+  MULTIBYTE_FULL_INLINE,
+  MULTIBYTE_MIN_HEAP,
+];
+
+/// Hands one value to a visitor through a chosen entry point. `serde_test`
+/// drives the same entry points but never returns the value, so storage
+/// placement and buffer reuse cannot be observed through it. Only the
+/// `deserialize_string` hint, the one `String` uses, is accepted.
+enum Input {
+  Str(&'static str),
+  BorrowedStr(&'static str),
+  String(String),
+  Bytes(&'static [u8]),
+  BorrowedBytes(&'static [u8]),
+  ByteBuf(Vec<u8>),
+}
+
+impl<'de> serde_core::Deserializer<'de> for Input {
+  type Error = serde_core::de::value::Error;
+
+  fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+  where
+    V: serde_core::de::Visitor<'de>,
+  {
+    match self {
+      Self::Str(v) => visitor.visit_str(v),
+      Self::BorrowedStr(v) => visitor.visit_borrowed_str(v),
+      Self::String(v) => visitor.visit_string(v),
+      Self::Bytes(v) => visitor.visit_bytes(v),
+      Self::BorrowedBytes(v) => visitor.visit_borrowed_bytes(v),
+      Self::ByteBuf(v) => visitor.visit_byte_buf(v),
+    }
+  }
+
+  fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+  where
+    V: serde_core::de::Visitor<'de>,
+  {
+    Err(serde_core::de::Error::custom(
+      "expected the deserialize_string hint",
+    ))
+  }
+
+  serde_core::forward_to_deserialize_any! {
+    bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
+    bytes byte_buf option unit unit_struct newtype_struct seq tuple
+    tuple_struct map struct enum identifier ignored_any
+  }
+}
+
+fn every_input(s: &'static str) -> [Input; 6] {
+  [
+    Input::Str(s),
+    Input::BorrowedStr(s),
+    Input::String(s.to_owned()),
+    Input::Bytes(s.as_bytes()),
+    Input::BorrowedBytes(s.as_bytes()),
+    Input::ByteBuf(s.as_bytes().to_vec()),
+  ]
+}
+
+fn assert_de_string_and_bytes_tokens<T>(s: &'static str)
+where
+  T: serde_core::de::DeserializeOwned + From<&'static str> + PartialEq + core::fmt::Debug,
+{
+  let expected = T::from(s);
+  let bytes = s.as_bytes();
+
+  assert_de_tokens(&expected, &[Token::Str(s)]);
+  assert_de_tokens(&expected, &[Token::BorrowedStr(s)]);
+  assert_de_tokens(&expected, &[Token::String(s)]);
+  assert_de_tokens(&expected, &[Token::Bytes(bytes)]);
+  assert_de_tokens(&expected, &[Token::BorrowedBytes(bytes)]);
+  assert_de_tokens(&expected, &[Token::ByteBuf(bytes)]);
+}
+
+fn assert_placement_follows_length<T>(s: &'static str, view: fn(&T) -> (&str, bool))
+where
+  T: serde_core::de::DeserializeOwned,
+{
+  for input in every_input(s) {
+    let value = T::deserialize(input).unwrap();
+    let (text, is_inline) = view(&value);
+    assert_eq!(text, s);
+    assert_eq!(is_inline, s.len() <= INLINE_CAP, "{} bytes", s.len());
+  }
+}
+
+fn assert_adopts_owned_buffers<T>(as_str: fn(&T) -> &str)
+where
+  T: serde_core::de::DeserializeOwned,
+{
+  let owned = String::from(LONG);
+  let address = owned.as_ptr();
+  let value = T::deserialize(Input::String(owned)).unwrap();
+  assert_eq!(as_str(&value).as_ptr(), address, "visit_string copied");
+
+  let owned = LONG.as_bytes().to_vec();
+  let address = owned.as_ptr();
+  let value = T::deserialize(Input::ByteBuf(owned)).unwrap();
+  assert_eq!(as_str(&value).as_ptr(), address, "visit_byte_buf copied");
+}
+
+#[test]
+fn utf8_bytes_deserializes_every_string_and_bytes_token_like_string() {
+  use smol_bytes::{compact, shared};
+
+  for s in STRINGS {
+    assert_de_string_and_bytes_tokens::<String>(s);
+    assert_de_string_and_bytes_tokens::<shared::Utf8Bytes>(s);
+    assert_de_string_and_bytes_tokens::<compact::Utf8Bytes>(s);
+  }
+
+  // A `char` reaches `visit_str` through the default forwarding, as for `String`.
+  assert_de_tokens(&String::from("é"), &[Token::Char('é')]);
+  assert_de_tokens(&shared::Utf8Bytes::from("é"), &[Token::Char('é')]);
+  assert_de_tokens(&compact::Utf8Bytes::from("é"), &[Token::Char('é')]);
+}
+
+#[test]
+fn utf8_bytes_storage_follows_the_inline_capacity_for_every_entry_point() {
+  use smol_bytes::{compact, shared};
+
+  for s in STRINGS {
+    assert_placement_follows_length::<shared::Utf8Bytes>(s, |v| (v.as_str(), v.is_inline()));
+    assert_placement_follows_length::<compact::Utf8Bytes>(s, |v| (v.as_str(), v.is_inline()));
+  }
+}
+
+#[test]
+fn utf8_bytes_adopts_owned_heap_buffers_without_copying() {
+  use smol_bytes::{compact, shared};
+
+  assert_adopts_owned_buffers::<shared::Utf8Bytes>(shared::Utf8Bytes::as_str);
+  assert_adopts_owned_buffers::<compact::Utf8Bytes>(compact::Utf8Bytes::as_str);
+}
+
+#[test]
+fn utf8_bytes_rejects_invalid_utf8_with_the_message_string_uses() {
+  use smol_bytes::{compact, shared};
+
+  const MESSAGE: &str = "invalid value: byte array, expected a string";
+  const LONG_INVALID: [u8; INLINE_CAP + 8] = {
+    let mut bytes = [b'a'; INLINE_CAP + 8];
+    bytes[INLINE_CAP + 7] = 0xff;
+    bytes
+  };
+
+  let invalid: [&'static [u8]; 3] = [
+    // 0xff never occurs in UTF-8.
+    b"ab\xffcd",
+    // The first two bytes of a 3-byte scalar.
+    b"\xe2\x82",
+    // Invalid input longer than the inline capacity.
+    &LONG_INVALID,
+  ];
+
+  for bytes in invalid {
+    for token in [
+      Token::Bytes(bytes),
+      Token::BorrowedBytes(bytes),
+      Token::ByteBuf(bytes),
+    ] {
+      assert_de_tokens_error::<String>(&[token], MESSAGE);
+      assert_de_tokens_error::<shared::Utf8Bytes>(&[token], MESSAGE);
+      assert_de_tokens_error::<compact::Utf8Bytes>(&[token], MESSAGE);
+    }
+  }
+}
+
+#[test]
+fn utf8_bytes_rejects_non_string_tokens_with_the_message_string_uses() {
+  use smol_bytes::{compact, shared};
+
+  let cases: [(&[Token], &str); 5] = [
+    (
+      &[Token::I32(5)],
+      "invalid type: integer `5`, expected a string",
+    ),
+    (
+      &[Token::Bool(true)],
+      "invalid type: boolean `true`, expected a string",
+    ),
+    (
+      &[Token::Unit],
+      "invalid type: unit value, expected a string",
+    ),
+    (
+      &[Token::None],
+      "invalid type: Option value, expected a string",
+    ),
+    (
+      &[Token::Seq { len: Some(0) }, Token::SeqEnd],
+      "invalid type: sequence, expected a string",
+    ),
+  ];
+
+  for (tokens, message) in cases {
+    assert_de_tokens_error::<String>(tokens, message);
+    assert_de_tokens_error::<shared::Utf8Bytes>(tokens, message);
+    assert_de_tokens_error::<compact::Utf8Bytes>(tokens, message);
+  }
+}
+
+#[test]
+fn utf8_bytes_json_unescaped_and_escaped_strings() {
+  use smol_bytes::{compact, shared};
+
+  fn assert_decodes<T>(json: &str, expected: &str, view: fn(&T) -> (&str, bool))
+  where
+    T: serde_core::de::DeserializeOwned,
+  {
+    let value: T = serde_json::from_str(json).unwrap();
+    let (text, is_inline) = view(&value);
+    assert_eq!(text, expected);
+    assert_eq!(
+      is_inline,
+      expected.len() <= INLINE_CAP,
+      "{} bytes",
+      expected.len()
+    );
+  }
+
+  fn assert_both_decode(json: &str, expected: &str) {
+    assert_decodes::<shared::Utf8Bytes>(json, expected, |v| (v.as_str(), v.is_inline()));
+    assert_decodes::<compact::Utf8Bytes>(json, expected, |v| (v.as_str(), v.is_inline()));
+  }
+
+  // Unescaped: serde_json lends a slice of its input (`visit_borrowed_str`).
+  for s in STRINGS {
+    let json = serde_json::to_string(s).unwrap();
+    assert_eq!(json, format!("\"{s}\""), "fixture needs no escaping");
+    assert_both_decode(&json, s);
+  }
+
+  // Escaped: serde_json decodes into a scratch buffer and lends that
+  // (`visit_str`), so the decoded length, not the JSON length, picks the
+  // storage.
+  assert_both_decode(
+    "\"line\\nbreak \\\"quoted\\\" back\\\\slash\"",
+    "line\nbreak \"quoted\" back\\slash",
+  );
+  assert_both_decode("\"caf\\u00e9 \\ud83e\\udd80\"", "café 🦀");
+  for len in [INLINE_CAP, INLINE_CAP + 1] {
+    let json = format!("\"{}\"", "\\u0041".repeat(len));
+    assert_both_decode(&json, &"A".repeat(len));
+  }
+
+  // Serialization is unchanged: the value writes the same JSON as its `str`.
+  let special = "tab\t quote\" slash\\ newline\n café 🦀";
+  let json = serde_json::to_string(&shared::Utf8Bytes::from(special)).unwrap();
+  assert_eq!(json, serde_json::to_string(special).unwrap());
+  assert_both_decode(&json, special);
 }
