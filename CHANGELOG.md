@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust:** deserializing `Utf8Bytes` and `compact::Utf8Bytes` no longer builds
+  an intermediate `String`. A string of at most 62 bytes goes straight to
+  inline storage without a heap allocation, and an owned `String` or byte
+  buffer handed over by the deserializer is reused as the heap storage.
+  Accepted inputs and error messages are unchanged.
+
 ## [0.2.0] - 2026-10-18
 
 The complete Rust, Python, and JavaScript migration guide is included below.
